@@ -1,51 +1,86 @@
 package domain
 
-import (
-	"time"
-)
-
 type Status int
 
 const (
 	StatusActive Status = 1
 )
 
+// User 全局主账户
 type User struct {
-	ID        int64
-	Username  string
-	Password  string
-	Email     string
-	Status    Status
-	TenantID  int64
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID       int64
+	Username string
+	Password string
+	Email    string
+	Status   Status
+	Ctime    int64
+	Utime    int64
 
-	// 核心关联属性
-	Profile    UserInfo       // 用户详细名片
-	Identities []UserIdentity // 关联的所有联邦身份 (LDAP, Feishu, Wechat...)
+	// 各司其职：侧写资料归公司
+	Profile    UserProfile
+	// 一表通行：身份标识归个人
+	Identities []UserIdentity
 }
 
-// GetExternalID 快捷工具：快速获取指定身份源的外部 ID（如发送通知时获取飞书 ID）
-func (u User) GetExternalID(provider string) string {
-	for _, identity := range u.Identities {
-		if identity.Provider == provider {
-			return identity.ExternalID
+// UserProfile 业务名片 (依然由 Membership 契约管理)
+type UserProfile struct {
+	MembershipID int64
+	Nickname     string
+	Avatar       string
+	JobTitle     string
+}
+
+// UserIdentity 全球身份标记：与租户彻底脱钩
+type UserIdentity struct {
+	ID       int64
+	UserID   int64  // 唯一锚点：这是谁的身份？
+	Provider string // 来源：微信、飞书等
+	
+	LdapInfo   LdapInfo
+	FeishuInfo FeishuInfo
+	WechatInfo WechatInfo
+}
+
+func (u User) GetPrimaryIdentity(provider string) (UserIdentity, bool) {
+	for _, id := range u.Identities {
+		if id.Provider == provider {
+			return id, true
 		}
 	}
-	return ""
+	return UserIdentity{}, false
 }
 
-type UserInfo struct {
-	Nickname string
-	Avatar   string
-	JobTitle string
-	Metadata map[string]string // 存放非唯一、松散的元数据
+func (id UserIdentity) IdentityKey() string {
+	switch id.Provider {
+	case "ldap":
+		return id.LdapInfo.DN
+	case "feishu":
+		return id.FeishuInfo.UserID
+	case "wechat":
+		return id.WechatInfo.UserID
+	default:
+		return ""
+	}
 }
 
-type UserIdentity struct {
-	ID         int64
-	UserID     int64
-	Provider   string            // 身份源名称: "ldap", "feishu", "wechat"
-	ExternalID string            // 外部唯一标识: "fs_12345", "uid-abc"
-	Extra      map[string]string // 存放该身份源特有的原始 JSON 数据
+type LdapInfo struct {
+	DN string
+}
+
+type WechatInfo struct {
+	UserID string
+}
+
+type FeishuInfo struct {
+	OpenID string
+	UserID string
+}
+
+// LoginResult 登录结果：封装认证后的用户信息与可用租户空间
+// TenantID != 0 → 单租户，直接颁发正式 JWT
+// TenantID == 0 → 多租户，前端从 Tenants 列表选择后调 SwitchTenant
+type LoginResult struct {
+	User     User
+	TenantID int64
+	Tenants  []Tenant
 }

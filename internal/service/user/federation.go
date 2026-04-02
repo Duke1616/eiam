@@ -2,22 +2,15 @@ package user
 
 import (
 	"context"
+
+	"github.com/Duke1616/eiam/internal/domain"
 )
 
-// ExternalProfile 定义来自于外部身份源的标准资料对象 (如 LDAP 或飞书返回的数据)
-type ExternalProfile struct {
-	ExternalID string            // 外部系统中的唯一物理标识 (如 LDAP 的 DN, 飞书的 open_id)
-	Username   string            // 外部系统账号名 (用于本地建号建议)
-	Email      string            // 用户邮箱 (若有)
-	Nickname   string            // 用户显示名/昵称
-	JobTitle   string            // 职位/职称
-	Extra      map[string]string // 其它身份源特有的扩展属性 (映射为本地 Profile Metadata)
-}
-
-// IdentityProvider 联邦身份源标准接口：实现该接口即视为接入 eiam 认证体系
+// IdentityProvider 身份提供者策略接口。
+// 认证器直接负责将外部认证系统的结果，原汁原味地映射为系统内核识别的 domain.User 对象。
 type IdentityProvider interface {
-	// Name 返回身份协议标识名 (如 "ldap", "feishu", "wechat")
+	// Name 返回身份源唯一标识 (ldap, feishu 等)
 	Name() string
-	// Authenticate 执行外部认证逻辑，并返回标准外部资料
-	Authenticate(ctx context.Context, username, password string) (ExternalProfile, error)
+	// Authenticate 执行外部身份核验，返回构造完毕的领域用户模型
+	Authenticate(ctx context.Context, username, password string) (domain.User, error)
 }

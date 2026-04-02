@@ -56,6 +56,8 @@ func (r *ResourceRepository) FindAPIByPath(ctx context.Context, service, method,
 				Name:    a.Name,
 				Method:  a.Method,
 				Path:    a.Path,
+				Ctime:   a.Ctime,
+				Utime:   a.Utime,
 			}, nil
 		}
 	}
@@ -76,6 +78,8 @@ func (r *ResourceRepository) ListAllAPIs(ctx context.Context) ([]domain.API, err
 			Name:    a.Name,
 			Method:  a.Method,
 			Path:    a.Path,
+			Ctime:   a.Ctime,
+			Utime:   a.Utime,
 		})
 	}
 	return res, nil
@@ -113,6 +117,8 @@ func (r *ResourceRepository) ListMenus(ctx context.Context, tenantId int64) ([]d
 			Icon:      m.Icon,
 			Sort:      m.Sort,
 			Hidden:    m.Hidden,
+			Ctime:     m.Ctime,
+			Utime:     m.Utime,
 		})
 	}
 	return res, nil

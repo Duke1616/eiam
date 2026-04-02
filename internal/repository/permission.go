@@ -56,6 +56,8 @@ func (r *PermissionRepository) GetByCode(ctx context.Context, tenantId int64, co
 		Desc:     p.Desc,
 		Group:    p.Group,
 		Status:   p.Status,
+		Ctime:    p.Ctime,
+		Utime:    p.Utime,
 	}, nil
 }
 

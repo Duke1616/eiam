@@ -5,10 +5,10 @@ import "gorm.io/gorm"
 func InitTables(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
-		&UserInfo{},
+		&UserProfile{},
 		&UserIdentity{},
 		&Tenant{},
-		&Member{},
+		&Membership{},
 		&Role{},
 		&Permission{},
 		&PermissionBinding{},

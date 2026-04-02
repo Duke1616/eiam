@@ -5,15 +5,21 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/ecodeclub/ekit/slice"
 )
 
 // ITenantRepository 租户仓储接口
 type ITenantRepository interface {
 	Create(ctx context.Context, t domain.Tenant) (int64, error)
-	AddMember(ctx context.Context, m domain.Member) error
 	FindById(ctx context.Context, id int64) (domain.Tenant, error)
-	FindByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error)
-	IsMember(ctx context.Context, tenantId, userId int64) (bool, error)
+	FindByCode(ctx context.Context, code string) (domain.Tenant, error)
+	FindAll(ctx context.Context) ([]domain.Tenant, error)
+
+	// --- Membership 纯净契约管理 ---
+
+	AddMembership(ctx context.Context, userID, tenantID int64) error
+	GetMembership(ctx context.Context, tenantId, userId int64) (domain.Membership, error)
+	FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error)
 }
 
 type TenantRepository struct {
@@ -25,57 +31,88 @@ func NewTenantRepository(d dao.ITenantDAO) ITenantRepository {
 }
 
 func (r *TenantRepository) Create(ctx context.Context, t domain.Tenant) (int64, error) {
-	return r.dao.Insert(ctx, dao.Tenant{
-		Name:    t.Name,
-		Code:    t.Code,
-		Type:    int8(t.Type),
-		OwnerId: t.OwnerID,
-		Status:  int8(t.Status),
+	return r.dao.Create(ctx, dao.Tenant{
+		Name:   t.Name,
+		Code:   t.Code,
+		Domain: t.Domain,
+		Status: t.Status,
 	})
 }
 
-func (r *TenantRepository) AddMember(ctx context.Context, m domain.Member) error {
-	return r.dao.InsertMember(ctx, dao.Member{
-		TenantId: m.TenantID,
-		UserId:   m.UserID,
-		Status:   int8(m.Status),
+func (r *TenantRepository) AddMembership(ctx context.Context, userID, tenantID int64) error {
+	return r.dao.InsertMembership(ctx, dao.Membership{
+		TenantID: tenantID,
+		UserID:   userID,
 	})
 }
 
-func (r *TenantRepository) FindById(ctx context.Context, id int64) (domain.Tenant, error) {
-	t, err := r.dao.GetById(ctx, id)
+func (r *TenantRepository) GetMembership(ctx context.Context, tenantId, userId int64) (domain.Membership, error) {
+	m, err := r.dao.GetMembership(ctx, tenantId, userId)
 	if err != nil {
-		return domain.Tenant{}, err
+		return domain.Membership{}, err
 	}
-	return domain.Tenant{
-		ID:      t.Id,
-		Name:    t.Name,
-		Code:    t.Code,
-		Type:    domain.TenantType(t.Type),
-		OwnerID: t.OwnerId,
-		Status:  t.Status,
+	return domain.Membership{
+		ID:       m.ID,
+		TenantID: m.TenantID,
+		UserID:   m.UserID,
+		Ctime:    m.Ctime,
 	}, nil
 }
 
-func (r *TenantRepository) FindByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {
-	ts, err := r.dao.GetByUserId(ctx, userId)
+func (r *TenantRepository) FindById(ctx context.Context, id int64) (domain.Tenant, error) {
+	t, err := r.dao.FindById(ctx, id)
+	if err != nil {
+		return domain.Tenant{}, err
+	}
+	return r.toDomain(t), nil
+}
+
+func (r *TenantRepository) FindByCode(ctx context.Context, code string) (domain.Tenant, error) {
+	t, err := r.dao.FindByCode(ctx, code)
+	if err != nil {
+		return domain.Tenant{}, err
+	}
+	return r.toDomain(t), nil
+}
+
+func (r *TenantRepository) FindAll(ctx context.Context) ([]domain.Tenant, error) {
+	ts, err := r.dao.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
-	res := make([]domain.Tenant, len(ts))
-	for i, t := range ts {
-		res[i] = domain.Tenant{
-			ID:      t.Id,
-			Name:    t.Name,
-			Code:    t.Code,
-			Type:    domain.TenantType(t.Type),
-			OwnerID: t.OwnerId,
-			Status:  t.Status,
-		}
+	res := make([]domain.Tenant, 0, len(ts))
+	for _, t := range ts {
+		res = append(res, r.toDomain(t))
 	}
 	return res, nil
 }
 
-func (r *TenantRepository) IsMember(ctx context.Context, tenantId, userId int64) (bool, error) {
-	return r.dao.GetMember(ctx, tenantId, userId)
+func (r *TenantRepository) FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {
+	// 从 membership 表查出该用户入驻的所有租户 ID
+	ids, err := r.dao.FindTenantIDsByUserId(ctx, userId)
+	if err != nil || len(ids) == 0 {
+		return nil, err
+	}
+
+	// 按 ID 列表批量查租户详情（IN 查询，走主键索引）
+	ts, err := r.dao.FindTenantsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	return slice.Map(ts, func(idx int, src dao.Tenant) domain.Tenant {
+		return r.toDomain(src)
+	}), nil
+}
+
+func (r *TenantRepository) toDomain(t dao.Tenant) domain.Tenant {
+	return domain.Tenant{
+		ID:     t.ID,
+		Name:   t.Name,
+		Code:   t.Code,
+		Domain: t.Domain,
+		Status: t.Status,
+		Ctime:  t.Ctime,
+		Utime:  t.Utime,
+	}
 }

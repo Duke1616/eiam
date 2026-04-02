@@ -1,7 +1,5 @@
 package domain
 
-import "time"
-
 // Permission 权限项定义 (逻辑能力包)
 type Permission struct {
 	ID       int64               `json:"id"`
@@ -12,8 +10,8 @@ type Permission struct {
 	Group    string              `json:"group"`     // 权限分组：如 "用户管理"
 	Status   bool                `json:"status"`    // 是否启用
 	Bindings []PermissionBinding `json:"bindings"`  // 对应的资源绑定列表
-	Ctime    time.Time           `json:"ctime"`
-	Utime    time.Time           `json:"utime"`
+	Ctime    int64               `json:"ctime"`
+	Utime    int64               `json:"utime"`
 }
 
 // ResourceType 资源类型定义

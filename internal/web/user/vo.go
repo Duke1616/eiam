@@ -4,14 +4,13 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 )
 
-// SignupRequest 注册请求：账号 + 基础详情资料
+// SignupRequest 注册请求
 type SignupRequest struct {
 	Username        string `json:"username"`
 	Password        string `json:"password"`
 	ConfirmPassword string `json:"confirm_password"`
 	Email           string `json:"email"`
 
-	// 以下属 Profile 名片板块
 	Nickname string `json:"nickname"`
 	Avatar   string `json:"avatar"`
 	JobTitle string `json:"job_title"`
@@ -22,7 +21,7 @@ func (req SignupRequest) ToDomain() domain.User {
 		Username: req.Username,
 		Password: req.Password,
 		Email:    req.Email,
-		Profile: domain.UserInfo{
+		Profile: domain.UserProfile{
 			Nickname: req.Nickname,
 			Avatar:   req.Avatar,
 			JobTitle: req.JobTitle,
@@ -30,34 +29,40 @@ func (req SignupRequest) ToDomain() domain.User {
 	}
 }
 
-// LoginLdapRequest LDAP 登录专用请求
+// LoginLdapRequest LDAP 登录请求
 type LoginLdapRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// LoginSystemRequest 系统本地登录专用请求
+// LoginSystemRequest 本地登录请求
 type LoginSystemRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// UserVO 统一用户展示对象：前端脱敏展示
+// SwitchTenantRequest 空间切换请求
+type SwitchTenantRequest struct {
+	TenantID int64 `json:"tenant_id"`
+}
+
+// UserVO 用户展示对象
 type UserVO struct {
-	ID        int64             `json:"id"`
-	Username  string            `json:"username"`
-	Email     string            `json:"email"`
-	Nickname  string            `json:"nickname"`
-	Avatar    string            `json:"avatar"`
-	JobTitle  string            `json:"job_title"`
-	Metadata  map[string]string `json:"metadata"`
-	// Identities 列表展示关联的各平台标识
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Nickname string `json:"nickname"`
+	Avatar   string `json:"avatar"`
+	JobTitle string `json:"job_title"`
+
 	Identities []IdentityVO `json:"identities"`
 }
 
 type IdentityVO struct {
-	Provider   string `json:"provider"`
-	ExternalID string `json:"external_id"`
+	Provider   string            `json:"provider"`
+	LdapInfo   domain.LdapInfo   `json:"ldap_info,omitempty"`
+	WechatInfo domain.WechatInfo `json:"wechat_info,omitempty"`
+	FeishuInfo domain.FeishuInfo `json:"feishu_info,omitempty"`
 }
 
 func ToUserVO(u domain.User) UserVO {
@@ -65,7 +70,9 @@ func ToUserVO(u domain.User) UserVO {
 	for _, id := range u.Identities {
 		identities = append(identities, IdentityVO{
 			Provider:   id.Provider,
-			ExternalID: id.ExternalID,
+			LdapInfo:   id.LdapInfo,
+			WechatInfo: id.WechatInfo,
+			FeishuInfo: id.FeishuInfo,
 		})
 	}
 
@@ -76,9 +83,29 @@ func ToUserVO(u domain.User) UserVO {
 		Nickname:   u.Profile.Nickname,
 		Avatar:     u.Profile.Avatar,
 		JobTitle:   u.Profile.JobTitle,
-		Metadata:   u.Profile.Metadata,
-		Identities: identities, // 补全 Identities 展示
+		Identities: identities,
 	}
+}
+
+// TenantVO 空间展示对象
+type TenantVO struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Code   string `json:"code"`
+	Domain string `json:"domain"`
+}
+
+func ToTenantVOs(ts []domain.Tenant) []TenantVO {
+	res := make([]TenantVO, 0, len(ts))
+	for _, t := range ts {
+		res = append(res, TenantVO{
+			ID:     t.ID,
+			Name:   t.Name,
+			Code:   t.Code,
+			Domain: t.Domain,
+		})
+	}
+	return res
 }
 
 type UpdateUserReq struct {
@@ -90,26 +117,12 @@ type UpdateUserReq struct {
 	JobTitle string `json:"job_title"`
 }
 
-type FindByKeywordReq struct {
-	Page
-	Keyword string `json:"keyword"`
-}
-
-type FindByUserNameReq struct {
-	Username string `json:"username"`
-}
-
-type UserBindRoleReq struct {
-	ID        int64    `json:"id"`
-	RoleCodes []string `json:"role_codes"`
-}
-
-type Page struct {
-	Offset int64 `json:"offset,omitempty"`
-	Limit  int64 `json:"limit,omitempty"`
-}
-
 type RetrieveUsers struct {
 	Total int64    `json:"total"`
 	Users []UserVO `json:"users"`
+}
+
+type RetrieveUser struct {
+	User    UserVO     `json:"user"`
+	Tenants []TenantVO `json:"tenants"`
 }

@@ -6,131 +6,189 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/tenant"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var ErrUserExist = errors.New("用户名已存在")
 var ErrInvalidUser = errors.New("账号或密码错误")
 var ErrProviderNotFound = errors.New("未找到指定的身份源适配器")
+var ErrTenantAccessDenied = errors.New("无权访问该租户空间")
 
-// IUserService 用户业务逻辑接口：封装账号治理与身份映射的核心业务流
-//
-//go:generate mockgen -source=./user.go -package=usermocks -destination=./mocks/user.mock.go -typed IUserService
 type IUserService interface {
-	// Signup 注册新本地用户
 	Signup(ctx context.Context, u domain.User) (int64, error)
-	// Login 统一登录入口：根据 provider 自动分发认证逻辑 (local, ldap, feishu 等)
-	Login(ctx context.Context, provider, username, password string) (domain.User, error)
-	// GetById 根据 ID 获取聚合后的全量用户信息 (含 Profile 和 Identities)
+	// Login 认证成功后，同步返回封装好的 LoginResult：
+	// Result.TenantID != 0 → 单租户，直接颁发正式 JWT
+	// Result.TenantID == 0 → 多租户，前端从 Result.Tenants 选择后调 SwitchTenant
+	Login(ctx context.Context, provider, username, password string) (domain.LoginResult, error)
+
 	GetById(ctx context.Context, id int64) (domain.User, error)
-	// GetByUsername 按用户名获取全量用户信息
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
-	// List 分页获取账号清单
+
+	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error)
+
 	List(ctx context.Context, offset, limit int64) ([]domain.User, int64, error)
-	// Update 修改用户账号信息或详情资料
 	Update(ctx context.Context, u domain.User) (int64, error)
 }
 
 type userService struct {
 	repo      repository.IUserRepository
-	providers map[string]IdentityProvider // 注册各种联邦身份源: ldap, feishu...
+	tenantSvc tenant.ITenantService
+	permSvc   permission.IPermissionService
+	providers map[string]IdentityProvider
 }
 
-func NewUserService(r repository.IUserRepository, ps []IdentityProvider) IUserService {
+func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService, ps []IdentityProvider, permSvc permission.IPermissionService) IUserService {
 	registry := make(map[string]IdentityProvider, len(ps))
 	for _, p := range ps {
 		registry[p.Name()] = p
 	}
 	return &userService{
 		repo:      r,
+		tenantSvc: tenantSvc,
+		permSvc:   permSvc,
 		providers: registry,
 	}
 }
 
-func (s *userService) Login(ctx context.Context, provider, username, password string) (domain.User, error) {
-	// 1. 统一调度：判别是否为本地认证
+func (s *userService) Login(ctx context.Context, provider, username, password string) (domain.LoginResult, error) {
 	if provider == "local" || provider == "" {
 		return s.loginLocal(ctx, username, password)
 	}
 
-	// 2. 统一调度：执行联邦身份认证 (LDAP, Feishu 等)
 	return s.loginExternal(ctx, provider, username, password)
 }
 
-// loginLocal 私有本地登录逻辑：本地 DB 账密校验
-func (s *userService) loginLocal(ctx context.Context, username, password string) (domain.User, error) {
+func (s *userService) loginLocal(ctx context.Context, username, password string) (domain.LoginResult, error) {
 	u, err := s.repo.FindByUsername(ctx, username)
 	if err != nil {
-		return domain.User{}, ErrInvalidUser
+		return domain.LoginResult{}, ErrInvalidUser
 	}
 
-	// 校验 Bcrypt 加密后的密码
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err != nil {
-		return domain.User{}, ErrInvalidUser
+		return domain.LoginResult{}, ErrInvalidUser
 	}
 
-	return u, nil
+	return s.postLogin(ctx, u)
 }
 
-// loginExternal 私有联邦登录逻辑：外部认证 + JIT 自动建号/同步
-func (s *userService) loginExternal(ctx context.Context, providerName string, username, password string) (domain.User, error) {
-	// 找到对应的认证策略 (如 LDAP 实现)
-	p, ok := s.providers[providerName]
+func (s *userService) loginExternal(ctx context.Context, providerName string, username, password string) (domain.LoginResult, error) {
+	strategy, ok := s.providers[providerName]
 	if !ok {
-		return domain.User{}, ErrProviderNotFound
+		return domain.LoginResult{}, ErrProviderNotFound
 	}
 
-	// 1. 外部协议层认证：获取标准化外部资料 (含 ExternalID)
-	extProfile, err := p.Authenticate(ctx, username, password)
+	extUser, err := strategy.Authenticate(ctx, username, password)
 	if err != nil {
-		return domain.User{}, err
+		return domain.LoginResult{}, err
 	}
 
-	// 2. 身份联邦查询：根据全球唯一标识 (DN/OpenID) 查找系统内关联的本地 User
-	user, err := s.repo.FindUserByIdentity(ctx, providerName, extProfile.ExternalID)
+	id, ok := extUser.GetPrimaryIdentity(providerName)
+	if !ok {
+		return domain.LoginResult{}, ErrProviderNotFound
+	}
+
+	// 老用户：直接进入后续租户路由
+	localUser, err := s.repo.FindUserByIdentity(ctx, providerName, id.IdentityKey())
 	if err == nil {
-		// 登录成功：命中已有的绑定关系 -> 执行资料同步 (Sync on Login)
-		user.Profile.Nickname = extProfile.Nickname
-		user.Profile.JobTitle = extProfile.JobTitle
-		user.Email = extProfile.Email
-		
-		// 忽略更新中的次要错误，确保不阻塞主登录流程
-		_, _ = s.repo.Update(ctx, user)
-		return user, nil
+		return s.postLogin(ctx, localUser)
 	}
 
-	// 3. JIT (Just-In-Time) 预配模式：用户在本地不存在，触发自动建号/绑定
-	u := domain.User{
-		Username: extProfile.Username,
-		Email:    extProfile.Email,
-		Status:   domain.StatusActive,
-		Profile: domain.UserInfo{
-			Nickname: extProfile.Nickname,
-			JobTitle: extProfile.JobTitle,
-			Metadata: extProfile.Extra,
-		},
+	// 新用户：JIT 开荒 → 创建账号 + 绑定身份 + 初始化个人空间
+	u, tenantID, err := s.provisionOnLogin(ctx, extUser, id)
+	if err != nil {
+		return domain.LoginResult{}, err
 	}
 
-	// 执行注册流程 (账号+资料)
-	id, err := s.Signup(ctx, u)
+	// 新用户只有一个刚建好的空间，直接返回
+	return domain.LoginResult{
+		User:     u,
+		TenantID: tenantID,
+		Tenants:  []domain.Tenant{{ID: tenantID}},
+	}, nil
+}
+
+// postLogin 认证后公共逻辑：查询租户列表并决定路由
+func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.LoginResult, error) {
+	tenants, err := s.tenantSvc.GetTenantsByUserId(ctx, u.ID)
+	if err != nil || len(tenants) == 0 {
+		return domain.LoginResult{}, errors.New("用户无可用租户空间")
+	}
+
+	// 单租户：直接加载该空间下的名片并返回确定的 tenantID
+	if len(tenants) == 1 {
+		tID := tenants[0].ID
+		fullUser, err := s.repo.FindById(ctxutil.WithTenantID(ctx, tID), u.ID)
+		if err != nil {
+			return domain.LoginResult{}, err
+		}
+		return domain.LoginResult{User: fullUser, TenantID: tID, Tenants: tenants}, nil
+	}
+
+	// 多租户：TenantID 为 0，由前端从 Tenants 列表中选择后调 SwitchTenant
+	return domain.LoginResult{User: u, TenantID: 0, Tenants: tenants}, nil
+}
+
+func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error) {
+	// 直接复用 CheckUserTenantAccess 校验 Membership 合约是否存在
+	hasAccess, err := s.tenantSvc.CheckUserTenantAccess(ctx, uid, targetTenantID)
 	if err != nil {
 		return domain.User{}, err
 	}
-	u.ID = id
 
-	// 4. 完成联邦绑定：为新账号建立 Identity 映射
-	err = s.repo.SaveIdentity(ctx, domain.UserIdentity{
-		UserID:     u.ID,
-		Provider:   providerName,
-		ExternalID: extProfile.ExternalID,
-		Extra:      extProfile.Extra,
-	})
+	if !hasAccess {
+		return domain.User{}, ErrTenantAccessDenied
+	}
 
-	return u, err
+	return s.repo.FindById(ctxutil.WithTenantID(ctx, targetTenantID), uid)
+}
+
+func (s *userService) provisionOnLogin(ctx context.Context, ext domain.User, id domain.UserIdentity) (domain.User, int64, error) {
+	uid, err := s.ensureGlobalUser(ctx, ext)
+	if err != nil {
+		return domain.User{}, 0, err
+	}
+
+	if err = s.bindGlobalIdentity(ctx, uid, id); err != nil {
+		return domain.User{}, 0, err
+	}
+
+	personalTenantID, err := s.tenantSvc.InitPersonalTenant(ctx, uid, ext.Username)
+	if err != nil {
+		return domain.User{}, 0, err
+	}
+
+	newCtx := ctxutil.WithTenantID(ctx, personalTenantID)
+	u, err := s.repo.FindById(newCtx, uid)
+	if err != nil {
+		return domain.User{}, 0, err
+	}
+
+	u.Profile.Nickname = ext.Profile.Nickname
+	u.Profile.JobTitle = ext.Profile.JobTitle
+	if _, err = s.repo.Update(newCtx, u); err != nil {
+		return domain.User{}, 0, err
+	}
+
+	return u, personalTenantID, nil
+}
+
+func (s *userService) ensureGlobalUser(ctx context.Context, ext domain.User) (int64, error) {
+	u, err := s.repo.FindByUsername(ctx, ext.Username)
+	if err == nil {
+		return u.ID, nil
+	}
+	return s.Signup(ctx, ext)
+}
+
+func (s *userService) bindGlobalIdentity(ctx context.Context, uid int64, id domain.UserIdentity) error {
+	id.UserID = uid
+	return s.repo.SaveIdentity(ctx, id)
 }
 
 func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) {
-	// 本地密码入库执行 Bcrypt 加密 (外部 JIT 用户通常不需要本地密码或随机生成)
 	if u.Password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 		if err != nil {
@@ -138,7 +196,6 @@ func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) 
 		}
 		u.Password = string(hash)
 	}
-
 	return s.repo.Create(ctx, u)
 }
 

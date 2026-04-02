@@ -1,7 +1,5 @@
 package domain
 
-import "time"
-
 // Menu 菜单资源 (纯展示层元数据)
 type Menu struct {
 	ID        int64     `json:"id"`
@@ -13,8 +11,8 @@ type Menu struct {
 	Icon      string    `json:"icon"`      // 图标
 	Sort      int32     `json:"sort"`      // 排序
 	Hidden    bool      `json:"hidden"`    // 是否在菜单栏隐藏
-	Ctime     time.Time `json:"ctime"`
-	Utime     time.Time `json:"utime"`
+	Ctime     int64     `json:"ctime"`
+	Utime     int64     `json:"utime"`
 }
 
 // API 接口资源 (纯接口层元数据)
@@ -24,8 +22,8 @@ type API struct {
 	Name    string    `json:"name"`    // 接口描述：如 "获取用户列表"
 	Method  string    `json:"method"`  // HTTP 方法：GET, POST, etc.
 	Path    string    `json:"path"`    // 接口路径：如 "/v1/users"
-	Ctime   time.Time `json:"ctime"`
-	Utime   time.Time `json:"utime"`
+	Ctime   int64     `json:"ctime"`
+	Utime   int64     `json:"utime"`
 }
 
 

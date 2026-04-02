@@ -7,7 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Duke1616/eiam/internal/service/user" // 引用接口定义
+	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/service/user"
 	"github.com/go-ldap/ldap/v3"
 )
 
@@ -29,7 +30,7 @@ type Config struct {
 	GroupNameAttribute   string `mapstructure:"group_name_attribute" json:"group_name_attribute"`
 }
 
-// Connection LDAP 连接抽象接口
+// Connection LDAP 连接抽象
 type Connection interface {
 	Bind(username, password string) error
 	Close()
@@ -54,9 +55,10 @@ func (p *ldapProvider) Name() string {
 	return "ldap"
 }
 
-// Authenticate 认证外部身份 (已清理冗余 LOG)
-func (p *ldapProvider) Authenticate(ctx context.Context, username, password string) (user.ExternalProfile, error) {
-	var profile user.ExternalProfile
+// Authenticate 适配：支持契约化侧写构造
+func (p *ldapProvider) Authenticate(ctx context.Context, username, password string) (domain.User, error) {
+	var userInfo domain.User
+	// 1. 查找资料阶段
 	err := p.execute(p.conf.BindDN, p.conf.BindPassword, func(conn Connection) error {
 		filter := p.resolveUserFilter(p.conf.UserFilter, username)
 		searchRequest := ldap.NewSearchRequest(
@@ -68,28 +70,38 @@ func (p *ldapProvider) Authenticate(ctx context.Context, username, password stri
 			return fmt.Errorf("LDAP 用户不存在: %s", username)
 		}
 
-		profile = p.toExternalProfile(sr.Entries[0])
+		// 构建领域 User 雏形
+		userInfo = p.buildDraftUser(sr.Entries[0])
 		return nil
 	})
 
 	if err != nil {
-		return user.ExternalProfile{}, err
+		return domain.User{}, err
 	}
 
-	err = p.execute(profile.ExternalID, password, func(conn Connection) error {
+	// 2. 校验凭证阶段
+	// 此时仅核验账号本身的有效性。具体的 Membership 关联将在 Service 层决据
+	id, _ := userInfo.GetPrimaryIdentity("ldap")
+	err = p.execute(id.IdentityKey(), password, func(conn Connection) error {
 		return nil
 	})
 	if err != nil {
-		return user.ExternalProfile{}, fmt.Errorf("LDAP 凭证核验失败: %w", err)
+		return domain.User{}, fmt.Errorf("LDAP 凭证核验失败: %w", err)
 	}
 
-	return profile, nil
+	return userInfo, nil
 }
 
-func (p *ldapProvider) toExternalProfile(entry *ldap.Entry) user.ExternalProfile {
-	ext := user.ExternalProfile{
-		ExternalID: entry.DN,
-		Extra:      make(map[string]string),
+// buildDraftUser 构造一个带有所需属性但尚未绑定 MembershipID 的 User 雏形
+func (p *ldapProvider) buildDraftUser(entry *ldap.Entry) domain.User {
+	u := domain.User{
+		Profile: domain.UserProfile{},
+		Identities: []domain.UserIdentity{
+			{
+				Provider: "ldap",
+				LdapInfo: domain.LdapInfo{DN: entry.DN},
+			},
+		},
 	}
 
 	for _, attr := range entry.Attributes {
@@ -98,21 +110,18 @@ func (p *ldapProvider) toExternalProfile(entry *ldap.Entry) user.ExternalProfile
 			val = attr.Values[0]
 		}
 
-		// 使用 strings.EqualFold 进行大小写不敏感匹配，确保映射稳健
 		name := attr.Name
 		if strings.EqualFold(name, p.conf.UsernameAttribute) {
-			ext.Username = val
+			u.Username = val
 		} else if strings.EqualFold(name, p.conf.MailAttribute) {
-			ext.Email = val
+			u.Email = val
 		} else if strings.EqualFold(name, p.conf.DisplayNameAttribute) {
-			ext.Nickname = val
+			u.Profile.Nickname = val
 		} else if strings.EqualFold(name, p.conf.TitleAttribute) {
-			ext.JobTitle = val
-		} else {
-			ext.Extra[name] = val
+			u.Profile.JobTitle = val
 		}
 	}
-	return ext
+	return u
 }
 
 func (p *ldapProvider) getRequiredAttributes() []string {
