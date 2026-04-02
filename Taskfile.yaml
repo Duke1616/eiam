@@ -1,0 +1,25 @@
+version: '3'
+
+dotenv: ['.env']
+
+env:
+  EGO_DEBUG: "true"
+
+tasks:
+  default:
+    desc: 命令提示
+    cmds:
+      - task --list-all
+  run:
+    desc: 启动服务
+    cmds:
+      -  EGO_DEBUG=true go run main.go server
+  gen:
+    desc: 代码生成
+    cmds:
+      - buf generate api/proto
+  mock:
+    desc: 生成 Mock 代码
+    cmds:
+      - go generate ./...
+

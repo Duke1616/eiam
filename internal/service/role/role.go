@@ -1,0 +1,83 @@
+package role
+
+import (
+	"context"
+
+	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/repository"
+	"golang.org/x/sync/errgroup"
+)
+
+// IRoleService 角色业务服务接口
+//go:generate mockgen -source=./role.go -package=rolemocks -destination=./mocks/role.mock.go -typed IRoleService
+type IRoleService interface {
+	// Create 创建角色
+	Create(ctx context.Context, r domain.Role) (int64, error)
+	// List 获取角色列表
+	List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, int64, error)
+	// Update 更新角色信息
+	Update(ctx context.Context, r domain.Role) (int64, error)
+	// UpdatePolicies 修改角色的权限策略文档
+	UpdatePolicies(ctx context.Context, tenantId int64, roleCode string, policies []domain.Policy) error
+	// GetByCode 根据角色代码获取角色
+	GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error)
+	// ListByIncludeCodes 查找包含当前角色代码的数据 (供鉴权中心调用)
+	ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error)
+}
+
+type RoleService struct {
+	repo repository.IRoleRepository
+}
+
+// NewRoleService 创建角色服务实例，移除了对 PermissionService 的依赖，解决循环依赖
+func NewRoleService(repo repository.IRoleRepository) IRoleService {
+	return &RoleService{
+		repo: repo,
+	}
+}
+
+func (s *RoleService) Create(ctx context.Context, r domain.Role) (int64, error) {
+	return s.repo.Create(ctx, r)
+}
+
+func (s *RoleService) List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, int64, error) {
+	var (
+		eg    errgroup.Group
+		roles []domain.Role
+		total int64
+	)
+
+	eg.Go(func() error {
+		var err error
+		roles, err = s.repo.List(ctx, tenantId, offset, limit)
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		total, err = s.repo.Count(ctx, tenantId)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, 0, err
+	}
+
+	return roles, total, nil
+}
+
+func (s *RoleService) Update(ctx context.Context, r domain.Role) (int64, error) {
+	return s.repo.Update(ctx, r)
+}
+
+func (s *RoleService) UpdatePolicies(ctx context.Context, tenantId int64, roleCode string, policies []domain.Policy) error {
+	return s.repo.UpdatePolicies(ctx, tenantId, roleCode, policies)
+}
+
+func (s *RoleService) GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error) {
+	return s.repo.GetByCode(ctx, tenantId, code)
+}
+
+func (s *RoleService) ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error) {
+	return s.repo.ListByIncludeCodes(ctx, tenantId, codes)
+}
