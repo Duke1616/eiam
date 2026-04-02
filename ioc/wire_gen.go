@@ -37,7 +37,7 @@ func InitApp() (*App, error) {
 	config := InitLdapConfig()
 	v2 := InitIdentityProviders(config)
 	iUserService := user.NewUserService(iUserRepository, v2)
-	handler := user2.NewUserHandler(iUserService)
+	handler := user2.NewUserHandler(iUserService, provider)
 	syncedEnforcer := InitCasbin(db)
 	iRoleDAO := dao.NewRoleDAO(db)
 	iRoleRepository := repository.NewRoleRepository(iRoleDAO)

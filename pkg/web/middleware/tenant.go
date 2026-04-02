@@ -12,10 +12,10 @@ import (
 // ExtractTenantID 租户上下文解析中间件
 func ExtractTenantID(sp session.Provider) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		// 根据示例修正：gctx.Context 的 Context 字段应传入 *gin.Context
+		// 容错处理：不因 Session 脏数据（如 Malformed Token）阻塞流程
 		sess, err := sp.Get(&gctx.Context{Context: ctx})
 		if err != nil {
-			// 未登录或公开路由，直接跳过
+			// 直接跳过，让后续业务逻辑或认证中间件决定是否拦截
 			ctx.Next()
 			return
 		}

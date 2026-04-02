@@ -89,7 +89,13 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 	// 2. 身份联邦查询：根据全球唯一标识 (DN/OpenID) 查找系统内关联的本地 User
 	user, err := s.repo.FindUserByIdentity(ctx, providerName, extProfile.ExternalID)
 	if err == nil {
-		// 登录成功：命中已有的绑定关系
+		// 登录成功：命中已有的绑定关系 -> 执行资料同步 (Sync on Login)
+		user.Profile.Nickname = extProfile.Nickname
+		user.Profile.JobTitle = extProfile.JobTitle
+		user.Email = extProfile.Email
+		
+		// 忽略更新中的次要错误，确保不阻塞主登录流程
+		_, _ = s.repo.Update(ctx, user)
 		return user, nil
 	}
 

@@ -29,7 +29,7 @@ type Config struct {
 	GroupNameAttribute   string `mapstructure:"group_name_attribute" json:"group_name_attribute"`
 }
 
-// Connection LDAP 连接抽象接口，便于扩展和测试
+// Connection LDAP 连接抽象接口
 type Connection interface {
 	Bind(username, password string) error
 	Close()
@@ -54,9 +54,9 @@ func (p *ldapProvider) Name() string {
 	return "ldap"
 }
 
+// Authenticate 认证外部身份 (已清理冗余 LOG)
 func (p *ldapProvider) Authenticate(ctx context.Context, username, password string) (user.ExternalProfile, error) {
 	var profile user.ExternalProfile
-	
 	err := p.execute(p.conf.BindDN, p.conf.BindPassword, func(conn Connection) error {
 		filter := p.resolveUserFilter(p.conf.UserFilter, username)
 		searchRequest := ldap.NewSearchRequest(
@@ -67,17 +67,17 @@ func (p *ldapProvider) Authenticate(ctx context.Context, username, password stri
 		if innerErr != nil || len(sr.Entries) == 0 {
 			return fmt.Errorf("LDAP 用户不存在: %s", username)
 		}
-		
+
 		profile = p.toExternalProfile(sr.Entries[0])
 		return nil
 	})
-	
+
 	if err != nil {
 		return user.ExternalProfile{}, err
 	}
 
 	err = p.execute(profile.ExternalID, password, func(conn Connection) error {
-		return nil 
+		return nil
 	})
 	if err != nil {
 		return user.ExternalProfile{}, fmt.Errorf("LDAP 凭证核验失败: %w", err)
@@ -91,24 +91,25 @@ func (p *ldapProvider) toExternalProfile(entry *ldap.Entry) user.ExternalProfile
 		ExternalID: entry.DN,
 		Extra:      make(map[string]string),
 	}
-	
+
 	for _, attr := range entry.Attributes {
 		val := ""
 		if len(attr.Values) > 0 {
 			val = attr.Values[0]
 		}
-		
-		switch attr.Name {
-		case p.conf.UsernameAttribute: 
+
+		// 使用 strings.EqualFold 进行大小写不敏感匹配，确保映射稳健
+		name := attr.Name
+		if strings.EqualFold(name, p.conf.UsernameAttribute) {
 			ext.Username = val
-		case p.conf.MailAttribute: 
+		} else if strings.EqualFold(name, p.conf.MailAttribute) {
 			ext.Email = val
-		case p.conf.DisplayNameAttribute: 
+		} else if strings.EqualFold(name, p.conf.DisplayNameAttribute) {
 			ext.Nickname = val
-		case p.conf.TitleAttribute: 
+		} else if strings.EqualFold(name, p.conf.TitleAttribute) {
 			ext.JobTitle = val
-		default:
-			ext.Extra[attr.Name] = val
+		} else {
+			ext.Extra[name] = val
 		}
 	}
 	return ext
@@ -123,13 +124,13 @@ func (p *ldapProvider) getRequiredAttributes() []string {
 	}
 }
 
-func (p *ldapProvider) execute(userDN, password string, fn func(conn Connection) error) error {
+func (p *ldapProvider) execute(userDN, password string, funcBody func(conn Connection) error) error {
 	conn, err := p.connect(userDN, password)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	return fn(conn)
+	return funcBody(conn)
 }
 
 func (p *ldapProvider) connect(userDN string, password string) (Connection, error) {
