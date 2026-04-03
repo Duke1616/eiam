@@ -1,6 +1,9 @@
 package dao
 
-import "gorm.io/gorm"
+import (
+	gormAdapter "github.com/casbin/gorm-adapter/v3"
+	"gorm.io/gorm"
+)
 
 func InitTables(db *gorm.DB) error {
 	return db.AutoMigrate(
@@ -14,5 +17,6 @@ func InitTables(db *gorm.DB) error {
 		&PermissionBinding{},
 		&Menu{},
 		&API{},
+		&gormAdapter.CasbinRule{},
 	)
 }

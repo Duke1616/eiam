@@ -19,7 +19,5 @@ type Role struct {
 	Policies []Policy
 
 	// AssumeRolePolicy 信任策略文档：定义“谁能扮演该角色”
-	// 这是阿里云 RAM 跨账号/跨服务授权的精髓。
-	// 这里存的是一个策略 JSON。
 	AssumeRolePolicy Policy
 }

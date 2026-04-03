@@ -57,9 +57,9 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code string, own
 		return 0, err
 	}
 
-	// 4. 直接通过 Casbin 在本租户域下，给所有者分配系统预设的全局 OWNER 角色，而无需真正给该租户创建角色物理条目
+	// 4. 直接通过 Casbin 在本租户域下，给所有者分配系统预设的全局 ADMIN 角色，而无需真正给该租户创建角色物理条目
 	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
-	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, ownerId, "OWNER")
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, ownerId, "ADMIN")
 
 	return tenantID, err
 }
@@ -83,7 +83,7 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 
 	// 初始化个人空间最高角色，挂载预设角色
 	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
-	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, userId, "OWNER")
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, userId, "ADMIN")
 
 	return tenantID, err
 }

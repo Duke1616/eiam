@@ -2,7 +2,9 @@ package permission
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/Duke1616/eiam/internal/authz"
 	"github.com/Duke1616/eiam/internal/domain"
@@ -12,6 +14,7 @@ import (
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/urn"
 	"github.com/casbin/casbin/v2"
+	"github.com/ecodeclub/ekit/slice"
 )
 
 // IPermissionService 权限逻辑中心
@@ -69,35 +72,41 @@ func NewPermissionService(
 
 // CheckAPI 判定请求合法性
 func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error) {
-	// 1. 定位物理 API
-	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
-	if err != nil {
-		return false, err
-	}
-	
-	// 如果 API 在系统中根本未注册，实施防误闯（Fail-closed）拦截
-	if api.ID == 0 {
-		return false, nil
-	}
-
-	// 2. 反查该物理资产在全局绑定了哪些逻辑能力码
-	codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResourceTypeAPI, api.ID)
+	// 1. 获取用户关联的所有角色
+	roleCodes, err := s.GetRolesForUser(ctx, userId)
 	if err != nil {
 		return false, err
 	}
 
-	// 3. 如果没绑定任何码，视为公共接口，直接放行
-	if len(codes) == 0 {
-		return true, nil
-	}
-
-	// 4. 构建 URN 进行判定
+	// 2. 构建资源 URN 与 Pseudo Action
 	tenantId := ctxutil.GetTenantID(ctx)
 	resURN := urn.New(strconv.FormatInt(tenantId, 10), serviceName, "api", path).String()
 
-	// 5. 用户只要拥有其中任何一项能力的授权，即可通过
+	actionPath := strings.TrimPrefix(path, "/")
+	actionPath = strings.ReplaceAll(actionPath, "/", ":")
+	pseudoAction := fmt.Sprintf("%s:%s", serviceName, actionPath)
+
+	// 3. 优先执行上帝模式/熔断判定 (全量语义匹配)
+	ok, err := s.invokeAuthorize(ctx, roleCodes, pseudoAction, resURN)
+	if err == nil && ok {
+		return true, nil
+	}
+
+	// 4. 定位物理 API
+	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
+	if err != nil || api.ID == 0 {
+		return false, err
+	}
+
+	// 5. 反查该物理资产关联的逻辑能力码
+	codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResourceTypeAPI, api.ID)
+	if err != nil || len(codes) == 0 {
+		return false, err
+	}
+
+	// 6. 只要具备其中任何一项能力码的授权即可
 	for _, code := range codes {
-		ok, err := s.CheckPermission(ctx, userId, code, resURN)
+		ok, err = s.invokeAuthorize(ctx, roleCodes, code, resURN)
 		if err == nil && ok {
 			return true, nil
 		}
@@ -111,17 +120,46 @@ func (s *permissionService) CheckPermission(ctx context.Context, userId int64, a
 	if err != nil {
 		return false, err
 	}
+	return s.invokeAuthorize(ctx, roleCodes, action, resourceURN)
+}
 
+// invokeAuthorize 统一调用 OPA 判定的私有方法
+func (s *permissionService) invokeAuthorize(ctx context.Context, roleCodes []string, action, resourceURN string) (bool, error) {
+	// 1. 加载角色的具体 Policies 文档
 	roles, err := s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
 	if err != nil {
 		return false, err
 	}
 
 	var allPolicies []domain.Policy
+	var hasSuperAdmin bool
 	for _, r := range roles {
+		if r.Code == "SUPER_ADMIN" {
+			hasSuperAdmin = true
+		}
 		allPolicies = append(allPolicies, r.Policies...)
 	}
 
+	// 2. 超级管理员：逻辑上注入一条 Allow * 的策略，但放在列表最前/最后，确保 Deny 优先级
+	// 注意：OPA 判定的具体 Rego 逻辑决定了如何处理。
+	// 如果 OPA 逻辑是 "Allow if any matches and NO Deny matches"，那么注入这一条即可。
+	if hasSuperAdmin {
+		allPolicies = append(allPolicies, domain.Policy{
+			Name:    "SUPER_ADMIN_OVERRIDE",
+			Version: "2026-04-03",
+			Statement: []domain.Statement{
+				{
+					Effect:   domain.Allow,
+					Action:   []string{"*"},
+					Resource: []string{"*"},
+				},
+			},
+		})
+	}
+
+	fmt.Printf("DEBUG: invokeAuthorize - action: %s, res: %s, policies_count: %d\n", action, resourceURN, len(allPolicies))
+
+	// 3. 提交给 OPA 引擎进行 Rego 判定
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
 		Action:   action,
 		Resource: resourceURN,
@@ -175,19 +213,46 @@ func (s *permissionService) BindResourcesToPermission(ctx context.Context, permI
 
 func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
 	sub := strconv.FormatInt(userId, 10)
-	tenant := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
-	return s.enforcer.AddGroupingPolicy(sub, roleCode, tenant)
+	tenantId := ctxutil.GetTenantID(ctx)
+
+	return s.enforcer.AddGroupingPolicy(sub, roleCode, strconv.FormatInt(tenantId, 10))
 }
 
 func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error) {
-	tenant := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
-	// 在 Casbin 中，通过在 Grouping 数据域中将 childRole 视为 sub 加入 parentRole 的 group 来宣示主从继承
-	return s.enforcer.AddGroupingPolicy(childRole, parentRole, tenant)
+	tenantId := ctxutil.GetTenantID(ctx)
+
+	return s.enforcer.AddGroupingPolicy(childRole, parentRole, strconv.FormatInt(tenantId, 10))
 }
 
 func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) ([]string, error) {
 	sub := strconv.FormatInt(userId, 10)
-	tenant := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
-	// 获取全部深度继承链上的所有隐式/显式角色集合
-	return s.enforcer.GetImplicitRolesForUser(sub, tenant)
+	tid := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
+
+	// 1. 本地链路解析
+	// 得益于 ioc/casbin.go 中的 AddDomainMatchingFunc("0") 配置：
+	// 当我们查询 tid 时，Casbin 会自动将 tid 匹配到域 "0"，并在内部图搜索中完成：
+	// - 租户级继承 (g, A, B, tid)
+	// - 全局继承 (g, ADMIN, READER, 0)
+	// - 跨域继承 (g, A, ADMIN, tid)
+	// - 乃至直接分配的全局角色 (g, sub, SUPER_ADMIN, 0)
+	// 所有的路径都在这一行解析器内自动闭环。
+	allPotentialCodes, err := s.enforcer.GetImplicitRolesForUser(sub, tid)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allPotentialCodes) == 0 {
+		return []string{}, nil
+	}
+
+	// 2. 最后通过数据库进行物理隔离过滤
+	roles, err := s.roleSvc.ListByIncludeCodes(ctx, allPotentialCodes)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 提取最终有效的 Role Code
+	return slice.Map(roles, func(idx int, r domain.Role) string {
+		return r.Code
+	}), nil
 }

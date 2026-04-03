@@ -6,6 +6,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
+	defaultrolemanager "github.com/casbin/casbin/v2/rbac/default-role-manager"
 	gormAdapter "github.com/casbin/gorm-adapter/v3"
 	redisWatcher "github.com/casbin/redis-watcher/v2"
 	_ "github.com/go-sql-driver/mysql"
@@ -16,19 +17,19 @@ import (
 
 const (
 	rbacModel = `[request_definition]
-r = sub, obj, act, res
+r = sub, obj
 
 [policy_definition]
-p = sub, obj, act, res, eft
+p = sub, obj
 
 [role_definition]
 g = _, _, _
 
 [policy_effect]
-e = some(where (p.eft == allow)) && !some(where (p.eft == deny))
+e = some(where (p.eft == allow))
 
 [matchers]
-m = (g(r.sub, p.sub, r.res) && keyMatch2(r.obj, p.obj) && r.act == p.act && r.res == p.res) || r.sub == "root"`
+m = g(r.sub, p.sub) && r.obj == p.obj`
 )
 
 func InitCasbin(db *gorm.DB) *casbin.SyncedEnforcer {
@@ -81,6 +82,14 @@ func InitCasbin(db *gorm.DB) *casbin.SyncedEnforcer {
 	}
 
 	enforcer.StartAutoLoadPolicy(time.Minute)
+
+	// 核心配置 —— 全局域穿透逻辑
+	// 当我们在某个租户 TID 下查找角色关系时，如果规则是定义在全局域 "0" 下的，
+	// 通过下述匹配函数，Casbin 会自动将 TID 匹配到 "0"，从而实现全局继承关系的自动解析。
+	enforcer.GetRoleManager().(*defaultrolemanager.RoleManager).AddDomainMatchingFunc("DomainMatch", func(d1, d2 string) bool {
+		return d1 == d2 || d2 == "0"
+	})
+
 	return enforcer
 }
 

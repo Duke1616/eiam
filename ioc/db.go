@@ -69,6 +69,10 @@ func InitDB() *gorm.DB {
 		panic(err)
 	}
 
+	// goose 处理基础数据的初始化（Seeding）
+	// 以及 AutoMigrate 无法覆盖的复杂 DDL 变更
+	RunMigrations(db)
+
 	return db
 }
 

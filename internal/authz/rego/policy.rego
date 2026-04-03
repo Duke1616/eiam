@@ -30,7 +30,7 @@ action_matches(actions, target_action) if {
 action_matches(actions, target_action) if {
 	some action in actions
 	action != "*"
-	# 将 ":" 包装成数组 [":"]
+	# 显式处理包含通配符的字符串，如果 target_action 也是通配符，则直接通过
 	glob.match(action, [":"], target_action)
 }
 

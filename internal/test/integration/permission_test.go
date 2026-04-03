@@ -58,14 +58,15 @@ func (s *PermissionSuite) clearAll() {
 	t := s.T()
 	t.Helper()
 
-	// 注意：执行此清库操作时，请确保配置的是 【测试数据库】。
-	s.db.Exec("TRUNCATE TABLE casbin_rule")
-	s.db.Exec("TRUNCATE TABLE permission")
-	s.db.Exec("TRUNCATE TABLE permission_binding")
-	s.db.Exec("TRUNCATE TABLE role")
-	s.db.Exec("TRUNCATE TABLE tenant")
-	s.db.Exec("TRUNCATE TABLE membership")
-	s.db.Exec("TRUNCATE TABLE api")
+	// 仅清理非系统级别的租户数据，保留 Goose 注入的 0 号租户种子角色
+	s.db.Exec("DROP TABLE goose_db_version")
+	s.db.Exec("DELETE FROM casbin_rule")
+	s.db.Exec("DELETE FROM permission")
+	s.db.Exec("DELETE FROM permission_binding")
+	s.db.Exec("DELETE FROM role")
+	s.db.Exec("DELETE FROM tenant")
+	s.db.Exec("DELETE FROM membership")
+	s.db.Exec("DELETE FROM api")
 }
 
 // TestCheckAPI 集成测试核心路：由 URL -> Code -> Role -> User 的联动
@@ -84,21 +85,6 @@ func (s *PermissionSuite) TestCheckAPI() {
 	)
 
 	// ==================== 一、 场景准备期 ====================
-
-	// 0. 我们先在数据库底层预置全系统的基础角色 (TenantID = 0, Type = System)
-	sysCtx := ctxutil.WithTenantID(context.Background(), 0)
-	_, err := s.roleSvc.Create(sysCtx, domain.Role{Code: "OWNER", Name: "系统内置租户拥有者", Type: domain.RoleTypeSystem, TenantID: 0})
-	require.NoError(t, err)
-
-	// 赋予预置角色 '*' 的天花板策略 (一次配置，全系统租户共用)
-	err = s.roleSvc.UpdatePolicies(sysCtx, "OWNER", []domain.Policy{
-		{
-			Name: "内置最高权限策略",
-			Type: domain.SystemPolicy,
-			Statement: []domain.Statement{{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"*"}}},
-		},
-	})
-	require.NoError(t, err)
 
 	// 1. 初始化主租户，会自动将 UserId=8888 绑定为预设好系统级的 OWNER 角色
 	tenantId, err := s.tenantSvc.CreateTenant(context.Background(), "测试机房", "test-room", userId)
@@ -192,8 +178,8 @@ func (s *PermissionSuite) TestCheckAPI() {
 	require.NoError(t, err)
 	err = s.roleSvc.UpdatePolicies(ctxWithTenant, "DASHBOARD_VIEWER", []domain.Policy{
 		{
-			Name: "大盘只读",
-			Type: domain.CustomPolicy,
+			Name:      "大盘只读",
+			Type:      domain.CustomPolicy,
 			Statement: []domain.Statement{{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"cmdb:dashboard:view"}}},
 		},
 	})
@@ -202,17 +188,17 @@ func (s *PermissionSuite) TestCheckAPI() {
 	require.NoError(t, err)
 
 	// 9. Casbin 角色继承测试 (RBAC with Domains)
-	// 创建一个上层 ADMIN 角色，什么具体策略都不配置
+	// 创建一个上层 TENANT_ADMIN 角色，什么具体策略都不配置
 	var adminUserId int64 = 4444
-	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{Code: "ADMIN", Name: "部门管理员", TenantID: tenantId})
+	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{Code: "TENANT_ADMIN", Name: "部门管理员", TenantID: tenantId})
 	require.NoError(t, err)
 
-	// 核心：让 ADMIN 继承 DEVELOPER 的所有能力
-	_, err = s.permSvc.AssignRoleInheritance(ctxWithTenant, "ADMIN", "DEVELOPER")
+	// 核心：让 TENANT_ADMIN 继承 DEVELOPER 的所有能力
+	_, err = s.permSvc.AssignRoleInheritance(ctxWithTenant, "TENANT_ADMIN", "DEVELOPER")
 	require.NoError(t, err)
 
-	// 把新员工 4444 分配为 ADMIN 角色 (他仅有 ADMIN)
-	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, adminUserId, "ADMIN")
+	// 把新员工 4444 分配为 TENANT_ADMIN 角色 (他仅有 TENANT_ADMIN)
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, adminUserId, "TENANT_ADMIN")
 	require.NoError(t, err)
 
 	// ==================== 二、 断言执行期 ====================
@@ -226,7 +212,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 		want    bool // 预期是否允许运行
 	}{
 		{
-			name:    "OWNER 用户请求已授权的 API 应通过",
+			name:    "ADMIN 用户请求已授权的 API 应通过",
 			uid:     userId,
 			service: serviceName,
 			method:  method,
@@ -235,7 +221,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 			want:    true,
 		},
 		{
-			name:    "OWNER 用户请求未直接关联但匹配全局通配符 '*' 的 API 应通过",
+			name:    "ADMIN 用户请求未直接关联但匹配全局通配符 '*' 的 API 应通过",
 			uid:     userId,
 			service: serviceName,
 			method:  "DELETE",
@@ -281,7 +267,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 		},
 		{
 			name:    "任意用户请求完全未注册的 API，应当触发 Fail-closed 拦截",
-			uid:     userId,
+			uid:     9991,
 			service: serviceName,
 			method:  "PUT",
 			path:    path,
@@ -298,7 +284,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 			want:    true,
 		},
 		{
-			name:    "RBAC 层级继承测试：ADMIN 本身未分配该策略，但因继承自 DEVELOPER，请求查列表应通过",
+			name:    "RBAC 层级继承测试：TENANT_ADMIN 本身未分配该策略，但因继承自 DEVELOPER，请求查列表应通过",
 			uid:     adminUserId,
 			service: serviceName,
 			method:  method,
@@ -307,7 +293,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 			want:    true,
 		},
 		{
-			name:    "RBAC 层级继承阻断测试：强如 ADMIN 也没有被赋予删除权限 (因为他爹 DEVELOPER 也没有)，应被拦截",
+			name:    "RBAC 层级继承阻断测试：强如 TENANT_ADMIN 也没有被赋予删除权限 (因为他爹 DEVELOPER 也没有)，应被拦截",
 			uid:     adminUserId,
 			service: serviceName,
 			method:  "DELETE",
@@ -315,7 +301,38 @@ func (s *PermissionSuite) TestCheckAPI() {
 			tenant:  tenantId,
 			want:    false,
 		},
+		{
+			name:    "【超级管理员】全局通配符测试：SUPER_ADMIN 访问任何接口都应通过",
+			uid:     1111,
+			service: "any-service",
+			method:  "ANY",
+			path:    "/any/path",
+			tenant:  tenantId,
+			want:    true,
+		},
+		{
+			name:    "【租户管理员】继承测试：ADMIN 继承了 SUPER_ADMIN 的 * 权限，应能正常访问资源",
+			uid:     2222,
+			service: serviceName,
+			method:  method,
+			path:    path,
+			tenant:  tenantId,
+			want:    true,
+		},
+		{
+			name:    "【租户管理员】熔断测试：ADMIN 被显式 Deny 了 iam:tenant:*，无论父级如何授权，都应被拦截",
+			uid:     2222,
+			service: "iam",
+			method:  "POST",
+			path:    "/tenant/create",
+			tenant:  tenantId,
+			want:    false,
+		},
 	}
+
+	// 准备超级管理员与租户管理员的绑定关系 (模拟用户入驻)
+	_, _ = s.permSvc.AssignRoleToUser(ctxWithTenant, 1111, "SUPER_ADMIN")
+	_, _ = s.permSvc.AssignRoleToUser(ctxWithTenant, 2222, "ADMIN")
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
