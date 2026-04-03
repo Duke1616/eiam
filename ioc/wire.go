@@ -10,6 +10,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	tenantsvc "github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
+	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
@@ -57,6 +58,7 @@ func InitApp() (*App, error) {
 		user.NewUserHandler,
 		policy.NewHandler,
 		tenanthdl.NewHandler,
+		permissionhdl.NewPermissionHandler,
 
 		// App Component
 		InitGinMiddlewares,

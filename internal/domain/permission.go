@@ -1,33 +1,36 @@
 package domain
 
-// Permission 权限项定义 (逻辑能力包)
-type Permission struct {
-	ID       int64               `json:"id"`
-	TenantID int64               `json:"tenant_id"` // 0 表示系统全局权限，>0 表示租户独有权限
-	Code     string              `json:"code"`      // 逻辑唯一标识：iam:user:view
-	Name     string              `json:"name"`      // 显示名：如 "查看用户"
-	Desc     string              `json:"desc"`      // 描述信息
-	Group    string              `json:"group"`     // 权限分组：如 "用户管理"
-	Status   bool                `json:"status"`    // 是否启用
-	Bindings []PermissionBinding `json:"bindings"`  // 对应的资源绑定列表
-	Ctime    int64               `json:"ctime"`
-	Utime    int64               `json:"utime"`
-}
-
-// ResourceType 资源类型定义
+// ResourceType 资源类型标识
 type ResourceType string
 
+func (r ResourceType) String() string {
+	return string(r)
+}
+
 const (
-	ResAPI    ResourceType = "API"
-	ResMenu   ResourceType = "MENU"
+	ResourceTypeMenu ResourceType = "menu"
+	ResourceTypeAPI  ResourceType = "api"
 )
 
-// PermissionBinding 权限与资源的关联关系 (M:N 映射层)
-type PermissionBinding struct {
-	ID           int64        `json:"id"`
-	TenantID     int64        `json:"tenant_id"` // 支持租户级别的差异化绑定
-	PermID       int64        `json:"perm_id"`   // 关联 Permission.ID
-	PermCode     string       `json:"perm_code"` // 记录 Code 方便关联查询
+// Permission 权限项定义 (逻辑能力包)
+// 这是一个全局概念，用于将多个物理资源 (API/Menu) 聚合为一个逻辑能力标识 (Code)
+type Permission struct {
+	ID     int64  `json:"id"`
+	Code   string `json:"code"`   // 逻辑唯一标识：如 "iam:user:view"
+	Name   string `json:"name"`   // 显示名：如 "查看用户"
+	Desc   string `json:"desc"`   // 描述信息
+	Group  string `json:"group"`  // 所属分组：如 "用户管理"
+	Status int32  `json:"status"` // 状态：1-启用, 0-禁用
+
+	// Bindings 权限项包含的物理资源映射 (全局通用，不分租户)
+	Bindings []ResourceBinding `json:"bindings"`
+
+	Ctime int64 `json:"ctime"`
+	Utime int64 `json:"utime"`
+}
+
+// ResourceBinding 物理资源绑定关系 (不涉及租户，仅表达“能力由哪些物理资产构成”)
+type ResourceBinding struct {
 	ResourceType ResourceType `json:"resource_type"`
-	ResourceID   int64        `json:"resource_id"` // 物理资源 ID (API_ID, Menu_ID, etc.)
+	ResourceID   int64        `json:"resource_id"`
 }

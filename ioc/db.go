@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 
+	"github.com/Duke1616/eiam/pkg/gormx"
 	"github.com/ecodeclub/ekit/retry"
 )
 
@@ -52,6 +53,15 @@ func InitDB() *gorm.DB {
 		},
 		Logger: myLogger,
 	})
+	if err != nil {
+		panic(err)
+	}
+
+	// 注册多租户隔离插件
+	err = db.Use(gormx.NewTenantPlugin())
+	if err != nil {
+		panic(err)
+	}
 
 	// AutoMigrate 创建/更新表结构（新增列、新建表）
 	err = dao.InitTables(db)

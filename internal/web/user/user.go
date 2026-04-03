@@ -32,7 +32,6 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
 	g.GET("/profile", ginx.W(h.Profile))
 	g.POST("/logout", ginx.W(h.Logout))
-	g.POST("/tenant/switch", ginx.B[SwitchTenantRequest](h.SwitchTenant))
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -81,32 +80,6 @@ func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult
 	}, nil
 }
 
-// SwitchTenant 校验 Membership 后重新颁发 JWT
-func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx.Result, error) {
-	sess, err := session.Get(ctx)
-	if err != nil || sess == nil {
-		return ErrUnauthenticated, err
-	}
-
-	uid, err := sess.Get(ctx.Request.Context(), "uid").Int64()
-	if err != nil {
-		return ErrSessionInvalid, err
-	}
-
-	u, err := h.svc.SwitchTenant(ctx.Request.Context(), uid, req.TenantID)
-	if err != nil {
-		return ErrUnauthorized, err
-	}
-
-	if err = h.issueSession(ctx, u.ID, u.Username, req.TenantID); err != nil {
-		return ErrInternalServer, err
-	}
-
-	return ginx.Result{
-		Msg:  "空间切换成功",
-		Data: ToUserVO(u),
-	}, nil
-}
 
 func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 	sess, err := session.Get(ctx)

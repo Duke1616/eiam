@@ -4,50 +4,42 @@ import (
 	"context"
 	"time"
 
-	"github.com/Duke1616/eiam/internal/domain"
 	"gorm.io/gorm"
 )
 
-// Permission 逻辑权限项实体 (GORM)
+// Permission 逻辑权限能力定义 (全平台标准，不分租户)
 type Permission struct {
-	Id       int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'权限ID'"`
-	TenantId int64  `gorm:"type:bigint;not null;default:0;index:idx_tenant_id;comment:'租户ID'"`
-	Code     string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_tenant_perm_code;comment:'逻辑权限码'"`
-	Name     string `gorm:"type:varchar(255);not null;comment:'名称'"`
-	Desc     string `gorm:"type:varchar(512);not null;default:'';comment:'描述'"`
-	Group    string `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
-	Status   bool   `gorm:"type:tinyint;not null;default:1;comment:'状态: 1-启用, 0-禁用'"`
-	Ctime    int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
-	Utime    int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Id     int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'权限ID'"`
+	Code   string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_code;comment:'逻辑权限码'"`
+	Name   string `gorm:"type:varchar(255);not null;comment:'能力名称'"`
+	Desc   string `gorm:"type:varchar(512);not null;default:'';comment:'功能描述'"`
+	Group  string `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
+	Status int32  `gorm:"type:tinyint;not null;default:1;comment:'1-启用, 0-禁用'"`
+	Ctime  int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
+	Utime  int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
 }
 
-// PermissionBinding 权限与资源的物理映射关系 (GORM)
+// PermissionBinding 物理资产关联表 (全局通用映射)
+// 决定了 "iam:user:view" 这个 Code 映射了哪些 API 或 菜单
 type PermissionBinding struct {
-	Id           int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'自增ID'"`
-	TenantId     int64  `gorm:"type:bigint;not null;default:0;index:idx_tenant_id;comment:'租户ID'"`
-	PermId       int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'对应权限ID'"`
-	PermCode     string `gorm:"type:varchar(128);not null;index:idx_perm_code;comment:'冗余冗余Code方便反查'"`
-	ResourceType string `gorm:"type:varchar(32);not null;comment:'资源颗粒度: API/MENU'"`
-	ResourceId   int64  `gorm:"type:bigint;not null;index:idx_resource_id;comment:'物理资源ID'"`
+	Id           int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'映射ID'"`
+	PermId       int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'权限能力ID'"`
+	PermCode     string `gorm:"type:varchar(128);not null;index:idx_perm_code;comment:'权限能力码'"`
+	ResourceType string `gorm:"type:varchar(32);not null;index:idx_res;comment:'资源类型: menu/api'"`
+	ResourceId   int64  `gorm:"type:bigint;not null;index:idx_res;comment:'具体资产ID'"`
 }
 
-// IPermissionDAO 权限项及其资产绑定的底层持久化接口
 type IPermissionDAO interface {
-	// Insert 创建一条新的逻辑权限记录
 	Insert(ctx context.Context, p Permission) (int64, error)
-	// Delete 删除权限项并同步清理其所有资产绑定关系
-	Delete(ctx context.Context, tenantId int64, id int64) error
-	// GetByCode 根据逻辑代码获取权限详情
-	GetByCode(ctx context.Context, tenantId int64, code string) (Permission, error)
+	Delete(ctx context.Context, id int64) error
+	GetByCode(ctx context.Context, code string) (Permission, error)
 
-	// BindResource 批量创建资产绑定关系
-	BindResource(ctx context.Context, bindings []PermissionBinding) error
-	// UnbindResources 解除指定的资源绑定关系
-	UnbindResources(ctx context.Context, permId int64, resType domain.ResourceType, resIds []int64) error
-	// ListBindings 查询指定权限点下绑定的所有资产列表
-	ListBindings(ctx context.Context, permId int64) ([]PermissionBinding, error)
-	// GetBindingsByRes 根据物理资产反查其所属权限
-	GetBindingsByRes(ctx context.Context, resType domain.ResourceType, resId int64) ([]PermissionBinding, error)
+	// BindResources 批量关联物理资产
+	BindResources(ctx context.Context, bindings []PermissionBinding) error
+	// GetBindingsByRes 反查：查看 API/Menu 归属哪些能力码
+	GetBindingsByRes(ctx context.Context, resType string, resId int64) ([]PermissionBinding, error)
+	// ListBindingsByPerm 正查：查看能力项下的全部资产
+	ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error)
 }
 
 type PermissionDAO struct {
@@ -66,38 +58,33 @@ func (d *PermissionDAO) Insert(ctx context.Context, p Permission) (int64, error)
 	return p.Id, err
 }
 
-func (d *PermissionDAO) Delete(ctx context.Context, tenantId int64, id int64) error {
+func (d *PermissionDAO) Delete(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("id = ? AND tenant_id = ?", id, tenantId).Delete(&Permission{}).Error; err != nil {
+		if err := tx.Where("id = ?", id).Delete(&Permission{}).Error; err != nil {
 			return err
 		}
 		return tx.Where("perm_id = ?", id).Delete(&PermissionBinding{}).Error
 	})
 }
 
-func (d *PermissionDAO) GetByCode(ctx context.Context, tenantId int64, code string) (Permission, error) {
+func (d *PermissionDAO) GetByCode(ctx context.Context, code string) (Permission, error) {
 	var p Permission
-	err := d.db.WithContext(ctx).Where("tenant_id = ? AND code = ?", tenantId, code).First(&p).Error
+	err := d.db.WithContext(ctx).Where("code = ?", code).First(&p).Error
 	return p, err
 }
 
-func (d *PermissionDAO) BindResource(ctx context.Context, bindings []PermissionBinding) error {
+func (d *PermissionDAO) BindResources(ctx context.Context, bindings []PermissionBinding) error {
 	return d.db.WithContext(ctx).Create(&bindings).Error
 }
 
-func (d *PermissionDAO) UnbindResources(ctx context.Context, permId int64, resType domain.ResourceType, resIds []int64) error {
-	return d.db.WithContext(ctx).Where("perm_id = ? AND resource_type = ? AND resource_id IN ?", permId, resType, resIds).
-		Delete(&PermissionBinding{}).Error
+func (d *PermissionDAO) GetBindingsByRes(ctx context.Context, resType string, resId int64) ([]PermissionBinding, error) {
+	var res []PermissionBinding
+	err := d.db.WithContext(ctx).Where("resource_type = ? AND resource_id = ?", resType, resId).Find(&res).Error
+	return res, err
 }
 
-func (d *PermissionDAO) ListBindings(ctx context.Context, permId int64) ([]PermissionBinding, error) {
-	var bindings []PermissionBinding
-	err := d.db.WithContext(ctx).Where("perm_id = ?", permId).Find(&bindings).Error
-	return bindings, err
-}
-
-func (d *PermissionDAO) GetBindingsByRes(ctx context.Context, resType domain.ResourceType, resId int64) ([]PermissionBinding, error) {
-	var bindings []PermissionBinding
-	err := d.db.WithContext(ctx).Where("resource_type = ? AND resource_id = ?", resType, resId).Find(&bindings).Error
-	return bindings, err
+func (d *PermissionDAO) ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error) {
+	var res []PermissionBinding
+	err := d.db.WithContext(ctx).Where("perm_id = ?", permId).Find(&res).Error
+	return res, err
 }

@@ -42,18 +42,18 @@ func (m *MockIPermissionService) EXPECT() *MockIPermissionServiceMockRecorder {
 }
 
 // AssignRoleToUser mocks base method.
-func (m *MockIPermissionService) AssignRoleToUser(ctx context.Context, tenantId, userId int64, roleCode string) (bool, error) {
+func (m *MockIPermissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssignRoleToUser", ctx, tenantId, userId, roleCode)
+	ret := m.ctrl.Call(m, "AssignRoleToUser", ctx, userId, roleCode)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AssignRoleToUser indicates an expected call of AssignRoleToUser.
-func (mr *MockIPermissionServiceMockRecorder) AssignRoleToUser(ctx, tenantId, userId, roleCode any) *MockIPermissionServiceAssignRoleToUserCall {
+func (mr *MockIPermissionServiceMockRecorder) AssignRoleToUser(ctx, userId, roleCode any) *MockIPermissionServiceAssignRoleToUserCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignRoleToUser", reflect.TypeOf((*MockIPermissionService)(nil).AssignRoleToUser), ctx, tenantId, userId, roleCode)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignRoleToUser", reflect.TypeOf((*MockIPermissionService)(nil).AssignRoleToUser), ctx, userId, roleCode)
 	return &MockIPermissionServiceAssignRoleToUserCall{Call: call}
 }
 
@@ -69,68 +69,68 @@ func (c *MockIPermissionServiceAssignRoleToUserCall) Return(arg0 bool, arg1 erro
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceAssignRoleToUserCall) Do(f func(context.Context, int64, int64, string) (bool, error)) *MockIPermissionServiceAssignRoleToUserCall {
+func (c *MockIPermissionServiceAssignRoleToUserCall) Do(f func(context.Context, int64, string) (bool, error)) *MockIPermissionServiceAssignRoleToUserCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceAssignRoleToUserCall) DoAndReturn(f func(context.Context, int64, int64, string) (bool, error)) *MockIPermissionServiceAssignRoleToUserCall {
+func (c *MockIPermissionServiceAssignRoleToUserCall) DoAndReturn(f func(context.Context, int64, string) (bool, error)) *MockIPermissionServiceAssignRoleToUserCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
-// BindResourceToPermission mocks base method.
-func (m *MockIPermissionService) BindResourceToPermission(ctx context.Context, tenantId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
+// BindResourcesToPermission mocks base method.
+func (m *MockIPermissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BindResourceToPermission", ctx, tenantId, permCode, resType, resIds)
+	ret := m.ctrl.Call(m, "BindResourcesToPermission", ctx, permId, permCode, resType, resIds)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// BindResourceToPermission indicates an expected call of BindResourceToPermission.
-func (mr *MockIPermissionServiceMockRecorder) BindResourceToPermission(ctx, tenantId, permCode, resType, resIds any) *MockIPermissionServiceBindResourceToPermissionCall {
+// BindResourcesToPermission indicates an expected call of BindResourcesToPermission.
+func (mr *MockIPermissionServiceMockRecorder) BindResourcesToPermission(ctx, permId, permCode, resType, resIds any) *MockIPermissionServiceBindResourcesToPermissionCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BindResourceToPermission", reflect.TypeOf((*MockIPermissionService)(nil).BindResourceToPermission), ctx, tenantId, permCode, resType, resIds)
-	return &MockIPermissionServiceBindResourceToPermissionCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BindResourcesToPermission", reflect.TypeOf((*MockIPermissionService)(nil).BindResourcesToPermission), ctx, permId, permCode, resType, resIds)
+	return &MockIPermissionServiceBindResourcesToPermissionCall{Call: call}
 }
 
-// MockIPermissionServiceBindResourceToPermissionCall wrap *gomock.Call
-type MockIPermissionServiceBindResourceToPermissionCall struct {
+// MockIPermissionServiceBindResourcesToPermissionCall wrap *gomock.Call
+type MockIPermissionServiceBindResourcesToPermissionCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockIPermissionServiceBindResourceToPermissionCall) Return(arg0 error) *MockIPermissionServiceBindResourceToPermissionCall {
+func (c *MockIPermissionServiceBindResourcesToPermissionCall) Return(arg0 error) *MockIPermissionServiceBindResourcesToPermissionCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceBindResourceToPermissionCall) Do(f func(context.Context, int64, string, domain.ResourceType, []int64) error) *MockIPermissionServiceBindResourceToPermissionCall {
+func (c *MockIPermissionServiceBindResourcesToPermissionCall) Do(f func(context.Context, int64, string, domain.ResourceType, []int64) error) *MockIPermissionServiceBindResourcesToPermissionCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceBindResourceToPermissionCall) DoAndReturn(f func(context.Context, int64, string, domain.ResourceType, []int64) error) *MockIPermissionServiceBindResourceToPermissionCall {
+func (c *MockIPermissionServiceBindResourcesToPermissionCall) DoAndReturn(f func(context.Context, int64, string, domain.ResourceType, []int64) error) *MockIPermissionServiceBindResourcesToPermissionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // CheckAPI mocks base method.
-func (m *MockIPermissionService) CheckAPI(ctx context.Context, tenantId, userId int64, serviceName, method, path string) (bool, error) {
+func (m *MockIPermissionService) CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckAPI", ctx, tenantId, userId, serviceName, method, path)
+	ret := m.ctrl.Call(m, "CheckAPI", ctx, userId, serviceName, method, path)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CheckAPI indicates an expected call of CheckAPI.
-func (mr *MockIPermissionServiceMockRecorder) CheckAPI(ctx, tenantId, userId, serviceName, method, path any) *MockIPermissionServiceCheckAPICall {
+func (mr *MockIPermissionServiceMockRecorder) CheckAPI(ctx, userId, serviceName, method, path any) *MockIPermissionServiceCheckAPICall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckAPI", reflect.TypeOf((*MockIPermissionService)(nil).CheckAPI), ctx, tenantId, userId, serviceName, method, path)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckAPI", reflect.TypeOf((*MockIPermissionService)(nil).CheckAPI), ctx, userId, serviceName, method, path)
 	return &MockIPermissionServiceCheckAPICall{Call: call}
 }
 
@@ -146,30 +146,30 @@ func (c *MockIPermissionServiceCheckAPICall) Return(arg0 bool, arg1 error) *Mock
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceCheckAPICall) Do(f func(context.Context, int64, int64, string, string, string) (bool, error)) *MockIPermissionServiceCheckAPICall {
+func (c *MockIPermissionServiceCheckAPICall) Do(f func(context.Context, int64, string, string, string) (bool, error)) *MockIPermissionServiceCheckAPICall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceCheckAPICall) DoAndReturn(f func(context.Context, int64, int64, string, string, string) (bool, error)) *MockIPermissionServiceCheckAPICall {
+func (c *MockIPermissionServiceCheckAPICall) DoAndReturn(f func(context.Context, int64, string, string, string) (bool, error)) *MockIPermissionServiceCheckAPICall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // CheckPermission mocks base method.
-func (m *MockIPermissionService) CheckPermission(ctx context.Context, tenantId, userId int64, action, resource string) (bool, error) {
+func (m *MockIPermissionService) CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckPermission", ctx, tenantId, userId, action, resource)
+	ret := m.ctrl.Call(m, "CheckPermission", ctx, userId, action, resourceURN)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CheckPermission indicates an expected call of CheckPermission.
-func (mr *MockIPermissionServiceMockRecorder) CheckPermission(ctx, tenantId, userId, action, resource any) *MockIPermissionServiceCheckPermissionCall {
+func (mr *MockIPermissionServiceMockRecorder) CheckPermission(ctx, userId, action, resourceURN any) *MockIPermissionServiceCheckPermissionCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPermission", reflect.TypeOf((*MockIPermissionService)(nil).CheckPermission), ctx, tenantId, userId, action, resource)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPermission", reflect.TypeOf((*MockIPermissionService)(nil).CheckPermission), ctx, userId, action, resourceURN)
 	return &MockIPermissionServiceCheckPermissionCall{Call: call}
 }
 
@@ -185,91 +185,13 @@ func (c *MockIPermissionServiceCheckPermissionCall) Return(arg0 bool, arg1 error
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceCheckPermissionCall) Do(f func(context.Context, int64, int64, string, string) (bool, error)) *MockIPermissionServiceCheckPermissionCall {
+func (c *MockIPermissionServiceCheckPermissionCall) Do(f func(context.Context, int64, string, string) (bool, error)) *MockIPermissionServiceCheckPermissionCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceCheckPermissionCall) DoAndReturn(f func(context.Context, int64, int64, string, string) (bool, error)) *MockIPermissionServiceCheckPermissionCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// CreateAPI mocks base method.
-func (m *MockIPermissionService) CreateAPI(ctx context.Context, a domain.API) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateAPI", ctx, a)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateAPI indicates an expected call of CreateAPI.
-func (mr *MockIPermissionServiceMockRecorder) CreateAPI(ctx, a any) *MockIPermissionServiceCreateAPICall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAPI", reflect.TypeOf((*MockIPermissionService)(nil).CreateAPI), ctx, a)
-	return &MockIPermissionServiceCreateAPICall{Call: call}
-}
-
-// MockIPermissionServiceCreateAPICall wrap *gomock.Call
-type MockIPermissionServiceCreateAPICall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockIPermissionServiceCreateAPICall) Return(arg0 int64, arg1 error) *MockIPermissionServiceCreateAPICall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceCreateAPICall) Do(f func(context.Context, domain.API) (int64, error)) *MockIPermissionServiceCreateAPICall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceCreateAPICall) DoAndReturn(f func(context.Context, domain.API) (int64, error)) *MockIPermissionServiceCreateAPICall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// CreateMenu mocks base method.
-func (m_2 *MockIPermissionService) CreateMenu(ctx context.Context, m domain.Menu) (int64, error) {
-	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "CreateMenu", ctx, m)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateMenu indicates an expected call of CreateMenu.
-func (mr *MockIPermissionServiceMockRecorder) CreateMenu(ctx, m any) *MockIPermissionServiceCreateMenuCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateMenu", reflect.TypeOf((*MockIPermissionService)(nil).CreateMenu), ctx, m)
-	return &MockIPermissionServiceCreateMenuCall{Call: call}
-}
-
-// MockIPermissionServiceCreateMenuCall wrap *gomock.Call
-type MockIPermissionServiceCreateMenuCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockIPermissionServiceCreateMenuCall) Return(arg0 int64, arg1 error) *MockIPermissionServiceCreateMenuCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceCreateMenuCall) Do(f func(context.Context, domain.Menu) (int64, error)) *MockIPermissionServiceCreateMenuCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceCreateMenuCall) DoAndReturn(f func(context.Context, domain.Menu) (int64, error)) *MockIPermissionServiceCreateMenuCall {
+func (c *MockIPermissionServiceCheckPermissionCall) DoAndReturn(f func(context.Context, int64, string, string) (bool, error)) *MockIPermissionServiceCheckPermissionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -314,18 +236,18 @@ func (c *MockIPermissionServiceCreatePermissionCall) DoAndReturn(f func(context.
 }
 
 // GetAuthorizedMenus mocks base method.
-func (m *MockIPermissionService) GetAuthorizedMenus(ctx context.Context, tenantId, userId int64) ([]domain.Menu, error) {
+func (m *MockIPermissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAuthorizedMenus", ctx, tenantId, userId)
+	ret := m.ctrl.Call(m, "GetAuthorizedMenus", ctx, userId)
 	ret0, _ := ret[0].([]domain.Menu)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAuthorizedMenus indicates an expected call of GetAuthorizedMenus.
-func (mr *MockIPermissionServiceMockRecorder) GetAuthorizedMenus(ctx, tenantId, userId any) *MockIPermissionServiceGetAuthorizedMenusCall {
+func (mr *MockIPermissionServiceMockRecorder) GetAuthorizedMenus(ctx, userId any) *MockIPermissionServiceGetAuthorizedMenusCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuthorizedMenus", reflect.TypeOf((*MockIPermissionService)(nil).GetAuthorizedMenus), ctx, tenantId, userId)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuthorizedMenus", reflect.TypeOf((*MockIPermissionService)(nil).GetAuthorizedMenus), ctx, userId)
 	return &MockIPermissionServiceGetAuthorizedMenusCall{Call: call}
 }
 
@@ -341,30 +263,30 @@ func (c *MockIPermissionServiceGetAuthorizedMenusCall) Return(arg0 []domain.Menu
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceGetAuthorizedMenusCall) Do(f func(context.Context, int64, int64) ([]domain.Menu, error)) *MockIPermissionServiceGetAuthorizedMenusCall {
+func (c *MockIPermissionServiceGetAuthorizedMenusCall) Do(f func(context.Context, int64) ([]domain.Menu, error)) *MockIPermissionServiceGetAuthorizedMenusCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceGetAuthorizedMenusCall) DoAndReturn(f func(context.Context, int64, int64) ([]domain.Menu, error)) *MockIPermissionServiceGetAuthorizedMenusCall {
+func (c *MockIPermissionServiceGetAuthorizedMenusCall) DoAndReturn(f func(context.Context, int64) ([]domain.Menu, error)) *MockIPermissionServiceGetAuthorizedMenusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetRolesForUser mocks base method.
-func (m *MockIPermissionService) GetRolesForUser(ctx context.Context, tenantId, userId int64) ([]string, error) {
+func (m *MockIPermissionService) GetRolesForUser(ctx context.Context, userId int64) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRolesForUser", ctx, tenantId, userId)
+	ret := m.ctrl.Call(m, "GetRolesForUser", ctx, userId)
 	ret0, _ := ret[0].([]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetRolesForUser indicates an expected call of GetRolesForUser.
-func (mr *MockIPermissionServiceMockRecorder) GetRolesForUser(ctx, tenantId, userId any) *MockIPermissionServiceGetRolesForUserCall {
+func (mr *MockIPermissionServiceMockRecorder) GetRolesForUser(ctx, userId any) *MockIPermissionServiceGetRolesForUserCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRolesForUser", reflect.TypeOf((*MockIPermissionService)(nil).GetRolesForUser), ctx, tenantId, userId)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRolesForUser", reflect.TypeOf((*MockIPermissionService)(nil).GetRolesForUser), ctx, userId)
 	return &MockIPermissionServiceGetRolesForUserCall{Call: call}
 }
 
@@ -380,13 +302,13 @@ func (c *MockIPermissionServiceGetRolesForUserCall) Return(arg0 []string, arg1 e
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIPermissionServiceGetRolesForUserCall) Do(f func(context.Context, int64, int64) ([]string, error)) *MockIPermissionServiceGetRolesForUserCall {
+func (c *MockIPermissionServiceGetRolesForUserCall) Do(f func(context.Context, int64) ([]string, error)) *MockIPermissionServiceGetRolesForUserCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIPermissionServiceGetRolesForUserCall) DoAndReturn(f func(context.Context, int64, int64) ([]string, error)) *MockIPermissionServiceGetRolesForUserCall {
+func (c *MockIPermissionServiceGetRolesForUserCall) DoAndReturn(f func(context.Context, int64) ([]string, error)) *MockIPermissionServiceGetRolesForUserCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

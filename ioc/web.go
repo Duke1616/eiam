@@ -4,6 +4,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	"github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
@@ -18,7 +19,7 @@ import (
 
 func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.HandlerFunc,
 	userHdl *user.Handler, policyHdl *policy.Handler,
-	tenantHdl *tenant.Handler) *egin.Component {
+	tenantHdl *tenant.Handler, permissionHdl *permission.Handler) *egin.Component {
 	session.SetDefaultProvider(sp)
 
 	server := egin.Load("server.egin").Build(egin.WithListener(listener))
@@ -36,6 +37,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	userHdl.PrivateRoutes(server.Engine)
 	policyHdl.PrivateRoutes(server.Engine)
 	tenantHdl.PrivateRoutes(server.Engine)
+	permissionHdl.PrivateRoutes(server.Engine)
 
 	return server
 }
@@ -64,7 +66,7 @@ func accessLogger() gin.HandlerFunc {
 	// 关闭默认的日志输出
 	econf.Set("server.egin.enableAccessInterceptor", false)
 
-	//  ego DefaultLogger 针对框架内部做了 caller skip 校准，直接 from 用户代码调用需减一层
+	// ego DefaultLogger 针对框架内部做了 caller skip 校准，直接 from 用户代码调用需减一层
 	logger := elog.DefaultLogger.With(elog.FieldComponentName("access")).WithCallerSkip(-1)
 	return func(ctx *gin.Context) {
 		beg := time.Now()

@@ -41,10 +41,6 @@ type LoginSystemRequest struct {
 	Password string `json:"password"`
 }
 
-// SwitchTenantRequest 空间切换请求
-type SwitchTenantRequest struct {
-	TenantID int64 `json:"tenant_id"`
-}
 
 // UserVO 用户展示对象
 type UserVO struct {

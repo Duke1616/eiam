@@ -9,28 +9,28 @@ import (
 
 // Menu 菜单资源表 (物理元数据)
 type Menu struct {
-	Id         int64     `gorm:"type:bigint;primaryKey;autoIncrement;comment:'菜单ID'"`
-	ParentId   int64     `gorm:"type:bigint;not null;default:0;index:idx_parent_id;comment:'父菜单ID'"`
-	TenantId   int64     `gorm:"type:bigint;not null;default:0;index:idx_tenant_id;comment:'租户ID'"`
-	Name       string    `gorm:"type:varchar(255);not null;comment:'名称'"`
-	Path       string    `gorm:"type:varchar(255);comment:'前端路由地址'"`
-	Component  string    `gorm:"type:varchar(255);comment:'前端组件地址'"`
-	Icon       string    `gorm:"type:varchar(128);comment:'图标'"`
-	Sort       int32     `gorm:"type:int;not null;default:0;comment:'排序号'"`
-	Hidden     bool      `gorm:"type:tinyint;not null;default:0;comment:'1-隐藏, 0-显示'"`
-	Ctime      int64     `gorm:"type:bigint;not null;comment:'创建时间'"`
-	Utime      int64     `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Id        int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'菜单ID'"`
+	ParentId  int64  `gorm:"type:bigint;not null;default:0;index:idx_parent_id;comment:'父菜单ID'"`
+	TenantId  int64  `gorm:"type:bigint;not null;default:0;index:idx_tenant_id;comment:'租户ID'"`
+	Name      string `gorm:"type:varchar(255);not null;comment:'名称'"`
+	Path      string `gorm:"type:varchar(255);comment:'前端路由地址'"`
+	Component string `gorm:"type:varchar(255);comment:'前端组件地址'"`
+	Icon      string `gorm:"type:varchar(128);comment:'图标'"`
+	Sort      int32  `gorm:"type:int;not null;default:0;comment:'排序号'"`
+	Hidden    bool   `gorm:"type:tinyint;not null;default:0;comment:'1-隐藏, 0-显示'"`
+	Ctime     int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
+	Utime     int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
 }
 
 // API 接口资源表 (物理元数据)
 type API struct {
-	Id         int64     `gorm:"type:bigint;primaryKey;autoIncrement;comment:'接口ID'"`
-	Service    string    `gorm:"type:varchar(128);not null;uniqueIndex:idx_service_method_path;comment:'所属服务'"`
-	Name       string    `gorm:"type:varchar(255);not null;comment:'接口描述名称'"`
-	Method     string    `gorm:"type:varchar(16);not null;uniqueIndex:idx_service_method_path;comment:'HTTP动词'"`
-	Path       string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_service_method_path;comment:'接口路径'"`
-	Ctime      int64     `gorm:"type:bigint;not null;comment:'创建时间'"`
-	Utime      int64     `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Id      int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'接口ID'"`
+	Service string `gorm:"type:varchar(128);not null;uniqueIndex:idx_service_method_path;comment:'所属服务'"`
+	Name    string `gorm:"type:varchar(255);not null;comment:'接口描述名称'"`
+	Method  string `gorm:"type:varchar(16);not null;uniqueIndex:idx_service_method_path;comment:'HTTP动词'"`
+	Path    string `gorm:"type:varchar(255);not null;uniqueIndex:idx_service_method_path;comment:'接口路径'"`
+	Ctime   int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
+	Utime   int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
 }
 
 // IResourceDAO 定义了物理资产 (Menu/API) 项目的底层持久化接口

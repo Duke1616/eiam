@@ -6,6 +6,8 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/role"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 )
 
 // ITenantService 租户业务接口
@@ -25,12 +27,14 @@ type ITenantService interface {
 type tenantService struct {
 	repo    repository.ITenantRepository
 	permSvc permission.IPermissionService // 注入权限服务：从此权力归 Casbin
+	roleSvc role.IRoleService             // 注入角色服务：用于初始化系统固有角色
 }
 
-func NewTenantService(r repository.ITenantRepository, permSvc permission.IPermissionService) ITenantService {
+func NewTenantService(r repository.ITenantRepository, permSvc permission.IPermissionService, roleSvc role.IRoleService) ITenantService {
 	return &tenantService{
 		repo:    r,
 		permSvc: permSvc,
+		roleSvc: roleSvc,
 	}
 }
 
@@ -40,7 +44,7 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code string, own
 	tenantID, err := s.repo.Create(ctx, domain.Tenant{
 		Name:   name,
 		Code:   code,
-		Status: 1, 
+		Status: 1,
 	})
 	if err != nil {
 		return 0, err
@@ -53,9 +57,21 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code string, own
 		return 0, err
 	}
 
-	// 3. 通过 Casbin 分配 OWNER 角色 (宣示主权)
+	// 3. 在该租户下初始化系统内置最高权限角色
+	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
+	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{
+		Name:   "超级管理员",
+		Code:   "OWNER",
+		Desc:   "系统内置最高权限拥有者",
+		Status: true,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	// 4. 通过 Casbin 分配 OWNER 角色 (宣示主权)
 	// 真正的权力被存储在 Casbin 的 g 规则中。
-	_, err = s.permSvc.AssignRoleToUser(ctx, tenantID, ownerId, "OWNER")
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, ownerId, "OWNER")
 
 	return tenantID, err
 }
@@ -77,9 +93,21 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 		return 0, err
 	}
 
+	// 初始化内置最高角色
+	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
+	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{
+		Name:   "超级管理员",
+		Code:   "OWNER",
+		Desc:   "系统内置最高权限拥有者",
+		Status: true,
+	})
+	if err != nil {
+		return 0, err
+	}
+
 	// 分配 OWNER 角色
-	_, err = s.permSvc.AssignRoleToUser(ctx, tenantID, userId, "OWNER")
-	
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, userId, "OWNER")
+
 	return tenantID, err
 }
 

@@ -9,6 +9,7 @@ import (
 )
 
 // IRoleService 角色业务服务接口
+//
 //go:generate mockgen -source=./role.go -package=rolemocks -destination=./mocks/role.mock.go -typed IRoleService
 type IRoleService interface {
 	// Create 创建角色
@@ -25,22 +26,22 @@ type IRoleService interface {
 	ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error)
 }
 
-type RoleService struct {
+type roleService struct {
 	repo repository.IRoleRepository
 }
 
 // NewRoleService 创建角色服务实例，移除了对 PermissionService 的依赖，解决循环依赖
 func NewRoleService(repo repository.IRoleRepository) IRoleService {
-	return &RoleService{
+	return &roleService{
 		repo: repo,
 	}
 }
 
-func (s *RoleService) Create(ctx context.Context, r domain.Role) (int64, error) {
+func (s *roleService) Create(ctx context.Context, r domain.Role) (int64, error) {
 	return s.repo.Create(ctx, r)
 }
 
-func (s *RoleService) List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, int64, error) {
+func (s *roleService) List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, int64, error) {
 	var (
 		eg    errgroup.Group
 		roles []domain.Role
@@ -66,18 +67,18 @@ func (s *RoleService) List(ctx context.Context, tenantId int64, offset, limit in
 	return roles, total, nil
 }
 
-func (s *RoleService) Update(ctx context.Context, r domain.Role) (int64, error) {
+func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) {
 	return s.repo.Update(ctx, r)
 }
 
-func (s *RoleService) UpdatePolicies(ctx context.Context, tenantId int64, roleCode string, policies []domain.Policy) error {
+func (s *roleService) UpdatePolicies(ctx context.Context, tenantId int64, roleCode string, policies []domain.Policy) error {
 	return s.repo.UpdatePolicies(ctx, tenantId, roleCode, policies)
 }
 
-func (s *RoleService) GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error) {
+func (s *roleService) GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error) {
 	return s.repo.GetByCode(ctx, tenantId, code)
 }
 
-func (s *RoleService) ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error) {
+func (s *roleService) ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error) {
 	return s.repo.ListByIncludeCodes(ctx, tenantId, codes)
 }

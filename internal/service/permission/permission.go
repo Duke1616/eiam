@@ -2,45 +2,47 @@ package permission
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 
 	"github.com/Duke1616/eiam/internal/authz"
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/pkg/urn"
 	"github.com/casbin/casbin/v2"
 )
 
-// IPermissionService 权限管理与决策中心
+// IPermissionService 权限逻辑中心
 //
 //go:generate mockgen -source=./permission.go -package=permissionmocks -destination=./mocks/permission.mock.go -typed IPermissionService
 type IPermissionService interface {
 	// --- 1. 鉴权决策 (Runtime) ---
 
-	// CheckAPI 核心动作：针对物理接口访问进行鉴权
-	CheckAPI(ctx context.Context, tenantId int64, userId int64, serviceName, method, path string) (bool, error)
-	// CheckPermission 针对特定能力码执行 OPA 鉴权
-	CheckPermission(ctx context.Context, tenantId int64, userId int64, action, resource string) (bool, error)
-	// GetAuthorizedMenus 获取用户授权后可见的菜单列表
-	GetAuthorizedMenus(ctx context.Context, tenantId int64, userId int64) ([]domain.Menu, error)
+	// CheckAPI 针对物理接口访问进行判定
+	CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error)
+	// CheckPermission 用户是否拥有在该租户下对具体 URN 的特定 Action 权限
+	CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error)
+	// GetAuthorizedMenus 过滤用户拥有的前端菜单
+	GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error)
 
-	// --- 2. 权限项与资源绑定关系管理 (Admin) ---
+	// --- 2. 能力中心 (Admin) ---
 
-	// CreatePermission 定义一个新的逻辑权限点 (能力码)
+	// CreatePermission 注册一个全局标准功能 (如 iam:user:view)
 	CreatePermission(ctx context.Context, p domain.Permission) (int64, error)
-	// BindResourceToPermission 将物理资源(API/Menu)绑定到指定的权限码上
-	BindResourceToPermission(ctx context.Context, tenantId int64, permCode string, resType domain.ResourceType, resIds []int64) error
+	// BindResourcesToPermission 定义该功能码涵盖哪些物理资源 ID
+	BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error
 
-	// --- 3. 用户与角色的分配关系管理 (Relation) ---
+	// --- 3. 关系管理 (Relation) ---
 
-	// AssignRoleToUser 给用户分配角色
-	AssignRoleToUser(ctx context.Context, tenantId int64, userId int64, roleCode string) (bool, error)
-	// GetRolesForUser 计算用户在特定租户下的全量角色
-	GetRolesForUser(ctx context.Context, tenantId int64, userId int64) ([]string, error)
+	// AssignRoleToUser 绑定用户与角色
+	AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error)
+	// GetRolesForUser 获取用户的有效角色
+	GetRolesForUser(ctx context.Context, userId int64) ([]string, error)
 }
 
-type PermissionService struct {
+type permissionService struct {
 	enforcer    *casbin.SyncedEnforcer
 	roleSvc     role.IRoleService
 	resourceSvc resource.IResourceService
@@ -48,15 +50,13 @@ type PermissionService struct {
 	authorizer  authz.IAuthorizer
 }
 
-// NewPermissionService 创建权限服务实例
-// NOTE: 这里的依赖已变更为其它服务接口，而非跨域 Repository
 func NewPermissionService(
 	en *casbin.SyncedEnforcer,
 	roleSvc role.IRoleService,
 	resourceSvc resource.IResourceService,
 	permRepo repository.IPermissionRepository,
 	auth authz.IAuthorizer) IPermissionService {
-	return &PermissionService{
+	return &permissionService{
 		enforcer:    en,
 		roleSvc:     roleSvc,
 		resourceSvc: resourceSvc,
@@ -65,37 +65,52 @@ func NewPermissionService(
 	}
 }
 
-// --- 鉴权决策实现 ---
-
-func (s *PermissionService) CheckAPI(ctx context.Context, tenantId int64, userId int64, serviceName, method, path string) (bool, error) {
-	// 调用 IResourceService 查找物理 API
+// CheckAPI 判定请求合法性
+func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error) {
+	// 1. 定位物理 API
 	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
 	if err != nil {
-		return false, fmt.Errorf("api not found: %s %s %s", serviceName, method, path)
+		return false, err
+	}
+	
+	// 如果 API 在系统中根本未注册，实施防误闯（Fail-closed）拦截
+	if api.ID == 0 {
+		return false, nil
 	}
 
-	// 查找该资源绑定的能力码 (本服务 Repository)
-	codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResAPI, api.ID)
+	// 2. 反查该物理资产在全局绑定了哪些逻辑能力码
+	codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResourceTypeAPI, api.ID)
 	if err != nil {
 		return false, err
 	}
 
+	// 3. 如果没绑定任何码，视为公共接口，直接放行
+	if len(codes) == 0 {
+		return true, nil
+	}
+
+	// 4. 构建 URN 进行判定
+	tenantId := ctxutil.GetTenantID(ctx)
+	resURN := urn.New(strconv.FormatInt(tenantId, 10), serviceName, "api", path).String()
+
+	// 5. 用户只要拥有其中任何一项能力的授权，即可通过
 	for _, code := range codes {
-		ok, err := s.CheckPermission(ctx, tenantId, userId, code, "*")
+		ok, err := s.CheckPermission(ctx, userId, code, resURN)
 		if err == nil && ok {
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
-func (s *PermissionService) CheckPermission(ctx context.Context, tenantId int64, userId int64, action, resource string) (bool, error) {
-	roleCodes, err := s.GetRolesForUser(ctx, tenantId, userId)
+func (s *permissionService) CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error) {
+	tenantId := ctxutil.GetTenantID(ctx)
+	roleCodes, err := s.GetRolesForUser(ctx, userId)
 	if err != nil {
 		return false, err
 	}
 
-	// 调用 IRoleService 获取全量角色的 Policy JSON
 	roles, err := s.roleSvc.ListByIncludeCodes(ctx, tenantId, roleCodes)
 	if err != nil {
 		return false, err
@@ -108,13 +123,14 @@ func (s *PermissionService) CheckPermission(ctx context.Context, tenantId int64,
 
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
 		Action:   action,
-		Resource: resource,
+		Resource: resourceURN,
 		Policies: allPolicies,
 	})
 }
 
-func (s *PermissionService) GetAuthorizedMenus(ctx context.Context, tenantId int64, userId int64) ([]domain.Menu, error) {
-	// 通过 IResourceService 获取全量菜单
+// GetAuthorizedMenus 过滤授权菜单
+func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
+	tenantId := ctxutil.GetTenantID(ctx)
 	allMenus, err := s.resourceSvc.ListMenus(ctx, tenantId)
 	if err != nil {
 		return nil, err
@@ -122,49 +138,48 @@ func (s *PermissionService) GetAuthorizedMenus(ctx context.Context, tenantId int
 
 	var authorizedMenus []domain.Menu
 	for _, menu := range allMenus {
-		codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResMenu, menu.ID)
+		// 反查菜单对应的逻辑码
+		codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResourceTypeMenu, menu.ID)
 		if err != nil || len(codes) == 0 {
+			// 未映射能力的菜单视为公共菜单
 			authorizedMenus = append(authorizedMenus, menu)
 			continue
 		}
 
+		resURN := urn.New(strconv.FormatInt(tenantId, 10), "iam", "menu", menu.Path).String()
+
+		isAuth := false
 		for _, code := range codes {
-			ok, err := s.CheckPermission(ctx, tenantId, userId, code, "*")
-			if err == nil && ok {
-				authorizedMenus = append(authorizedMenus, menu)
+			ok, _ := s.CheckPermission(ctx, userId, code, resURN)
+			if ok {
+				isAuth = true
 				break
 			}
+		}
+
+		if isAuth {
+			authorizedMenus = append(authorizedMenus, menu)
 		}
 	}
 	return authorizedMenus, nil
 }
 
-// --- 管理逻辑实现 ---
-
-func (s *PermissionService) CreatePermission(ctx context.Context, p domain.Permission) (int64, error) {
+func (s *permissionService) CreatePermission(ctx context.Context, p domain.Permission) (int64, error) {
 	return s.permRepo.CreatePermission(ctx, p)
 }
 
-// BindResourceToPermission 核心：建立逻辑码与物理资源的绑定关系
-func (s *PermissionService) BindResourceToPermission(ctx context.Context, tenantId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
-	p, err := s.permRepo.GetByCode(ctx, tenantId, permCode)
-	if err != nil {
-		return fmt.Errorf("permission code %s not found: %w", permCode, err)
-	}
-
-	return s.permRepo.BindResources(ctx, tenantId, p.ID, p.Code, resType, resIds)
+func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
+	return s.permRepo.BindResources(ctx, permId, permCode, resType, resIds)
 }
 
-// --- 用户角色关系实现 ---
-
-func (s *PermissionService) AssignRoleToUser(ctx context.Context, tenantId int64, userId int64, roleCode string) (bool, error) {
-	sub := fmt.Sprintf("user:%d", userId)
-	tenant := fmt.Sprintf("tenant:%d", tenantId)
+func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
+	sub := strconv.FormatInt(userId, 10)
+	tenant := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
 	return s.enforcer.AddGroupingPolicy(sub, roleCode, tenant)
 }
 
-func (s *PermissionService) GetRolesForUser(ctx context.Context, tenantId int64, userId int64) ([]string, error) {
-	sub := fmt.Sprintf("user:%d", userId)
-	tenant := fmt.Sprintf("tenant:%d", tenantId)
+func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) ([]string, error) {
+	sub := strconv.FormatInt(userId, 10)
+	tenant := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
 	return s.enforcer.GetRolesForUserInDomain(sub, tenant), nil
 }

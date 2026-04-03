@@ -1,34 +1,19 @@
 package domain
 
-// Role 角色定义
+// Role 角色定义集：既是策略容器，也是可扮演身份（Principal）
 type Role struct {
-	ID       int64    // ID
-	TenantID int64    // 0 表示系统全局角色，>0 表示租户自定义角色
-	Code     string   // code 标识
-	Name     string   // 名称
-	Desc     string   // 详情
-	Status   bool     // 状态
-	Policies []Policy // 绑定的权限策略列表
-}
+	ID       int64  // ID
+	TenantID int64  // 0 表示系统全局角色，>0 表示租户自定义角色
+	Code     string // code 标识码，如 "AdminRole"
+	Name     string // 角色显示名称
+	Desc     string // 描述
+	Status   bool   // 状态
 
-// Effect 策略效果
-type Effect string
+	// Policies 权限策略文档：该角色“能干什么”
+	Policies []Policy
 
-const (
-	Allow Effect = "Allow"
-	Deny  Effect = "Deny"
-)
-
-// Policy 权限策略文档
-type Policy struct {
-	Version   string      `json:"Version"`
-	Statement []Statement `json:"Statement"`
-}
-
-// Statement 权限语句
-type Statement struct {
-	Effect    Effect         `json:"Effect"`
-	Action    []string       `json:"Action"`
-	Resource  []string       `json:"Resource"`
-	Condition map[string]any `json:"Condition,omitempty"`
+	// AssumeRolePolicy 信任策略文档：定义“谁能扮演该角色”
+	// 这是阿里云 RAM 跨账号/跨服务授权的精髓。
+	// 这里存的是一个策略 JSON。
+	AssumeRolePolicy Policy
 }

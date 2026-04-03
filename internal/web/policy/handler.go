@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/Duke1616/eiam/internal/service/permission"
-	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
@@ -56,11 +55,8 @@ func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Resul
 		return ginx.Result{Code: 401, Msg: "未登录"}, err
 	}
 
-	// 从 Context 提取租户 ID
-	tid := ctxutil.GetTenantID(ctx.Context)
-
 	// 2. 调用全链路 CheckAPI 逻辑 (物理 Path -> 能力码 -> 逻辑权限判定)
-	allowed, err := h.permSvc.CheckAPI(ctx.Context, tid, sess.Claims().Uid, req.Service, req.Method, req.Path)
+	allowed, err := h.permSvc.CheckAPI(ctx.Context, sess.Claims().Uid, req.Service, req.Method, req.Path)
 	if err != nil {
 		return ginx.Result{
 			Code: 0,

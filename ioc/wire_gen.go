@@ -14,6 +14,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user"
+	permission2 "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	tenant2 "github.com/Duke1616/eiam/internal/web/tenant"
 	user2 "github.com/Duke1616/eiam/internal/web/user"
@@ -47,14 +48,15 @@ func InitApp() (*App, error) {
 	iPermissionRepository := repository.NewPermissionRepository(iPermissionDAO)
 	iAuthorizer := InitOPA()
 	iPermissionService := permission.NewPermissionService(syncedEnforcer, iRoleService, iResourceService, iPermissionRepository, iAuthorizer)
-	iTenantService := tenant.NewTenantService(iTenantRepository, iPermissionService)
+	iTenantService := tenant.NewTenantService(iTenantRepository, iPermissionService, iRoleService)
 	config := InitLdapConfig()
 	v2 := InitIdentityProviders(config)
 	iUserService := user.NewUserService(iUserRepository, iTenantService, v2, iPermissionService)
 	handler := user2.NewUserHandler(iUserService, provider)
 	policyHandler := policy.NewHandler(iPermissionService, provider)
 	tenantHandler := tenant2.NewHandler(iTenantService, provider)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler)
+	permissionHandler := permission2.NewPermissionHandler(iPermissionService)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler)
 	app := &App{
 		Web: component,
 	}

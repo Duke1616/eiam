@@ -5,23 +5,24 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/ecodeclub/ekit/slice"
 )
 
-// IPermissionRepository 权限映射仓库：管理能力码与物理资产的关联
+// IPermissionRepository 权限仓库：管理全局能力项及其绑定的物理资产
 type IPermissionRepository interface {
-	// CreatePermission 注册一个新的逻辑权限码
+	// CreatePermission 录入一个新的全局逻辑能力 (如 iam:user:view)
 	CreatePermission(ctx context.Context, p domain.Permission) (int64, error)
-	// DeletePermission 删除某个权限码，并级联清理所有其绑定的资源记录
-	DeletePermission(ctx context.Context, tenantId int64, id int64) error
-	// GetByCode 根据能力码获取权限详情
-	GetByCode(ctx context.Context, tenantId int64, code string) (domain.Permission, error)
+	// DeletePermission 删除能力项并清理其下的资产绑定
+	DeletePermission(ctx context.Context, id int64) error
+	// GetByCode 获取能力项元数据
+	GetByCode(ctx context.Context, code string) (domain.Permission, error)
 
-	// BindResources 核心动作：将指定的物理资源 ID 批量绑定到能力码上
-	BindResources(ctx context.Context, tenantId int64, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error
-	// FindCodesByResource 反查逻辑：物理资源(API/Menu)背后受哪些能力码保护
+	// BindResources 全局绑定接口：定义哪些物理 ID 属于这个功能码
+	BindResources(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error
+	// FindCodesByResource 反查中心：通过物理资源定位功能逻辑码
 	FindCodesByResource(ctx context.Context, resType domain.ResourceType, resId int64) ([]string, error)
-	// FindBindingsByPerm 发现逻辑：一个能力码包里装了哪些物理资源
-	FindBindingsByPerm(ctx context.Context, permId int64) ([]domain.PermissionBinding, error)
+	// FindBindingsByPerm 正查中心：查看一个功能码下聚合了哪些物理资源
+	FindBindingsByPerm(ctx context.Context, permId int64) ([]domain.ResourceBinding, error)
 }
 
 type PermissionRepository struct {
@@ -34,78 +35,61 @@ func NewPermissionRepository(dao dao.IPermissionDAO) IPermissionRepository {
 
 func (r *PermissionRepository) CreatePermission(ctx context.Context, p domain.Permission) (int64, error) {
 	return r.dao.Insert(ctx, dao.Permission{
-		TenantId: p.TenantID,
-		Code:     p.Code,
-		Name:     p.Name,
-		Desc:     p.Desc,
-		Group:    p.Group,
-		Status:   p.Status,
+		Code:   p.Code,
+		Name:   p.Name,
+		Desc:   p.Desc,
+		Group:  p.Group,
+		Status: p.Status,
 	})
 }
 
-func (r *PermissionRepository) GetByCode(ctx context.Context, tenantId int64, code string) (domain.Permission, error) {
-	p, err := r.dao.GetByCode(ctx, tenantId, code)
+func (r *PermissionRepository) DeletePermission(ctx context.Context, id int64) error {
+	return r.dao.Delete(ctx, id)
+}
+
+func (r *PermissionRepository) GetByCode(ctx context.Context, code string) (domain.Permission, error) {
+	p, err := r.dao.GetByCode(ctx, code)
 	if err != nil {
 		return domain.Permission{}, err
 	}
 	return domain.Permission{
-		ID:       p.Id,
-		TenantID: p.TenantId,
-		Code:     p.Code,
-		Name:     p.Name,
-		Desc:     p.Desc,
-		Group:    p.Group,
-		Status:   p.Status,
-		Ctime:    p.Ctime,
-		Utime:    p.Utime,
+		ID:     p.Id,
+		Code:   p.Code,
+		Name:   p.Name,
+		Desc:   p.Desc,
+		Group:  p.Group,
+		Status: p.Status,
 	}, nil
 }
 
-func (r *PermissionRepository) BindResources(ctx context.Context, tenantId int64, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
-	bindings := make([]dao.PermissionBinding, 0, len(resIds))
-	for _, rid := range resIds {
-		bindings = append(bindings, dao.PermissionBinding{
-			TenantId:     tenantId,
+func (r *PermissionRepository) BindResources(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
+	bindings := slice.Map(resIds, func(idx int, src int64) dao.PermissionBinding {
+		return dao.PermissionBinding{
 			PermId:       permId,
 			PermCode:     permCode,
-			ResourceType: string(resType),
-			ResourceId:   rid,
-		})
-	}
-	return r.dao.BindResource(ctx, bindings)
-}
+			ResourceType: resType.String(),
+			ResourceId:   src,
+		}
+	})
 
-func (r *PermissionRepository) DeletePermission(ctx context.Context, tenantId int64, id int64) error {
-	return r.dao.Delete(ctx, tenantId, id)
+	return r.dao.BindResources(ctx, bindings)
 }
 
 func (r *PermissionRepository) FindCodesByResource(ctx context.Context, resType domain.ResourceType, resId int64) ([]string, error) {
-	bindings, err := r.dao.GetBindingsByRes(ctx, resType, resId)
-	if err != nil {
-		return nil, err
-	}
-	codes := make([]string, 0, len(bindings))
-	for _, b := range bindings {
-		codes = append(codes, b.PermCode)
-	}
-	return codes, nil
+	bindings, err := r.dao.GetBindingsByRes(ctx, resType.String(), resId)
+
+	return slice.Map(bindings, func(i int, src dao.PermissionBinding) string {
+		return src.PermCode
+	}), err
 }
 
-func (r *PermissionRepository) FindBindingsByPerm(ctx context.Context, permId int64) ([]domain.PermissionBinding, error) {
-	bindings, err := r.dao.ListBindings(ctx, permId)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]domain.PermissionBinding, 0, len(bindings))
-	for _, b := range bindings {
-		res = append(res, domain.PermissionBinding{
-			ID:           b.Id,
-			TenantID:     b.TenantId,
-			PermID:       b.PermId,
-			PermCode:     b.PermCode,
-			ResourceType: domain.ResourceType(b.ResourceType),
-			ResourceID:   b.ResourceId,
-		})
-	}
-	return res, nil
+func (r *PermissionRepository) FindBindingsByPerm(ctx context.Context, permId int64) ([]domain.ResourceBinding, error) {
+	bindings, err := r.dao.ListBindingsByPerm(ctx, permId)
+
+	return slice.Map(bindings, func(i int, src dao.PermissionBinding) domain.ResourceBinding {
+		return domain.ResourceBinding{
+			ResourceType: domain.ResourceType(src.ResourceType),
+			ResourceID:   src.ResourceId,
+		}
+	}), err
 }
