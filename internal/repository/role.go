@@ -16,15 +16,15 @@ type IRoleRepository interface {
 	// Update 更新角色
 	Update(ctx context.Context, r domain.Role) (int64, error)
 	// List 分页查询
-	List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, error)
+	List(ctx context.Context, offset, limit int64) ([]domain.Role, error)
 	// Count 统计数量
-	Count(ctx context.Context, tenantId int64) (int64, error)
+	Count(ctx context.Context) (int64, error)
 	// GetByCode 按代码获取
-	GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error)
+	GetByCode(ctx context.Context, code string) (domain.Role, error)
 	// ListByIncludeCodes 按列表获取
-	ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error)
+	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
 	// UpdatePolicies 更新角色的权限策略列表 (AWS 风格)
-	UpdatePolicies(ctx context.Context, tenantId int64, code string, policies []domain.Policy) error
+	UpdatePolicies(ctx context.Context, code string, policies []domain.Policy) error
 }
 
 type RoleRepository struct {
@@ -43,8 +43,8 @@ func (r *RoleRepository) Update(ctx context.Context, role domain.Role) (int64, e
 	return r.dao.Update(ctx, r.toEntity(role))
 }
 
-func (r *RoleRepository) List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, error) {
-	roles, err := r.dao.List(ctx, tenantId, offset, limit)
+func (r *RoleRepository) List(ctx context.Context, offset, limit int64) ([]domain.Role, error) {
+	roles, err := r.dao.List(ctx, offset, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -53,20 +53,20 @@ func (r *RoleRepository) List(ctx context.Context, tenantId int64, offset, limit
 	}), nil
 }
 
-func (r *RoleRepository) Count(ctx context.Context, tenantId int64) (int64, error) {
-	return r.dao.Count(ctx, tenantId)
+func (r *RoleRepository) Count(ctx context.Context) (int64, error) {
+	return r.dao.Count(ctx)
 }
 
-func (r *RoleRepository) GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error) {
-	role, err := r.dao.GetByCode(ctx, tenantId, code)
+func (r *RoleRepository) GetByCode(ctx context.Context, code string) (domain.Role, error) {
+	role, err := r.dao.GetByCode(ctx, code)
 	if err != nil {
 		return domain.Role{}, err
 	}
 	return r.toDomain(role), nil
 }
 
-func (r *RoleRepository) ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error) {
-	roles, err := r.dao.ListByIncludeCodes(ctx, tenantId, codes)
+func (r *RoleRepository) ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error) {
+	roles, err := r.dao.ListByIncludeCodes(ctx, codes)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +75,8 @@ func (r *RoleRepository) ListByIncludeCodes(ctx context.Context, tenantId int64,
 	}), nil
 }
 
-func (r *RoleRepository) UpdatePolicies(ctx context.Context, tenantId int64, code string, policies []domain.Policy) error {
-	return r.dao.UpdatePolicies(ctx, tenantId, code, policies)
+func (r *RoleRepository) UpdatePolicies(ctx context.Context, code string, policies []domain.Policy) error {
+	return r.dao.UpdatePolicies(ctx, code, policies)
 }
 
 func (r *RoleRepository) toDomain(role dao.Role) domain.Role {
@@ -87,6 +87,7 @@ func (r *RoleRepository) toDomain(role dao.Role) domain.Role {
 		Name:     role.Name,
 		Desc:     role.Desc,
 		Status:   role.Status,
+		Type:     role.Type,
 		Policies: role.Policies.Val,
 	}
 }
@@ -99,6 +100,7 @@ func (r *RoleRepository) toEntity(role domain.Role) dao.Role {
 		Name:     role.Name,
 		Desc:     role.Desc,
 		Status:   role.Status,
+		Type:     role.Type,
 		Policies: sqlx.JSONColumn[[]domain.Policy]{
 			Val:   role.Policies,
 			Valid: len(role.Policies) > 0,

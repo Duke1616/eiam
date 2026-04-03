@@ -85,7 +85,22 @@ func (s *PermissionSuite) TestCheckAPI() {
 
 	// ==================== 一、 场景准备期 ====================
 
-	// 1. 初始化主租户，会自动将 UserId=8888 绑定为 OWNER，并初始化角色
+	// 0. 我们先在数据库底层预置全系统的基础角色 (TenantID = 0, Type = System)
+	sysCtx := ctxutil.WithTenantID(context.Background(), 0)
+	_, err := s.roleSvc.Create(sysCtx, domain.Role{Code: "OWNER", Name: "系统内置租户拥有者", Type: domain.RoleTypeSystem, TenantID: 0})
+	require.NoError(t, err)
+
+	// 赋予预置角色 '*' 的天花板策略 (一次配置，全系统租户共用)
+	err = s.roleSvc.UpdatePolicies(sysCtx, "OWNER", []domain.Policy{
+		{
+			Name: "内置最高权限策略",
+			Type: domain.SystemPolicy,
+			Statement: []domain.Statement{{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"*"}}},
+		},
+	})
+	require.NoError(t, err)
+
+	// 1. 初始化主租户，会自动将 UserId=8888 绑定为预设好系统级的 OWNER 角色
 	tenantId, err := s.tenantSvc.CreateTenant(context.Background(), "测试机房", "test-room", userId)
 	require.NoError(t, err)
 
@@ -110,22 +125,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permId, actionCode, domain.ResourceTypeAPI, []int64{resApiId})
 	require.NoError(t, err)
 
-	// 4. 为 OWNER 配置全局权限凭证 (授予所有操作权限 '*’)
-	// (实际你在管理后台赋予某个角色这部分权利时的动作)
-	err = s.roleSvc.UpdatePolicies(ctxWithTenant, tenantId, "OWNER", []domain.Policy{
-		{
-			Name: "内置最高权限策略",
-			Type: domain.SystemPolicy,
-			Statement: []domain.Statement{
-				{
-					Effect:   domain.Allow,
-					Resource: []string{"*"},
-					Action:   []string{"*"}, // OWNER 拥有所有能力
-				},
-			},
-		},
-	})
-	require.NoError(t, err)
+	// 4. (已删除) 原本在此处给单租户的 OWNER 单独硬写入策略，现在改成了在顶部(步骤 0)统一配置全局的系统角色。
 
 	// ----------------- 复杂混合场景追加 -----------------
 	var (
@@ -137,7 +137,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{Code: "DEVELOPER", Name: "开发人员", Desc: "限制性的只读权限", TenantID: tenantId})
 	require.NoError(t, err)
 
-	err = s.roleSvc.UpdatePolicies(ctxWithTenant, tenantId, "DEVELOPER", []domain.Policy{
+	err = s.roleSvc.UpdatePolicies(ctxWithTenant, "DEVELOPER", []domain.Policy{
 		{
 			Name: "安全只读约束",
 			Type: domain.CustomPolicy,
@@ -174,6 +174,45 @@ func (s *PermissionSuite) TestCheckAPI() {
 
 	// 7. 建立另一个正常的租户 (租户2) 用于测试多租户隔离
 	tenantId2, err := s.tenantSvc.CreateTenant(context.Background(), "生产机房", "prod-room", crossUserId)
+	require.NoError(t, err)
+
+	// 8. 多 code 绑定同一 API 场景测试准备：
+	// 给原有的 GET /api/v1/hosts 追加绑定一个新能力码：'cmdb:dashboard:view'
+	permIdDash, err := s.permSvc.CreatePermission(ctxWithTenant, domain.Permission{
+		Code: "cmdb:dashboard:view",
+		Name: "大盘查看权",
+	})
+	require.NoError(t, err)
+	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdDash, "cmdb:dashboard:view", domain.ResourceTypeAPI, []int64{resApiId})
+	require.NoError(t, err)
+
+	// 给一个新用户赋予仅仅看大盘的权利
+	var dashboardUserId int64 = 5555
+	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{Code: "DASHBOARD_VIEWER", Name: "数据大盘查看者", TenantID: tenantId})
+	require.NoError(t, err)
+	err = s.roleSvc.UpdatePolicies(ctxWithTenant, "DASHBOARD_VIEWER", []domain.Policy{
+		{
+			Name: "大盘只读",
+			Type: domain.CustomPolicy,
+			Statement: []domain.Statement{{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"cmdb:dashboard:view"}}},
+		},
+	})
+	require.NoError(t, err)
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, dashboardUserId, "DASHBOARD_VIEWER")
+	require.NoError(t, err)
+
+	// 9. Casbin 角色继承测试 (RBAC with Domains)
+	// 创建一个上层 ADMIN 角色，什么具体策略都不配置
+	var adminUserId int64 = 4444
+	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{Code: "ADMIN", Name: "部门管理员", TenantID: tenantId})
+	require.NoError(t, err)
+
+	// 核心：让 ADMIN 继承 DEVELOPER 的所有能力
+	_, err = s.permSvc.AssignRoleInheritance(ctxWithTenant, "ADMIN", "DEVELOPER")
+	require.NoError(t, err)
+
+	// 把新员工 4444 分配为 ADMIN 角色 (他仅有 ADMIN)
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, adminUserId, "ADMIN")
 	require.NoError(t, err)
 
 	// ==================== 二、 断言执行期 ====================
@@ -245,6 +284,33 @@ func (s *PermissionSuite) TestCheckAPI() {
 			uid:     userId,
 			service: serviceName,
 			method:  "PUT",
+			path:    path,
+			tenant:  tenantId,
+			want:    false,
+		},
+		{
+			name:    "多 Code 绑定测试：只有大盘查看权的用户，请求被多重绑定的同一 API 应通过",
+			uid:     dashboardUserId,
+			service: serviceName,
+			method:  method,
+			path:    path,
+			tenant:  tenantId,
+			want:    true,
+		},
+		{
+			name:    "RBAC 层级继承测试：ADMIN 本身未分配该策略，但因继承自 DEVELOPER，请求查列表应通过",
+			uid:     adminUserId,
+			service: serviceName,
+			method:  method,
+			path:    path,
+			tenant:  tenantId,
+			want:    true,
+		},
+		{
+			name:    "RBAC 层级继承阻断测试：强如 ADMIN 也没有被赋予删除权限 (因为他爹 DEVELOPER 也没有)，应被拦截",
+			uid:     adminUserId,
+			service: serviceName,
+			method:  "DELETE",
 			path:    path,
 			tenant:  tenantId,
 			want:    false,

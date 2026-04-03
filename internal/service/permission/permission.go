@@ -38,7 +38,9 @@ type IPermissionService interface {
 
 	// AssignRoleToUser 绑定用户与角色
 	AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error)
-	// GetRolesForUser 获取用户的有效角色
+	// AssignRoleInheritance 设置角色继承关系，让 childRole 自动拥有 parentRole 的所有能力
+	AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error)
+	// GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
 	GetRolesForUser(ctx context.Context, userId int64) ([]string, error)
 }
 
@@ -105,13 +107,12 @@ func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceN
 }
 
 func (s *permissionService) CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error) {
-	tenantId := ctxutil.GetTenantID(ctx)
 	roleCodes, err := s.GetRolesForUser(ctx, userId)
 	if err != nil {
 		return false, err
 	}
 
-	roles, err := s.roleSvc.ListByIncludeCodes(ctx, tenantId, roleCodes)
+	roles, err := s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
 	if err != nil {
 		return false, err
 	}
@@ -178,8 +179,15 @@ func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, 
 	return s.enforcer.AddGroupingPolicy(sub, roleCode, tenant)
 }
 
+func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error) {
+	tenant := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
+	// 在 Casbin 中，通过在 Grouping 数据域中将 childRole 视为 sub 加入 parentRole 的 group 来宣示主从继承
+	return s.enforcer.AddGroupingPolicy(childRole, parentRole, tenant)
+}
+
 func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) ([]string, error) {
 	sub := strconv.FormatInt(userId, 10)
 	tenant := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
-	return s.enforcer.GetRolesForUserInDomain(sub, tenant), nil
+	// 获取全部深度继承链上的所有隐式/显式角色集合
+	return s.enforcer.GetImplicitRolesForUser(sub, tenant)
 }

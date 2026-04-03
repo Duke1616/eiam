@@ -15,15 +15,15 @@ type IRoleService interface {
 	// Create 创建角色
 	Create(ctx context.Context, r domain.Role) (int64, error)
 	// List 获取角色列表
-	List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, int64, error)
+	List(ctx context.Context, offset, limit int64) ([]domain.Role, int64, error)
 	// Update 更新角色信息
 	Update(ctx context.Context, r domain.Role) (int64, error)
 	// UpdatePolicies 修改角色的权限策略文档
-	UpdatePolicies(ctx context.Context, tenantId int64, roleCode string, policies []domain.Policy) error
+	UpdatePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error
 	// GetByCode 根据角色代码获取角色
-	GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error)
+	GetByCode(ctx context.Context, code string) (domain.Role, error)
 	// ListByIncludeCodes 查找包含当前角色代码的数据 (供鉴权中心调用)
-	ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error)
+	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
 }
 
 type roleService struct {
@@ -41,7 +41,7 @@ func (s *roleService) Create(ctx context.Context, r domain.Role) (int64, error) 
 	return s.repo.Create(ctx, r)
 }
 
-func (s *roleService) List(ctx context.Context, tenantId int64, offset, limit int64) ([]domain.Role, int64, error) {
+func (s *roleService) List(ctx context.Context, offset, limit int64) ([]domain.Role, int64, error) {
 	var (
 		eg    errgroup.Group
 		roles []domain.Role
@@ -50,13 +50,13 @@ func (s *roleService) List(ctx context.Context, tenantId int64, offset, limit in
 
 	eg.Go(func() error {
 		var err error
-		roles, err = s.repo.List(ctx, tenantId, offset, limit)
+		roles, err = s.repo.List(ctx, offset, limit)
 		return err
 	})
 
 	eg.Go(func() error {
 		var err error
-		total, err = s.repo.Count(ctx, tenantId)
+		total, err = s.repo.Count(ctx)
 		return err
 	})
 
@@ -71,14 +71,14 @@ func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) 
 	return s.repo.Update(ctx, r)
 }
 
-func (s *roleService) UpdatePolicies(ctx context.Context, tenantId int64, roleCode string, policies []domain.Policy) error {
-	return s.repo.UpdatePolicies(ctx, tenantId, roleCode, policies)
+func (s *roleService) UpdatePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error {
+	return s.repo.UpdatePolicies(ctx, roleCode, policies)
 }
 
-func (s *roleService) GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error) {
-	return s.repo.GetByCode(ctx, tenantId, code)
+func (s *roleService) GetByCode(ctx context.Context, code string) (domain.Role, error) {
+	return s.repo.GetByCode(ctx, code)
 }
 
-func (s *roleService) ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error) {
-	return s.repo.ListByIncludeCodes(ctx, tenantId, codes)
+func (s *roleService) ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error) {
+	return s.repo.ListByIncludeCodes(ctx, codes)
 }

@@ -21,9 +21,9 @@ func (p *TenantPlugin) Initialize(db *gorm.DB) error {
 	cb := db.Callback()
 	
 	_ = cb.Create().Before("gorm:create").Register("tenant:handle_create", p.handleCreate)
-	_ = cb.Query().Before("gorm:query").Register("tenant:handle_query", p.handleFilter)
-	_ = cb.Update().Before("gorm:update").Register("tenant:handle_update", p.handleFilter)
-	_ = cb.Delete().Before("gorm:delete").Register("tenant:handle_delete", p.handleFilter)
+	_ = cb.Query().Before("gorm:query").Register("tenant:handle_query", p.handleQuery)
+	_ = cb.Update().Before("gorm:update").Register("tenant:handle_update", p.handleStrict)
+	_ = cb.Delete().Before("gorm:delete").Register("tenant:handle_delete", p.handleStrict)
 	
 	return nil
 }
@@ -47,17 +47,32 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 	}
 }
 
-// handleFilter 查询/更新/删除时的租户条件自动挂载 (核心隔离点)
-func (p *TenantPlugin) handleFilter(db *gorm.DB) {
+// handleQuery 查询时的租户条件：允许看到当前租户或系统全局（0号）租户
+func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	if p.shouldSkip(db) {
 		return
 	}
 
 	tid := ctxutil.GetTenantID(db.Statement.Context)
 	if tid != 0 {
-		// 只有当操作的 Schema 包含 tenant_id 列时才会自动注入 Where
 		if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
-			db.Where(tenantColumn+" = ?", tid)
+			// NOTE: 在查询时，我们默认允许用户看到自己租户及 0 号全局租户的信息
+			db.Where("(tenant_id = ? OR tenant_id = 0)", tid)
+		}
+	}
+}
+
+// handleStrict 更新/删除时的租户条件：严禁跨租户或篡改全局数据
+func (p *TenantPlugin) handleStrict(db *gorm.DB) {
+	if p.shouldSkip(db) {
+		return
+	}
+
+	tid := ctxutil.GetTenantID(db.Statement.Context)
+	if tid != 0 {
+		if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
+			// NOTE: 在更新/删除时，强制锁定为该租户私有空间，确保其不能通过权限变更或其他手段篡改全局 0 号资源
+			db.Where("tenant_id = ?", tid)
 		}
 	}
 }

@@ -1,5 +1,10 @@
 package domain
 
+const (
+	RoleTypeSystem uint8 = 1 // 系统预设全局角色 (tenant_id 强制为 0)
+	RoleTypeCustom uint8 = 2 // 租户私有自定义角色
+)
+
 // Role 角色定义集：既是策略容器，也是可扮演身份（Principal）
 type Role struct {
 	ID       int64  // ID
@@ -8,6 +13,7 @@ type Role struct {
 	Name     string // 角色显示名称
 	Desc     string // 描述
 	Status   bool   // 状态
+	Type     uint8  // 角色类型: 1-系统预设, 2-租户自定义
 
 	// Policies 权限策略文档：该角色“能干什么”
 	Policies []Policy

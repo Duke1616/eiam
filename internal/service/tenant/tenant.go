@@ -50,27 +50,15 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code string, own
 		return 0, err
 	}
 
-	// 2. 将创建者加入该租户 (建立纯净契约关系)
+	// 3. 将创建者加入该租户 (建立纯净契约关系)
 	// 注意：此处 AddMembership 仅代表“入驻”，不承载授权信息
 	err = s.repo.AddMembership(ctx, ownerId, tenantID)
 	if err != nil {
 		return 0, err
 	}
 
-	// 3. 在该租户下初始化系统内置最高权限角色
+	// 4. 直接通过 Casbin 在本租户域下，给所有者分配系统预设的全局 OWNER 角色，而无需真正给该租户创建角色物理条目
 	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
-	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{
-		Name:   "超级管理员",
-		Code:   "OWNER",
-		Desc:   "系统内置最高权限拥有者",
-		Status: true,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	// 4. 通过 Casbin 分配 OWNER 角色 (宣示主权)
-	// 真正的权力被存储在 Casbin 的 g 规则中。
 	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, ownerId, "OWNER")
 
 	return tenantID, err
@@ -93,19 +81,8 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 		return 0, err
 	}
 
-	// 初始化内置最高角色
+	// 初始化个人空间最高角色，挂载预设角色
 	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
-	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{
-		Name:   "超级管理员",
-		Code:   "OWNER",
-		Desc:   "系统内置最高权限拥有者",
-		Status: true,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	// 分配 OWNER 角色
 	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, userId, "OWNER")
 
 	return tenantID, err
