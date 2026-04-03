@@ -11,7 +11,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
-	"github.com/Duke1616/eiam/internal/test/ioc"
+	testioc "github.com/Duke1616/eiam/internal/test/ioc"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/casbin/casbin/v2"
 	"github.com/spf13/viper"
@@ -72,7 +72,7 @@ func (s *PermissionSuite) clearAll() {
 func (s *PermissionSuite) TestCheckAPI() {
 	t := s.T()
 
-	// 清理上轮测试现场
+	// 执行完成后清理测试数据
 	defer s.clearAll()
 
 	var (
@@ -85,32 +85,32 @@ func (s *PermissionSuite) TestCheckAPI() {
 
 	// ==================== 一、 场景准备期 ====================
 
-	// 1. 初始化集团租户，因为代码改动，它会自动帮你把 UserId=8888 生成并绑定为 OWNER，并初始化角色
-	tenantId, err := s.tenantSvc.CreateTenant(context.Background(), "蚂蚁金服测试区", "ant-test", userId)
+	// 1. 初始化主租户，会自动将 UserId=8888 绑定为 OWNER，并初始化角色
+	tenantId, err := s.tenantSvc.CreateTenant(context.Background(), "测试机房", "test-room", userId)
 	require.NoError(t, err)
 
 	ctxWithTenant := ctxutil.WithTenantID(context.Background(), tenantId)
 
-	// 2. 模拟研发部署 `cmdb` 微服务，注册其对外的 API
+	// 2. 模拟部署 cmdb 微服务，注册其对外的 API
 	resApiId, err := s.resourceSvc.CreateAPI(ctxWithTenant, domain.API{
 		Service: serviceName,
 		Path:    path,
 		Method:  method,
-		Name:    "查看云主机列表",
+		Name:    "查看主机列表",
 	})
 	require.NoError(t, err)
 
 	// 3. 将物理 API 关联给一个抽象能力码 `cmdb:host:view`
 	permId, err := s.permSvc.CreatePermission(ctxWithTenant, domain.Permission{
 		Code: actionCode,
-		Name: "云主机查看权",
+		Name: "主机查看权",
 	})
 	require.NoError(t, err)
 
 	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permId, actionCode, domain.ResourceTypeAPI, []int64{resApiId})
 	require.NoError(t, err)
 
-	// 4. 重中之重：给 OWNER 配置上帝视角的权限凭证 (授予刚刚建好的 code)
+	// 4. 为 OWNER 配置全局权限凭证 (授予所有操作权限 '*’)
 	// (实际你在管理后台赋予某个角色这部分权利时的动作)
 	err = s.roleSvc.UpdatePolicies(ctxWithTenant, tenantId, "OWNER", []domain.Policy{
 		{
@@ -120,11 +120,60 @@ func (s *PermissionSuite) TestCheckAPI() {
 				{
 					Effect:   domain.Allow,
 					Resource: []string{"*"},
-					Action:   []string{actionCode},
+					Action:   []string{"*"}, // OWNER 拥有所有能力
 				},
 			},
 		},
 	})
+	require.NoError(t, err)
+
+	// ----------------- 复杂混合场景追加 -----------------
+	var (
+		devUserId   int64 = 6666 // 租户1下的受限开发人员
+		crossUserId int64 = 7777 // 租户2的最高拥有者
+	)
+
+	// 5. 租户1：精细化角色设定 - 给 DEVELOPER 定制只读策略
+	_, err = s.roleSvc.Create(ctxWithTenant, domain.Role{Code: "DEVELOPER", Name: "开发人员", Desc: "限制性的只读权限", TenantID: tenantId})
+	require.NoError(t, err)
+
+	err = s.roleSvc.UpdatePolicies(ctxWithTenant, tenantId, "DEVELOPER", []domain.Policy{
+		{
+			Name: "安全只读约束",
+			Type: domain.CustomPolicy,
+			Statement: []domain.Statement{
+				{
+					Effect:   domain.Allow,
+					Resource: []string{"*"},
+					Action:   []string{actionCode}, // 仅仅赋予 cmdb:host:view
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// 5.1 绑定角色与用户
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, devUserId, "DEVELOPER")
+	require.NoError(t, err)
+
+	// 6. 租户1：增加一条删除命令 (DELETE)，验证已注册但未授权的拦截情况
+	resApiIdDel, err := s.resourceSvc.CreateAPI(ctxWithTenant, domain.API{
+		Service: serviceName,
+		Path:    path,
+		Method:  "DELETE",
+		Name:    "删除主机",
+	})
+	require.NoError(t, err)
+	permIdDel, err := s.permSvc.CreatePermission(ctxWithTenant, domain.Permission{
+		Code: "cmdb:host:delete",
+		Name: "主机删除权限",
+	})
+	require.NoError(t, err)
+	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdDel, "cmdb:host:delete", domain.ResourceTypeAPI, []int64{resApiIdDel})
+	require.NoError(t, err)
+
+	// 7. 建立另一个正常的租户 (租户2) 用于测试多租户隔离
+	tenantId2, err := s.tenantSvc.CreateTenant(context.Background(), "生产机房", "prod-room", crossUserId)
 	require.NoError(t, err)
 
 	// ==================== 二、 断言执行期 ====================
@@ -138,7 +187,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 		want    bool // 预期是否允许运行
 	}{
 		{
-			name:    "测试 1：身为 OWNER 的用户，正常申请该 API 应该顺畅通过",
+			name:    "OWNER 用户请求已授权的 API 应通过",
 			uid:     userId,
 			service: serviceName,
 			method:  method,
@@ -147,19 +196,55 @@ func (s *PermissionSuite) TestCheckAPI() {
 			want:    true,
 		},
 		{
-			name:    "测试 2：OWNER 用户篡改了方法 (POST)，因为没绑定过该物理API，应当被果断拦截",
+			name:    "OWNER 用户请求未直接关联但匹配全局通配符 '*' 的 API 应通过",
 			uid:     userId,
 			service: serviceName,
-			method:  "POST",
+			method:  "DELETE",
+			path:    path,
+			tenant:  tenantId,
+			want:    true,
+		},
+		{
+			name:    "无角色用户请求注册的 API 应被拦截",
+			uid:     9999,
+			service: serviceName,
+			method:  method,
 			path:    path,
 			tenant:  tenantId,
 			want:    false,
 		},
 		{
-			name:    "测试 3：路人甲 (UID: 9999) 发起合法请求，因为身上根本没绑角色，故被拦截",
-			uid:     9999,
+			name:    "DEVELOPER 角色请求已授权 API 应通过",
+			uid:     devUserId,
 			service: serviceName,
 			method:  method,
+			path:    path,
+			tenant:  tenantId,
+			want:    true,
+		},
+		{
+			name:    "DEVELOPER 角色请求已注册但未被授权的 API 应被拦截",
+			uid:     devUserId,
+			service: serviceName,
+			method:  "DELETE",
+			path:    path,
+			tenant:  tenantId,
+			want:    false,
+		},
+		{
+			name:    "多租户隔离约束下的跨租户请求，租户 1 的 OWNER 访问租户 2 资源应被拦截",
+			uid:     userId,
+			service: serviceName,
+			method:  method,
+			path:    path,
+			tenant:  tenantId2,
+			want:    false,
+		},
+		{
+			name:    "任意用户请求完全未注册的 API，应当触发 Fail-closed 拦截",
+			uid:     userId,
+			service: serviceName,
+			method:  "PUT",
 			path:    path,
 			tenant:  tenantId,
 			want:    false,

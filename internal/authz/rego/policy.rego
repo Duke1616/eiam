@@ -24,6 +24,12 @@ deny if {
 # 辅助规则：Action 匹配（支持通配符，如 iam:*）
 action_matches(actions, target_action) if {
 	some action in actions
+	action == "*"
+}
+
+action_matches(actions, target_action) if {
+	some action in actions
+	action != "*"
 	# 将 ":" 包装成数组 [":"]
 	glob.match(action, [":"], target_action)
 }

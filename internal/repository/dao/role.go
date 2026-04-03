@@ -12,9 +12,9 @@ import (
 // Role 角色持久化实体
 type Role struct {
 	Id       int64                            `gorm:"type:bigint;primaryKey;autoIncrement;comment:'角色ID'"`
-	TenantId int64                            `gorm:"type:bigint;not null;default:0;index:idx_tenant_id;comment:'租户ID，0为系统全局角色'"`
+	TenantId int64                            `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_idx_tenant_role_code,priority:1;comment:'租户ID，0为系统全局角色'"`
 	Name     string                           `gorm:"type:varchar(255);not null;comment:'角色名称'"`
-	Code     string                           `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_tenant_role_code;comment:'角色标识码'"`
+	Code     string                           `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_tenant_role_code,priority:2;comment:'角色标识码'"`
 	Desc     string                           `gorm:"type:varchar(512);not null;default:'';comment:'角色描述信息'"`
 	Status   bool                             `gorm:"type:tinyint;not null;default:1;comment:'状态: 1-启用, 0-禁用'"`
 	Policies sqlx.JSONColumn[[]domain.Policy] `gorm:"type:json;column:policies;comment:'绑定权限策略列表 (AWS 风格)'"`
