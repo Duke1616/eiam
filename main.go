@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Duke1616/eiam/ioc"
 	"github.com/fsnotify/fsnotify"
@@ -55,6 +57,16 @@ func startServer() {
 	if err != nil {
 		elog.Panic("dependency_injection_failed", elog.FieldErr(err))
 	}
+
+	// 执行物理资产初始化与 API 自动发现
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 1. 自动化发现并同步 EIAM 本身的资产 (逻辑权限与物理 API)
+	// 这里底层复用了 SDK 的 Collector 逻辑
+	_ = app.Init.SyncDiscoveryAPIs(ctx, app.Providers, app.Web.Engine)
+
+	_ = app.Init.SyncMenus(ctx) // 2. 同步菜单物理资产
 
 	// 创建 ego 应用实例
 	egoApp := ego.New(ego.WithDisableBanner(true))

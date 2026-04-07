@@ -1,17 +1,14 @@
 package permission
 
-import "github.com/Duke1616/eiam/internal/domain"
-
 type CreatePermissionRequest struct {
 	Code string `json:"code" binding:"required"`
 	Desc string `json:"desc"`
 }
 
 type BindResourcesRequest struct {
-	PermID   int64               `json:"perm_id" binding:"required"`
-	PermCode string              `json:"perm_code" binding:"required"`
-	ResType  domain.ResourceType `json:"res_type" binding:"required"`
-	ResIDs   []int64             `json:"res_ids" binding:"required"`
+	PermID   int64    `json:"perm_id" binding:"required"`
+	PermCode string   `json:"perm_code" binding:"required"`
+	ResURNs  []string `json:"res_urns" binding:"required"`
 }
 
 type AssignRoleRequest struct {

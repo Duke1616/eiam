@@ -16,6 +16,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/user"
 	permission2 "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
+	role2 "github.com/Duke1616/eiam/internal/web/role"
 	tenant2 "github.com/Duke1616/eiam/internal/web/tenant"
 	user2 "github.com/Duke1616/eiam/internal/web/user"
 	"github.com/google/wire"
@@ -56,9 +57,15 @@ func InitApp() (*App, error) {
 	policyHandler := policy.NewHandler(iPermissionService, provider)
 	tenantHandler := tenant2.NewHandler(iTenantService, provider)
 	permissionHandler := permission2.NewPermissionHandler(iPermissionService)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler)
+	roleHandler := role2.NewHandler(iRoleService, iPermissionService)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler)
+	string2 := InitServiceConfig()
+	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, string2)
+	v3 := InitProviders(permissionHandler, roleHandler)
 	app := &App{
-		Web: component,
+		Web:       component,
+		Init:      iInitializer,
+		Providers: v3,
 	}
 	return app, nil
 }
@@ -75,4 +82,6 @@ var BaseSet = wire.NewSet(
 
 	InitLdapConfig,
 	InitIdentityProviders,
+
+	InitServiceConfig,
 )

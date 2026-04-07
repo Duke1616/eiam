@@ -93,7 +93,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 	ctxWithTenant := ctxutil.WithTenantID(context.Background(), tenantId)
 
 	// 2. 模拟部署 cmdb 微服务，注册其对外的 API
-	resApiId, err := s.resourceSvc.CreateAPI(ctxWithTenant, domain.API{
+	_, err = s.resourceSvc.CreateAPI(ctxWithTenant, domain.API{
 		Service: serviceName,
 		Path:    path,
 		Method:  method,
@@ -108,7 +108,8 @@ func (s *PermissionSuite) TestCheckAPI() {
 	})
 	require.NoError(t, err)
 
-	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permId, actionCode, domain.ResourceTypeAPI, []int64{resApiId})
+	urn1 := domain.API{Service: serviceName, Method: method, Path: path}.URN()
+	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permId, actionCode, []string{urn1})
 	require.NoError(t, err)
 
 	// 4. (已删除) 原本在此处给单租户的 OWNER 单独硬写入策略，现在改成了在顶部(步骤 0)统一配置全局的系统角色。
@@ -143,7 +144,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 	require.NoError(t, err)
 
 	// 6. 租户1：增加一条删除命令 (DELETE)，验证已注册但未授权的拦截情况
-	resApiIdDel, err := s.resourceSvc.CreateAPI(ctxWithTenant, domain.API{
+	_, err = s.resourceSvc.CreateAPI(ctxWithTenant, domain.API{
 		Service: serviceName,
 		Path:    path,
 		Method:  "DELETE",
@@ -155,7 +156,8 @@ func (s *PermissionSuite) TestCheckAPI() {
 		Name: "主机删除权限",
 	})
 	require.NoError(t, err)
-	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdDel, "cmdb:host:delete", domain.ResourceTypeAPI, []int64{resApiIdDel})
+	urnDel := domain.API{Service: serviceName, Method: "DELETE", Path: path}.URN()
+	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdDel, "cmdb:host:delete", []string{urnDel})
 	require.NoError(t, err)
 
 	// 7. 建立另一个正常的租户 (租户2) 用于测试多租户隔离
@@ -169,7 +171,8 @@ func (s *PermissionSuite) TestCheckAPI() {
 		Name: "大盘查看权",
 	})
 	require.NoError(t, err)
-	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdDash, "cmdb:dashboard:view", domain.ResourceTypeAPI, []int64{resApiId})
+	urnDash := domain.API{Service: serviceName, Method: method, Path: path}.URN()
+	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdDash, "cmdb:dashboard:view", []string{urnDash})
 	require.NoError(t, err)
 
 	// 给一个新用户赋予仅仅看大盘的权利
@@ -185,6 +188,23 @@ func (s *PermissionSuite) TestCheckAPI() {
 	})
 	require.NoError(t, err)
 	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, dashboardUserId, "DASHBOARD_VIEWER")
+	require.NoError(t, err)
+
+	// 8.1 模拟租户管理系统的 API 注册 (用于测试熔断)
+	_, err = s.resourceSvc.CreateAPI(ctxWithTenant, domain.API{
+		Service: "iam",
+		Path:    "/tenant/create",
+		Method:  "POST",
+		Name:    "创建租户",
+	})
+	require.NoError(t, err)
+	permIdTenant, err := s.permSvc.CreatePermission(ctxWithTenant, domain.Permission{
+		Code: "iam:tenant:create",
+		Name: "租户创建权",
+	})
+	require.NoError(t, err)
+	urnTenant := domain.API{Service: "iam", Method: "POST", Path: "/tenant/create"}.URN()
+	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdTenant, "iam:tenant:create", []string{urnTenant})
 	require.NoError(t, err)
 
 	// 9. Casbin 角色继承测试 (RBAC with Domains)
@@ -302,11 +322,20 @@ func (s *PermissionSuite) TestCheckAPI() {
 			want:    false,
 		},
 		{
-			name:    "【超级管理员】全局通配符测试：SUPER_ADMIN 访问任何接口都应通过",
+			name:    "【超级管理员】资产安全硬性拦截：即使拥有 * 权限，访问完全未注册的接口也应被拦截",
 			uid:     1111,
-			service: "any-service",
-			method:  "ANY",
+			service: "shadow-service",
+			method:  "POST",
 			path:    "/any/path",
+			tenant:  tenantId,
+			want:    false,
+		},
+		{
+			name:    "【超级管理员】全局属性匹配：对于已注册资产，SUPER_ADMIN 的 * 权限应能通过判定",
+			uid:     1111,
+			service: serviceName,
+			method:  method,
+			path:    path,
 			tenant:  tenantId,
 			want:    true,
 		},

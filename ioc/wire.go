@@ -14,6 +14,7 @@ import (
 	"github.com/Duke1616/eiam/internal/web/policy"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
+	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	"github.com/google/wire"
 )
 
@@ -28,6 +29,9 @@ var BaseSet = wire.NewSet(
 	// LDAP 基础设施
 	InitLdapConfig,
 	InitIdentityProviders,
+
+	// 其他全局配置注入
+	InitServiceConfig,
 )
 
 func InitApp() (*App, error) {
@@ -52,13 +56,19 @@ func InitApp() (*App, error) {
 		tenantsvc.NewTenantService,
 		role.NewRoleService,
 		resource.NewResourceService,
+		resource.NewResourceInitializer,
 		permission.NewPermissionService,
 
 		// Handlers
 		user.NewUserHandler,
 		policy.NewHandler,
 		tenanthdl.NewHandler,
+		// Handlers (Capabilities)
 		permissionhdl.NewPermissionHandler,
+		rolehdl.NewHandler,
+
+		// Providers Registry
+		InitProviders,
 
 		// App Component
 		InitGinMiddlewares,

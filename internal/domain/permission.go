@@ -31,6 +31,11 @@ type Permission struct {
 
 // ResourceBinding 物理资源绑定关系 (不涉及租户，仅表达“能力由哪些物理资产构成”)
 type ResourceBinding struct {
-	ResourceType ResourceType `json:"resource_type"`
-	ResourceID   int64        `json:"resource_id"`
+	ResourceURN string `json:"resource_urn"` // 统一资产标识，如 eiam:0:iam:menu/user
+}
+
+// PermissionProvider 定义了逻辑权限能力项的供应接口
+// 用于实现模块化资产自声明 (Solution B: Handler-Based Self-Registration)
+type PermissionProvider interface {
+	ProvidePermissions() []Permission
 }

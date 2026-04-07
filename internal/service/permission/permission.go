@@ -2,9 +2,7 @@ package permission
 
 import (
 	"context"
-	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/Duke1616/eiam/internal/authz"
 	"github.com/Duke1616/eiam/internal/domain"
@@ -34,8 +32,10 @@ type IPermissionService interface {
 
 	// CreatePermission 注册一个全局标准功能 (如 iam:user:view)
 	CreatePermission(ctx context.Context, p domain.Permission) (int64, error)
-	// BindResourcesToPermission 定义该功能码涵盖哪些物理资源 ID
-	BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error
+	// GetByCode 获取能力项元数据
+	GetByCode(ctx context.Context, code string) (domain.Permission, error)
+	// BindResourcesToPermission 定义该功能码涵盖哪些物理资源 URN
+	BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error
 
 	// --- 3. 关系管理 (Relation) ---
 
@@ -70,145 +70,169 @@ func NewPermissionService(
 	}
 }
 
-// CheckAPI 判定请求合法性
+// CheckAPI 针对物理接口访问进行判定
 func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error) {
-	// 1. 获取用户关联的所有角色
-	roleCodes, err := s.GetRolesForUser(ctx, userId)
-	if err != nil {
-		return false, err
-	}
-
-	// 2. 构建资源 URN 与 Pseudo Action
-	tenantId := ctxutil.GetTenantID(ctx)
-	resURN := urn.New(strconv.FormatInt(tenantId, 10), serviceName, "api", path).String()
-
-	actionPath := strings.TrimPrefix(path, "/")
-	actionPath = strings.ReplaceAll(actionPath, "/", ":")
-	pseudoAction := fmt.Sprintf("%s:%s", serviceName, actionPath)
-
-	// 3. 优先执行上帝模式/熔断判定 (全量语义匹配)
-	ok, err := s.invokeAuthorize(ctx, roleCodes, pseudoAction, resURN)
-	if err == nil && ok {
-		return true, nil
-	}
-
-	// 4. 定位物理 API
+	// 1. 物理层拦截：未注册的物理资产视为不存在，严禁任何访问 (Fail-closed)
 	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
 	if err != nil || api.ID == 0 {
 		return false, err
 	}
 
-	// 5. 反查该物理资产关联的逻辑能力码
-	codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResourceTypeAPI, api.ID)
+	// 2. 映射层发现：物理资产必须至少挂载一个逻辑能力码 (Permission Code) 才能进行业务判定
+	codes, err := s.permRepo.FindCodesByResource(ctx, api.URN())
 	if err != nil || len(codes) == 0 {
-		return false, err
+		return false, nil
 	}
 
-	// 6. 只要具备其中任何一项能力码的授权即可
-	for _, code := range codes {
-		ok, err = s.invokeAuthorize(ctx, roleCodes, code, resURN)
-		if err == nil && ok {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-func (s *permissionService) CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error) {
-	roleCodes, err := s.GetRolesForUser(ctx, userId)
-	if err != nil {
-		return false, err
-	}
-	return s.invokeAuthorize(ctx, roleCodes, action, resourceURN)
-}
-
-// invokeAuthorize 统一调用 OPA 判定的私有方法
-func (s *permissionService) invokeAuthorize(ctx context.Context, roleCodes []string, action, resourceURN string) (bool, error) {
-	// 1. 加载角色的具体 Policies 文档
-	roles, err := s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
+	// 3. 策略预加载：获取用户及其继承链路的所有有效策略文档
+	policies, err := s.getEffectivePolicies(ctx, userId)
 	if err != nil {
 		return false, err
 	}
 
-	var allPolicies []domain.Policy
-	var hasSuperAdmin bool
-	for _, r := range roles {
-		if r.Code == "SUPER_ADMIN" {
-			hasSuperAdmin = true
-		}
-		allPolicies = append(allPolicies, r.Policies...)
-	}
+	// 4. 环境聚合：直接使用资源的唯一身份标识 (URN)
+	resURN := api.URN()
 
-	// 2. 超级管理员：逻辑上注入一条 Allow * 的策略，但放在列表最前/最后，确保 Deny 优先级
-	// 注意：OPA 判定的具体 Rego 逻辑决定了如何处理。
-	// 如果 OPA 逻辑是 "Allow if any matches and NO Deny matches"，那么注入这一条即可。
-	if hasSuperAdmin {
-		allPolicies = append(allPolicies, domain.Policy{
-			Name:    "SUPER_ADMIN_OVERRIDE",
-			Version: "2026-04-03",
-			Statement: []domain.Statement{
-				{
-					Effect:   domain.Allow,
-					Action:   []string{"*"},
-					Resource: []string{"*"},
-				},
-			},
-		})
-	}
-
-	fmt.Printf("DEBUG: invokeAuthorize - action: %s, res: %s, policies_count: %d\n", action, resourceURN, len(allPolicies))
-
-	// 3. 提交给 OPA 引擎进行 Rego 判定
+	// 5. OPA 裁决：一次性提交该 API 的所有身份码，让 OPA 处理“全局允许 (SUPER_ADMIN *)”与“特定熔断 (ADMIN Deny)”
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
-		Action:   action,
-		Resource: resourceURN,
-		Policies: allPolicies,
+		Actions:  codes,
+		Resource: resURN,
+		Policies: policies,
 	})
 }
 
-// GetAuthorizedMenus 过滤授权菜单
-func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
-	tenantId := ctxutil.GetTenantID(ctx)
-	allMenus, err := s.resourceSvc.ListMenus(ctx, tenantId)
+// CheckPermission 针对特定 URN 的直接 Action 匹配 (用于 UI 渲染、菜单显示等逻辑)
+func (s *permissionService) CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error) {
+	policies, err := s.getEffectivePolicies(ctx, userId)
+	if err != nil {
+		return false, err
+	}
+
+	return s.authorizer.Authorize(ctx, authz.AuthInput{
+		Actions:  []string{action},
+		Resource: resourceURN,
+		Policies: policies,
+	})
+}
+
+// getEffectivePolicies 聚合用户在当前上下文下的所有有效策略 (含系统预设逻辑)
+func (s *permissionService) getEffectivePolicies(ctx context.Context, userId int64) ([]domain.Policy, error) {
+	// 1. 获取用户关联的所有角色 Code (通过底层穿透后的全链路结果)
+	roleCodes, err := s.GetRolesForUser(ctx, userId)
 	if err != nil {
 		return nil, err
 	}
 
-	var authorizedMenus []domain.Menu
+	// 2. 加载角色的具体 Policies 文档 (受 SQL 物理隔离保护)
+	roles, err := s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
+	if err != nil {
+		return nil, err
+	}
+
+	var allPolicies []domain.Policy
+	for _, r := range roles {
+		allPolicies = append(allPolicies, r.Policies...)
+	}
+
+	return allPolicies, nil
+}
+
+// GetAuthorizedMenus 过滤授权菜单并构建层级树
+func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
+	// 1. 批量加载物理资产库 (资产全集)
+	allMenus, err := s.resourceSvc.ListAllMenus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(allMenus) == 0 {
+		return []domain.Menu{}, nil
+	}
+
+	// 2. 批量加载逻辑映射关系 (找出所有关联的 Code)
+	menuURNs := slice.Map(allMenus, func(i int, m domain.Menu) string { return m.URN() })
+	codesMap, err := s.permRepo.FindCodesByResourceURNs(ctx, menuURNs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 预加载用户全局策略集
+	policies, err := s.getEffectivePolicies(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. 内存过滤：判定哪些菜单允许访问
+	var authorizedNodes []domain.Menu
 	for _, menu := range allMenus {
-		// 反查菜单对应的逻辑码
-		codes, err := s.permRepo.FindCodesByResource(ctx, domain.ResourceTypeMenu, menu.ID)
-		if err != nil || len(codes) == 0 {
-			// 未映射能力的菜单视为公共菜单
-			authorizedMenus = append(authorizedMenus, menu)
+		// 收集该菜单的 Actions 候选集
+		candidates := []string{"*"}
+		mURN := menu.URN()
+		if codes, ok := codesMap[mURN]; ok {
+			candidates = append(candidates, codes...)
+		} else {
+			// NOTE: 未映射能力的菜单视为公共菜单 (根据业务策略决定是否放行)
+			authorizedNodes = append(authorizedNodes, menu)
 			continue
 		}
 
-		resURN := urn.New(strconv.FormatInt(tenantId, 10), "iam", "menu", menu.Path).String()
+		resURN := menu.URN()
+		ok, err := s.authorizer.Authorize(ctx, authz.AuthInput{
+			Actions:  candidates,
+			Resource: resURN,
+			Policies: policies,
+		})
 
-		isAuth := false
-		for _, code := range codes {
-			ok, _ := s.CheckPermission(ctx, userId, code, resURN)
-			if ok {
-				isAuth = true
-				break
-			}
-		}
-
-		if isAuth {
-			authorizedMenus = append(authorizedMenus, menu)
+		if err == nil && ok {
+			authorizedNodes = append(authorizedNodes, menu)
 		}
 	}
-	return authorizedMenus, nil
+
+	// 5. 高性能构建菜单树 (O(N) 复杂度)
+	return s.buildMenuTree(authorizedNodes), nil
+}
+
+// buildMenuTree 高性能构建树结构
+func (s *permissionService) buildMenuTree(nodes []domain.Menu) []domain.Menu {
+	nodeMap := make(map[int64]*domain.Menu)
+	for i := range nodes {
+		// 复制一份，避免切片底层冲突，并初始化 Children
+		menu := nodes[i]
+		menu.Children = make([]*domain.Menu, 0)
+		nodeMap[menu.ID] = &menu
+	}
+
+	var roots []domain.Menu
+	for _, m := range nodeMap {
+		if m.ParentID == 0 {
+			roots = append(roots, *m)
+		} else {
+			// 只有父节点也被授权了，子节点才挂载上去 (或者你可以选择在这里保留断层)
+			if parent, exists := nodeMap[m.ParentID]; exists {
+				parent.Children = append(parent.Children, m)
+			}
+		}
+	}
+
+	// 重新把 root 里的 children 指针更新 (因为上面 Map 里更新的是指针)
+	for i := range roots {
+		if node, exists := nodeMap[roots[i].ID]; exists {
+			roots[i].Children = node.Children
+		}
+	}
+
+	return roots
 }
 
 func (s *permissionService) CreatePermission(ctx context.Context, p domain.Permission) (int64, error) {
 	return s.permRepo.CreatePermission(ctx, p)
 }
 
-func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
-	return s.permRepo.BindResources(ctx, permId, permCode, resType, resIds)
+func (s *permissionService) GetByCode(ctx context.Context, code string) (domain.Permission, error) {
+	return s.permRepo.GetByCode(ctx, code)
+}
+
+func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error {
+	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
 }
 
 func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
@@ -224,6 +248,7 @@ func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole
 	return s.enforcer.AddGroupingPolicy(childRole, parentRole, strconv.FormatInt(tenantId, 10))
 }
 
+// GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
 func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) ([]string, error) {
 	sub := strconv.FormatInt(userId, 10)
 	tid := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
@@ -255,4 +280,9 @@ func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) (
 	return slice.Map(roles, func(idx int, r domain.Role) string {
 		return r.Code
 	}), nil
+}
+
+func (s *permissionService) buildResourceURN(ctx context.Context, service, resScope, path string) string {
+	// 修正：全局资产身份统一使用租户 "0"
+	return urn.New("0", service, resScope, path).String()
 }

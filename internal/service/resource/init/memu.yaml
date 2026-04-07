@@ -1,0 +1,616 @@
+- name: PlatformDashboard
+  path: /
+  component: Layouts
+  sort: 875
+  redirect: /cmdb/dashboard
+  meta:
+    title: 平台主页
+    icon: 
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["cmdb"]
+  children:
+  - name: GlobalSearchDiscovery
+    path: /cmdb/dashboard/search
+    component: /views/search/tabs-info.vue
+    sort: 0
+    meta:
+      title: 搜索列表
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["cmdb"]
+  - name: GlobalSearchCenter
+    path: /cmdb/dashboard
+    component: /views/search/search.vue
+    sort: 1000
+    meta:
+      title: 全局搜索
+      icon: search
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["cmdb"]
+- name: ModelGovernance
+  path: /cmdb/model
+  component: Layouts
+  sort: 1750
+  redirect: /cmdb/model/index
+  meta:
+    title: 模型管理
+    icon: model
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["cmdb"]
+  children:
+  - name: ModelInventory
+    path: index
+    component: /views/model/index.vue
+    sort: 1
+    meta:
+      title: 模型资产
+      icon: model-one
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["cmdb"]
+  - name: ModelDetail
+    path: info
+    component: /views/model/info/index.vue
+    sort: 2
+    meta:
+      title: 模型详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["cmdb"]
+  - name: RelationshipTopology
+    path: relation
+    component: /views/model/relation-graph/index.vue
+    sort: 3
+    meta:
+      title: 关联关系
+      icon: relation-graph
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["cmdb"]
+  - name: RelationshipDefinition
+    path: relation-type
+    component: /views/model/relation-type/index.vue
+    sort: 4
+    meta:
+      title: 关联类型
+      icon: relation-type
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["cmdb"]
+- name: AssetGovernance
+  path: /cmdb/resource
+  component: Layouts
+  sort: 4000
+  redirect: /cmdb/resource/index
+  meta:
+    title: 资产管理
+    icon: link
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["cmdb"]
+  children:
+  - name: AssetRegistry
+    path: index
+    component: /views/resource/warehouse/index.vue
+    sort: 1
+    meta:
+      title: 资产仓库
+      icon: resource
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["cmdb"]
+  - name: AssetList
+    path: list
+    component: /views/resource/warehouse/list/list.vue
+    sort: 2
+    meta:
+      title: 资产列表
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["cmdb"]
+  - name: AssetDetail
+    path: info
+    component: /views/resource/warehouse/info/info.vue
+    sort: 3
+    meta:
+      title: 资产详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["cmdb"]
+- name: OrderServiceCenter
+  path: /cmdb/order
+  component: Layouts
+  sort: 5000
+  redirect: /cmdb/order/index
+  meta:
+    title: 工单中心
+    icon: order-center
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["order"]
+  children:
+  - name: OrderSubmission
+    path: start
+    component: /views/order/start/index.vue
+    sort: 1000
+    meta:
+      title: 提交工单
+      icon: submit-order
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["order"]
+  - name: OrderList
+    path: list
+    component: /views/order/index.vue
+    sort: 2000
+    meta:
+      title: 工单列表
+      icon: order-list
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["order"]
+  - name: History
+    path: history
+    component: /views/task/history/index.vue
+    sort: 2500
+    meta:
+      title: 任务记录
+      icon: task-history
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["order"]
+- name: WorkflowEngine
+  path: /cmdb/process
+  component: Layouts
+  sort: 6000
+  redirect: /cmdb/process/index
+  meta:
+    title: 流程控制
+    icon: process-control
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["order"]
+  children:
+  - name: TemplateGovernance
+    path: template
+    component: /views/process/template/index.vue
+    sort: 1
+    meta:
+      title: 模版管理
+      icon: template
+      is_hidden: false
+      is_keepalive: true
+      platforms: ["order"]
+  - name: WorkflowGovernance
+    path: workflow
+    component: /views/process/manager/index.vue
+    sort: 2
+    meta:
+      title: 流程管理
+      icon: process
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["order"]
+- name: JobControlCenter
+  path: /cmdb/task
+  component: Layouts
+  sort: 7000
+  redirect: /cmdb/task/codebook
+  meta:
+    title: 任务中心
+    icon: task
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["order", "automation"]
+  children:
+  - name: JobGovernance
+    path: /task/manager
+    component: /views/task/manager/index.vue
+    sort: 0
+    meta:
+      title: 任务管理
+      icon: task-manager
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["automation"]
+  - name: JobTemplateRegistry
+    path: codebook
+    component: /views/task/codebook/index.vue
+    sort: 1
+    meta:
+      title: 任务模版
+      icon: template
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["order", "automation"]
+  - name: JobExecutorPool
+    path: /task/executor
+    component: /views/task/worker/index.vue
+    sort: 2
+    meta:
+      title: 执行节点
+      icon: worker
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["automation", "order"]
+  - name: JobRunnerInsight
+    path: runner
+    component: /views/task/runner/index.vue
+    sort: 3
+    meta:
+      title: 执行单元
+      icon: runner
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["automation"]
+- name: AlertWorkbench
+  path: /alert/workbench
+  component: Layouts
+  sort: 8000
+  redirect: /alert/workbench/workspace
+  meta:
+    title: 告警平台
+    icon: alarm
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["alert"]
+  children:
+  - name: AlertWorkspace
+    path: /alert/workspace
+    component: /pages/alert/workspace/index.vue
+    sort: 1
+    meta:
+      title: 工作空间
+      icon: workspace
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: AlertWorkspaceDetail
+    path: /alert/workspace/:id
+    component: /pages/alert/workspace/detail.vue
+    sort: 2
+    meta:
+      title: 空间详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["alert"]
+- name: TimeSeriesInsight
+  path: /alert/time_series
+  component: Layouts
+  sort: 9000
+  redirect: /alert/time_series/query
+  meta:
+    title: 时序指标
+    icon: time_series
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["alert"]
+  children:
+  - name: TimeSeriesInstantQuery
+    path: /alert/time_series/query
+    component: /pages/alert/query/index.vue
+    sort: 1
+    meta:
+      title: 即时查询
+      icon: search
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+- name: AlertManager
+  path: /alert/manager
+  component: Layouts
+  sort: 10000
+  redirect: /alert/manager/current
+  meta:
+    title: 告警管理
+    icon: alert_manager
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["alert"]
+  children:
+  - name: DataSourceRegistry
+    path: /alert/manager/datasource
+    component: /pages/alert/datasource/index.vue
+    sort: 0
+    meta:
+      title: 数据源
+      icon: datasource
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: AlertRuleDefinition
+    path: /alert/manager/rule
+    component: /pages/alert/rule/index.vue
+    sort: 1
+    meta:
+      title: 告警规则
+      icon: alert_rule
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: AlertRuleCreation
+    path: /alert/manager/rule/create
+    component: /pages/alert/rule/create.vue
+    sort: 3
+    meta:
+      title: 新增规则
+      icon: component
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: AlertRuleAdjustment
+    path: /alert/manager/rule/edit/:id
+    component: /pages/alert/rule/edit.vue
+    sort: 4
+    meta:
+      title: 编辑规则
+      icon: component
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: ActiveAlertMonitor
+    path: /alert/manager/current
+    component: /pages/alert/current/index.vue
+    sort: 5
+    meta:
+      title: 当前告警
+      icon: alert_cur
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: AlertHistoryArchive
+    path: /alert/manager/history
+    component: /pages/alert/history/index.vue
+    sort: 6
+    meta:
+      title: 历史告警
+      icon: alert_his
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: AlertRoutingLogic
+    path: /alert/manager/routing
+    component: /pages/alert/routing/index.vue
+    sort: 7
+    meta:
+      title: 路由规则
+      icon: dispatch_rule
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+- name: NotificationService
+  path: /alert/notify
+  component: Layouts
+  sort: 11000
+  redirect: /alert/notify/template
+  meta:
+    title: 通知管理
+    icon: notify_manager
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["alert", "order"]
+  children:
+  - name: TemplateGovernance
+    path: /alert/notify/template
+    component: /pages/alert/template/index.vue
+    sort: 0
+    meta:
+      title: 模版管理
+      icon: notify_template
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert", "order"]
+  - name: AlertNotifyTemplateCreate
+    path: /alert/notify/template/create
+    component: /pages/alert/template/detail.vue
+    sort: 0
+    meta:
+      title: 创建模版
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["order", "alert"]
+  - name: AlertNotifyTemplateEditId
+    path: /alert/notify/template/edit/:id
+    component: /pages/alert/template/detail.vue
+    sort: 2
+    meta:
+      title: 变更模版
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["order", "alert"]
+  - name: NotificationTemplateGroup
+    path: /alert/notify/template-set
+    component: /pages/alert/template_set/index.vue
+    sort: 4
+    meta:
+      title: 模版集合
+      icon: template_set
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: NotificationTemplateItem
+    path: /alert/notify/template-set/items/:id
+    component: /pages/alert/template_set/items.vue
+    sort: 5
+    meta:
+      title: 集合条目
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["alert"]
+  - name: AlertEscalationPipeline
+    path: /alert/notify/escalation
+    component: 1
+    sort: 6
+    redirect: /pages/alert/escalation/index.vue
+    meta:
+      title: 通知升级
+      icon: notify_escalation
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["order", "alert"]
+    children:
+    - name: EscalationPolicy
+      path: /alert/notify/escalation/config
+      component: /pages/alert/escalation/index.vue
+      sort: 1
+      meta:
+        title: 升级配置
+        icon: escalation_config
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["alert", "order"]
+    - name: EscalationStepTemplate
+      path: /alert/notify/escalation/templates
+      component: /pages/alert/escalation/templates.vue
+      sort: 2
+      meta:
+        title: 步骤模版
+        icon: escalation_step
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["order", "alert"]
+    - name: EscalationPolicyCreation
+      path: /alert/notify/escalation/config/create
+      component: /pages/alert/escalation/create.vue
+      sort: 3
+      meta:
+        title: 创建升级配置
+        icon: template_set
+        is_hidden: true
+        is_keepalive: false
+        platforms: ["order", "alert"]
+    - name: EscalationStepGovernance
+      path: /alert/notify/escalation/steps/:id
+      component: /pages/alert/escalation/steps.vue
+      sort: 4
+      meta:
+        title: 步骤管理
+        icon: template_set
+        is_hidden: true
+        is_keepalive: false
+        platforms: ["order", "alert"]
+- name: ShiftRotaLifecycle
+  path: /cmdb/rota
+  component: Layouts
+  sort: 12000
+  redirect: /cmdb/rota
+  meta:
+    title: 排班管理
+    icon: schedule
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["system"]
+  children:
+  - name: ShiftRotaLifecycle
+    path: /cmdb/rota
+    component: /views/rota/index.vue
+    sort: 1
+    meta:
+      title: 排班管理
+      icon: schedule
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: ShiftRotaDetail
+    path: /cmdb/rota/detail
+    component: /views/rota/detail.vue
+    sort: 2
+    meta:
+      title: 排班详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
+- name: SystemGovernance
+  path: /cmdb/system
+  component: Layouts
+  sort: 13000
+  redirect: /cmdb/system/menu
+  meta:
+    title: 系统管理
+    icon: process-control
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["system"]
+  children:
+  - name: RoleGovernance
+    path: role
+    component: /views/system/role/index.vue
+    sort: 1
+    meta:
+      title: 角色管理
+      icon: role
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: MenuGovernance
+    path: menu
+    component: /views/system/menu/index.vue
+    sort: 2
+    meta:
+      title: 菜单管理
+      icon: menu
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: RolePermissionMatrix
+    path: /system/role/permission-matrix/:roleCode
+    component: /views/system/role/matrix.vue
+    sort: 3
+    meta:
+      title: 权限配置
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
+  - name: UserGovernance
+    path: user
+    component: /views/system/user/index.vue
+    sort: 4
+    meta:
+      title: 用户管理
+      icon: user
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: TeamGovernance
+    path: /alert/system/team
+    component: /pages/alert/team/index.vue
+    sort: 5
+    meta:
+      title: 团队管理
+      icon: team
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system", "alert"]
+  - name: DepartmentGovernance
+    path: department
+    component: /views/system/department/index.vue
+    sort: 6
+    meta:
+      title: 部门管理
+      icon: role
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: APIInventory
+    path: api
+    component: /views/system/api/index.vue
+    sort: 7
+    meta:
+      title: 接口管理
+      icon: bug
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]

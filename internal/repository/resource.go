@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/pkg/sqlx"
 )
 
 // IResourceRepository 物理资源仓库，负责全量 Menu 和 API 资产的底数管理
@@ -16,10 +17,21 @@ type IResourceRepository interface {
 	// ListAllAPIs 列出系统中注册的所有接口清单
 	ListAllAPIs(ctx context.Context) ([]domain.API, error)
 
-	// CreateMenu 录入一个新的前端菜单资源
-	CreateMenu(ctx context.Context, m domain.Menu) (int64, error)
-	// ListMenus 获取指定租户下的全量菜单树的基础数据
-	ListMenus(ctx context.Context, tenantId int64) ([]domain.Menu, error)
+	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
+	UpsertMenu(ctx context.Context, m *domain.Menu) error
+	// SyncMenuTree 高性能同步菜单树，消除 N+1 查询
+	SyncMenuTree(ctx context.Context, menus []*domain.Menu) error
+	// ListAllMenus 获取系统中注册的所有全量菜单
+	ListAllMenus(ctx context.Context) ([]domain.Menu, error)
+	// GetMenu 根据 ID 获取菜单
+	GetMenu(ctx context.Context, id int64) (domain.Menu, error)
+	// ListMenusByParentID 获取指定父菜单下的所有直属子菜单
+	ListMenusByParentID(ctx context.Context, parentID int64) ([]domain.Menu, error)
+
+	// UpdateMenuSort 更新单个菜单排序分值与归属父节点 (原子操作)
+	UpdateMenuSort(ctx context.Context, id int64, parentID int64, sortKey int64) error
+	// BatchUpdateMenuSort 批量更新菜单排序分值（重平衡路径）
+	BatchUpdateMenuSort(ctx context.Context, menus []domain.Menu) error
 }
 
 type ResourceRepository struct {
@@ -85,41 +97,159 @@ func (r *ResourceRepository) ListAllAPIs(ctx context.Context) ([]domain.API, err
 	return res, nil
 }
 
-// CreateMenu 实现菜单资源落地
-func (r *ResourceRepository) CreateMenu(ctx context.Context, m domain.Menu) (int64, error) {
-	return r.dao.InsertMenu(ctx, dao.Menu{
-		ParentId:  m.ParentID,
-		TenantId:  m.TenantID,
-		Name:      m.Name,
-		Path:      m.Path,
-		Component: m.Component,
-		Icon:      m.Icon,
-		Sort:      m.Sort,
-		Hidden:    m.Hidden,
-	})
+// UpsertMenu 核心幂等同步逻辑：Name 存在则更新，不存在则新增
+func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) error {
+	row, err := r.dao.FindMenuByName(ctx, m.Name)
+	if err == nil {
+		m.ID = row.Id
+		return r.dao.UpdateMenu(ctx, r.toDAOMenu(*m))
+	}
+
+	id, err := r.dao.InsertMenu(ctx, r.toDAOMenu(*m))
+	if err != nil {
+		return err
+	}
+	m.ID = id
+	return nil
 }
 
-// ListMenus 获取该租户在系统中能看到的全部菜单底表
-func (r *ResourceRepository) ListMenus(ctx context.Context, tenantId int64) ([]domain.Menu, error) {
-	menus, err := r.dao.ListMenusByTenant(ctx, tenantId)
+// SyncMenuTree 实现高性能的原子级资产同步
+func (r *ResourceRepository) SyncMenuTree(ctx context.Context, menus []*domain.Menu) error {
+	// 1. 批量预加载：一次性拉取全量底数，构建 O(1) 内存索引
+	all, err := r.dao.ListAllMenus(ctx)
+	if err != nil {
+		return err
+	}
+	index := make(map[string]int64, len(all))
+	for _, m := range all {
+		index[m.Name] = m.Id
+	}
+
+	// 2. 递归对齐：在内存中完成“资产存在性”判定，避免 N+1 IO
+	return r.recursiveSync(ctx, menus, 0, index)
+}
+
+func (r *ResourceRepository) recursiveSync(ctx context.Context, menus []*domain.Menu, parentID int64, index map[string]int64) error {
+	for _, m := range menus {
+		m.ParentID = parentID
+		// 内存级匹配，无需数据库交互
+		if id, ok := index[m.Name]; ok {
+			m.ID = id
+			if err := r.dao.UpdateMenu(ctx, r.toDAOMenu(*m)); err != nil {
+				return err
+			}
+		} else {
+			id, err := r.dao.InsertMenu(ctx, r.toDAOMenu(*m))
+			if err != nil {
+				return err
+			}
+			m.ID = id
+		}
+
+		if len(m.Children) > 0 {
+			if err := r.recursiveSync(ctx, m.Children, m.ID, index); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *ResourceRepository) toDAOMenu(m domain.Menu) dao.Menu {
+	return dao.Menu{
+		Id:             m.ID,
+		ParentId:       m.ParentID,
+		Name:           m.Name,
+		Path:           m.Path,
+		Component:      m.Component,
+		Redirect:       m.Redirect,
+		PermissionCode: m.PermissionCode,
+		Sort:           m.Sort,
+		Meta: sqlx.JSONColumn[dao.MenuMeta]{
+			Valid: true,
+			Val: dao.MenuMeta{
+				Title:       m.Meta.Title,
+				Icon:        m.Meta.Icon,
+				IsHidden:    m.Meta.IsHidden,
+				IsAffix:     m.Meta.IsAffix,
+				IsKeepAlive: m.Meta.IsKeepAlive,
+				Platforms:   m.Meta.Platforms,
+			},
+		},
+	}
+}
+
+// ListAllMenus 获取系统中注册的所有全量菜单
+func (r *ResourceRepository) ListAllMenus(ctx context.Context) ([]domain.Menu, error) {
+	menus, err := r.dao.ListAllMenus(ctx)
 	if err != nil {
 		return nil, err
 	}
 	res := make([]domain.Menu, 0, len(menus))
 	for _, m := range menus {
-		res = append(res, domain.Menu{
-			ID:        m.Id,
-			ParentID:  m.ParentId,
-			TenantID:  m.TenantId,
-			Name:      m.Name,
-			Path:      m.Path,
-			Component: m.Component,
-			Icon:      m.Icon,
-			Sort:      m.Sort,
-			Hidden:    m.Hidden,
-			Ctime:     m.Ctime,
-			Utime:     m.Utime,
-		})
+		res = append(res, r.toDomainMenu(m))
 	}
 	return res, nil
+}
+
+func (r *ResourceRepository) GetMenu(ctx context.Context, id int64) (domain.Menu, error) {
+	// 暂时简单复用全量列表查找，或在 DAO 增加单个查询
+	// 为高性能考虑建议在 IResourceDAO 补充 FindMenuByID
+	all, err := r.dao.ListAllMenus(ctx)
+	if err != nil {
+		return domain.Menu{}, err
+	}
+	for _, m := range all {
+		if m.Id == id {
+			return r.toDomainMenu(m), nil
+		}
+	}
+	return domain.Menu{}, nil
+}
+
+func (r *ResourceRepository) ListMenusByParentID(ctx context.Context, parentID int64) ([]domain.Menu, error) {
+	menus, err := r.dao.ListMenusByParentID(ctx, parentID)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]domain.Menu, 0, len(menus))
+	for _, m := range menus {
+		res = append(res, r.toDomainMenu(m))
+	}
+	return res, nil
+}
+
+func (r *ResourceRepository) UpdateMenuSort(ctx context.Context, id int64, parentID int64, sortKey int64) error {
+	return r.dao.UpdateMenuSort(ctx, id, parentID, sortKey)
+}
+
+func (r *ResourceRepository) BatchUpdateMenuSort(ctx context.Context, menus []domain.Menu) error {
+	daoMenus := make([]dao.Menu, 0, len(menus))
+	for _, m := range menus {
+		daoMenus = append(daoMenus, r.toDAOMenu(m))
+	}
+	return r.dao.BatchUpdateMenuSort(ctx, daoMenus)
+}
+
+func (r *ResourceRepository) toDomainMenu(m dao.Menu) domain.Menu {
+	return domain.Menu{
+		ID:             m.Id,
+		ParentID:       m.ParentId,
+		Name:           m.Name,
+		Path:           m.Path,
+		Component:      m.Component,
+		Redirect:       m.Redirect,
+		PermissionCode: m.PermissionCode,
+		Sort:           m.Sort,
+		Meta: domain.MenuMeta{
+			Title:       m.Meta.Val.Title,
+			Icon:        m.Meta.Val.Icon,
+			IsHidden:    m.Meta.Val.IsHidden,
+			IsAffix:     m.Meta.Val.IsAffix,
+			IsKeepAlive: m.Meta.Val.IsKeepAlive,
+			Platforms:   m.Meta.Val.Platforms,
+		},
+		Ctime: m.Ctime,
+		Utime: m.Utime,
+	}
 }

@@ -1,0 +1,592 @@
+[
+  {
+    "component": "Layouts",
+    "id": "4",
+    "meta": "{ \"title\" : \"流程控制\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\" ], \"is_keepalive\" : false, \"icon\" : \"process-control\" }",
+    "name": "WorkflowEngine",
+    "path": "/cmdb/process",
+    "pid": "0",
+    "redirect": "/cmdb/process/index",
+    "sort": "6000"
+  },
+  {
+    "component": "/views/process/template/index.vue",
+    "id": "6",
+    "meta": "{ \"title\" : \"模版管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\" ], \"is_keepalive\" : true, \"icon\" : \"template\" }",
+    "name": "TemplateGovernance",
+    "path": "template",
+    "pid": "4",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "Layouts",
+    "id": "8",
+    "meta": "{ \"title\" : \"任务中心\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\", \"automation\" ], \"is_keepalive\" : false, \"icon\" : \"task\" }",
+    "name": "JobControlCenter",
+    "path": "/cmdb/task",
+    "pid": "0",
+    "redirect": "/cmdb/task/codebook",
+    "sort": "7000"
+  },
+  {
+    "component": "/views/task/codebook/index.vue",
+    "id": "9",
+    "meta": "{ \"title\" : \"任务模版\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\", \"automation\" ], \"is_keepalive\" : false, \"icon\" : \"template\" }",
+    "name": "JobTemplateRegistry",
+    "path": "codebook",
+    "pid": "8",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/views/task/worker/index.vue",
+    "id": "10",
+    "meta": "{ \"title\" : \"执行节点\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"automation\", \"order\" ], \"is_keepalive\" : false, \"icon\" : \"worker\" }",
+    "name": "JobExecutorPool",
+    "path": "/task/executor",
+    "pid": "8",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "Layouts",
+    "id": "11",
+    "meta": "{ \"title\" : \"模型管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"model\" }",
+    "name": "ModelGovernance",
+    "path": "/cmdb/model",
+    "pid": "0",
+    "redirect": "/cmdb/model/index",
+    "sort": "1750"
+  },
+  {
+    "component": "Layouts",
+    "id": "12",
+    "meta": "{ \"title\" : \"资产管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"link\" }",
+    "name": "AssetGovernance",
+    "path": "/cmdb/resource",
+    "pid": "0",
+    "redirect": "/cmdb/resource/index",
+    "sort": "4000"
+  },
+  {
+    "component": "Layouts",
+    "id": "13",
+    "meta": "{ \"title\" : \"工单中心\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\" ], \"is_keepalive\" : false, \"icon\" : \"order-center\" }",
+    "name": "OrderServiceCenter",
+    "path": "/cmdb/order",
+    "pid": "0",
+    "redirect": "/cmdb/order/index",
+    "sort": "5000"
+  },
+  {
+    "component": "Layouts",
+    "id": "15",
+    "meta": "{ \"title\" : \"系统管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"process-control\" }",
+    "name": "SystemGovernance",
+    "path": "/cmdb/system",
+    "pid": "0",
+    "redirect": "/cmdb/system/menu",
+    "sort": "13000"
+  },
+  {
+    "component": "/views/model/index.vue",
+    "id": "16",
+    "meta": "{ \"title\" : \"模型资产\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"model-one\" }",
+    "name": "ModelInventory",
+    "path": "index",
+    "pid": "11",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/views/model/info/index.vue",
+    "id": "17",
+    "meta": "{ \"title\" : \"模型详情\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "ModelDetail",
+    "path": "info",
+    "pid": "11",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "/views/model/relation-graph/index.vue",
+    "id": "18",
+    "meta": "{ \"title\" : \"关联关系\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"relation-graph\" }",
+    "name": "RelationshipTopology",
+    "path": "relation",
+    "pid": "11",
+    "redirect": "",
+    "sort": "3"
+  },
+  {
+    "component": "/views/model/relation-type/index.vue",
+    "id": "19",
+    "meta": "{ \"title\" : \"关联类型\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"relation-type\" }",
+    "name": "RelationshipDefinition",
+    "path": "relation-type",
+    "pid": "11",
+    "redirect": "",
+    "sort": "4"
+  },
+  {
+    "component": "/views/resource/warehouse/index.vue",
+    "id": "25",
+    "meta": "{ \"title\" : \"资产仓库\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"resource\" }",
+    "name": "AssetRegistry",
+    "path": "index",
+    "pid": "12",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/views/resource/warehouse/list/list.vue",
+    "id": "26",
+    "meta": "{ \"title\" : \"资产列表\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "AssetList",
+    "path": "list",
+    "pid": "12",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "/views/resource/warehouse/info/info.vue",
+    "id": "30",
+    "meta": "{ \"title\" : \"资产详情\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "AssetDetail",
+    "path": "info",
+    "pid": "12",
+    "redirect": "",
+    "sort": "3"
+  },
+  {
+    "component": "/views/order/start/index.vue",
+    "id": "31",
+    "meta": "{ \"title\" : \"提交工单\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\" ], \"is_keepalive\" : false, \"icon\" : \"submit-order\" }",
+    "name": "OrderSubmission",
+    "path": "start",
+    "pid": "13",
+    "redirect": "",
+    "sort": "1000"
+  },
+  {
+    "component": "/views/order/index.vue",
+    "id": "32",
+    "meta": "{ \"title\" : \"工单列表\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\" ], \"is_keepalive\" : false, \"icon\" : \"order-list\" }",
+    "name": "OrderList",
+    "path": "list",
+    "pid": "13",
+    "redirect": "",
+    "sort": "2000"
+  },
+  {
+    "component": "/views/process/manager/index.vue",
+    "id": "34",
+    "meta": "{ \"title\" : \"流程管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\" ], \"is_keepalive\" : false, \"icon\" : \"process\" }",
+    "name": "WorkflowGovernance",
+    "path": "workflow",
+    "pid": "4",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "/views/task/runner/index.vue",
+    "id": "35",
+    "meta": "{ \"title\" : \"执行单元\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"automation\" ], \"is_keepalive\" : false, \"icon\" : \"runner\" }",
+    "name": "JobRunnerInsight",
+    "path": "runner",
+    "pid": "8",
+    "redirect": "",
+    "sort": "3"
+  },
+  {
+    "component": "/views/task/history/index.vue",
+    "id": "36",
+    "meta": "{ \"title\" : \"任务记录\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\" ], \"is_keepalive\" : false, \"icon\" : \"task-history\" }",
+    "name": "History",
+    "path": "history",
+    "pid": "13",
+    "redirect": "",
+    "sort": "2500"
+  },
+  {
+    "component": "/views/system/role/index.vue",
+    "id": "37",
+    "meta": "{ \"title\" : \"角色管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"role\" }",
+    "name": "RoleGovernance",
+    "path": "role",
+    "pid": "15",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/views/system/api/index.vue",
+    "id": "38",
+    "meta": "{ \"title\" : \"接口管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"bug\" }",
+    "name": "APIInventory",
+    "path": "api",
+    "pid": "15",
+    "redirect": "",
+    "sort": "7"
+  },
+  {
+    "component": "/views/system/user/index.vue",
+    "id": "39",
+    "meta": "{ \"title\" : \"用户管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"user\" }",
+    "name": "UserGovernance",
+    "path": "user",
+    "pid": "15",
+    "redirect": "",
+    "sort": "4"
+  },
+  {
+    "component": "/views/system/menu/index.vue",
+    "id": "40",
+    "meta": "{ \"title\" : \"菜单管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"menu\" }",
+    "name": "MenuGovernance",
+    "path": "menu",
+    "pid": "15",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "Layouts",
+    "id": "133",
+    "meta": "{ \"title\" : \"平台主页\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "PlatformDashboard",
+    "path": "/",
+    "pid": "0",
+    "redirect": "/cmdb/dashboard",
+    "sort": "875"
+  },
+  {
+    "component": "/views/search/search.vue",
+    "id": "134",
+    "meta": "{ \"title\" : \"全局搜索\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"search\" }",
+    "name": "GlobalSearchCenter",
+    "path": "/cmdb/dashboard",
+    "pid": "133",
+    "redirect": "",
+    "sort": "1000"
+  },
+  {
+    "component": "/views/search/tabs-info.vue",
+    "id": "135",
+    "meta": "{ \"title\" : \"搜索列表\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"cmdb\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "GlobalSearchDiscovery",
+    "path": "/cmdb/dashboard/search",
+    "pid": "133",
+    "redirect": "",
+    "sort": "0"
+  },
+  {
+    "component": "/views/system/department/index.vue",
+    "id": "138",
+    "meta": "{ \"title\" : \"部门管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"role\" }",
+    "name": "DepartmentGovernance",
+    "path": "department",
+    "pid": "15",
+    "redirect": "",
+    "sort": "6"
+  },
+  {
+    "component": "Layouts",
+    "id": "148",
+    "meta": "{ \"title\" : \"排班管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"schedule\" }",
+    "name": "ShiftRotaLifecycle",
+    "path": "/cmdb/rota",
+    "pid": "0",
+    "redirect": "/cmdb/rota",
+    "sort": "12000"
+  },
+  {
+    "component": "/views/rota/index.vue",
+    "id": "149",
+    "meta": "{ \"title\" : \"排班管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"schedule\" }",
+    "name": "ShiftRotaLifecycle",
+    "path": "/cmdb/rota",
+    "pid": "148",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/views/rota/detail.vue",
+    "id": "150",
+    "meta": "{ \"title\" : \"排班详情\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "ShiftRotaDetail",
+    "path": "/cmdb/rota/detail",
+    "pid": "148",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "/pages/alert/team/index.vue",
+    "id": "169",
+    "meta": "{ \"title\" : \"团队管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"system\", \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"team\" }",
+    "name": "TeamGovernance",
+    "path": "/alert/system/team",
+    "pid": "15",
+    "redirect": "",
+    "sort": "5"
+  },
+  {
+    "component": "Layouts",
+    "id": "174",
+    "meta": "{ \"title\" : \"通知管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\", \"order\" ], \"is_keepalive\" : false, \"icon\" : \"notify_manager\" }",
+    "name": "NotificationService",
+    "path": "/alert/notify",
+    "pid": "0",
+    "redirect": "/alert/notify/template",
+    "sort": "11000"
+  },
+  {
+    "component": "/pages/alert/template/index.vue",
+    "id": "175",
+    "meta": "{ \"title\" : \"模版管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\", \"order\" ], \"is_keepalive\" : false, \"icon\" : \"notify_template\" }",
+    "name": "TemplateGovernance",
+    "path": "/alert/notify/template",
+    "pid": "174",
+    "redirect": "",
+    "sort": "0"
+  },
+  {
+    "component": "/pages/alert/template/detail.vue",
+    "id": "183",
+    "meta": "{ \"title\" : \"变更模版\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"order\", \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "AlertNotifyTemplateEditId",
+    "path": "/alert/notify/template/edit/:id",
+    "pid": "174",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "/pages/alert/template/detail.vue",
+    "id": "184",
+    "meta": "{ \"title\" : \"创建模版\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"order\", \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "AlertNotifyTemplateCreate",
+    "path": "/alert/notify/template/create",
+    "pid": "174",
+    "redirect": "",
+    "sort": "0"
+  },
+  {
+    "component": "Layouts",
+    "id": "185",
+    "meta": "{ \"title\" : \"告警管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"alert_manager\" }",
+    "name": "AlertManager",
+    "path": "/alert/manager",
+    "pid": "0",
+    "redirect": "/alert/manager/current",
+    "sort": "10000"
+  },
+  {
+    "component": "/pages/alert/rule/index.vue",
+    "id": "186",
+    "meta": "{ \"title\" : \"告警规则\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"alert_rule\" }",
+    "name": "AlertRuleDefinition",
+    "path": "/alert/manager/rule",
+    "pid": "185",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/pages/alert/rule/create.vue",
+    "id": "187",
+    "meta": "{ \"title\" : \"新增规则\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"component\" }",
+    "name": "AlertRuleCreation",
+    "path": "/alert/manager/rule/create",
+    "pid": "185",
+    "redirect": "",
+    "sort": "3"
+  },
+  {
+    "component": "/pages/alert/rule/edit.vue",
+    "id": "188",
+    "meta": "{ \"title\" : \"编辑规则\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"component\" }",
+    "name": "AlertRuleAdjustment",
+    "path": "/alert/manager/rule/edit/:id",
+    "pid": "185",
+    "redirect": "",
+    "sort": "4"
+  },
+  {
+    "component": "/pages/alert/current/index.vue",
+    "id": "189",
+    "meta": "{ \"title\" : \"当前告警\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"alert_cur\" }",
+    "name": "ActiveAlertMonitor",
+    "path": "/alert/manager/current",
+    "pid": "185",
+    "redirect": "",
+    "sort": "5"
+  },
+  {
+    "component": "/pages/alert/history/index.vue",
+    "id": "190",
+    "meta": "{ \"title\" : \"历史告警\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"alert_his\" }",
+    "name": "AlertHistoryArchive",
+    "path": "/alert/manager/history",
+    "pid": "185",
+    "redirect": "",
+    "sort": "6"
+  },
+  {
+    "component": "/pages/alert/datasource/index.vue",
+    "id": "198",
+    "meta": "{ \"title\" : \"数据源\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"datasource\" }",
+    "name": "DataSourceRegistry",
+    "path": "/alert/manager/datasource",
+    "pid": "185",
+    "redirect": "",
+    "sort": "0"
+  },
+  {
+    "component": "Layouts",
+    "id": "201",
+    "meta": "{ \"title\" : \"告警平台\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"alarm\" }",
+    "name": "AlertWorkbench",
+    "path": "/alert/workbench",
+    "pid": "0",
+    "redirect": "/alert/workbench/workspace",
+    "sort": "8000"
+  },
+  {
+    "component": "/pages/alert/workspace/index.vue",
+    "id": "202",
+    "meta": "{ \"title\" : \"工作空间\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"workspace\" }",
+    "name": "AlertWorkspace",
+    "path": "/alert/workspace",
+    "pid": "201",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/pages/alert/workspace/detail.vue",
+    "id": "203",
+    "meta": "{ \"title\" : \"空间详情\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "AlertWorkspaceDetail",
+    "path": "/alert/workspace/:id",
+    "pid": "201",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "/pages/alert/template_set/index.vue",
+    "id": "219",
+    "meta": "{ \"title\" : \"模版集合\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"template_set\" }",
+    "name": "NotificationTemplateGroup",
+    "path": "/alert/notify/template-set",
+    "pid": "174",
+    "redirect": "",
+    "sort": "4"
+  },
+  {
+    "component": "/pages/alert/template_set/items.vue",
+    "id": "220",
+    "meta": "{ \"title\" : \"集合条目\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "NotificationTemplateItem",
+    "path": "/alert/notify/template-set/items/:id",
+    "pid": "174",
+    "redirect": "",
+    "sort": "5"
+  },
+  {
+    "component": "1",
+    "id": "231",
+    "meta": "{ \"title\" : \"通知升级\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\", \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"notify_escalation\" }",
+    "name": "AlertEscalationPipeline",
+    "path": "/alert/notify/escalation",
+    "pid": "174",
+    "redirect": "/pages/alert/escalation/index.vue",
+    "sort": "6"
+  },
+  {
+    "component": "/pages/alert/escalation/index.vue",
+    "id": "232",
+    "meta": "{ \"title\" : \"升级配置\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\", \"order\" ], \"is_keepalive\" : false, \"icon\" : \"escalation_config\" }",
+    "name": "EscalationPolicy",
+    "path": "/alert/notify/escalation/config",
+    "pid": "231",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/pages/alert/escalation/templates.vue",
+    "id": "233",
+    "meta": "{ \"title\" : \"步骤模版\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"order\", \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"escalation_step\" }",
+    "name": "EscalationStepTemplate",
+    "path": "/alert/notify/escalation/templates",
+    "pid": "231",
+    "redirect": "",
+    "sort": "2"
+  },
+  {
+    "component": "/pages/alert/escalation/create.vue",
+    "id": "234",
+    "meta": "{ \"title\" : \"创建升级配置\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"order\", \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"template_set\" }",
+    "name": "EscalationPolicyCreation",
+    "path": "/alert/notify/escalation/config/create",
+    "pid": "231",
+    "redirect": "",
+    "sort": "3"
+  },
+  {
+    "component": "/pages/alert/escalation/steps.vue",
+    "id": "235",
+    "meta": "{ \"title\" : \"步骤管理\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"order\", \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"template_set\" }",
+    "name": "EscalationStepGovernance",
+    "path": "/alert/notify/escalation/steps/:id",
+    "pid": "231",
+    "redirect": "",
+    "sort": "4"
+  },
+  {
+    "component": "/pages/alert/routing/index.vue",
+    "id": "257",
+    "meta": "{ \"title\" : \"路由规则\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"dispatch_rule\" }",
+    "name": "AlertRoutingLogic",
+    "path": "/alert/manager/routing",
+    "pid": "185",
+    "redirect": "",
+    "sort": "7"
+  },
+  {
+    "component": "Layouts",
+    "id": "288",
+    "meta": "{ \"title\" : \"时序指标\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"time_series\" }",
+    "name": "TimeSeriesInsight",
+    "path": "/alert/time_series",
+    "pid": "0",
+    "redirect": "/alert/time_series/query",
+    "sort": "9000"
+  },
+  {
+    "component": "/pages/alert/query/index.vue",
+    "id": "289",
+    "meta": "{ \"title\" : \"即时查询\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"alert\" ], \"is_keepalive\" : false, \"icon\" : \"search\" }",
+    "name": "TimeSeriesInstantQuery",
+    "path": "/alert/time_series/query",
+    "pid": "288",
+    "redirect": "",
+    "sort": "1"
+  },
+  {
+    "component": "/views/system/role/matrix.vue",
+    "id": "291",
+    "meta": "{ \"title\" : \"权限配置\", \"is_hidden\" : true, \"is_affix\" : false, \"platforms\" : [ \"system\" ], \"is_keepalive\" : false, \"icon\" : \"\" }",
+    "name": "RolePermissionMatrix",
+    "path": "/system/role/permission-matrix/:roleCode",
+    "pid": "15",
+    "redirect": "",
+    "sort": "3"
+  },
+  {
+    "component": "/views/task/manager/index.vue",
+    "id": "315",
+    "meta": "{ \"title\" : \"任务管理\", \"is_hidden\" : false, \"is_affix\" : false, \"platforms\" : [ \"automation\" ], \"is_keepalive\" : false, \"icon\" : \"task-manager\" }",
+    "name": "JobGovernance",
+    "path": "/task/manager",
+    "pid": "8",
+    "redirect": "",
+    "sort": "0"
+  }
+]

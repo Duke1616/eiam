@@ -19,8 +19,8 @@ type IAuthorizer interface {
 
 // AuthInput OPA 鉴权的输入结构体
 type AuthInput struct {
-	Action   string          `json:"action"`   // 请求的操作, e.g. ecs:BatchValidate
-	Resource string          `json:"resource"` // 操作的资源, e.g. arn:ecs:001
+	Actions  []string        `json:"actions"`  // 多维动作候选人, e.g. ["*", "cmdb:host:view"]
+	Resource string          `json:"resource"` // 操作的资源 URN, e.g. eiam:1:cmdb:api:/hosts
 	Policies []domain.Policy `json:"policies"` // 用户拥有的所有策略列表
 }
 

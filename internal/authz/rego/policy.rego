@@ -5,19 +5,22 @@ import rego.v1
 default allow := false
 
 # 核心逻辑：任意一个语句允许且没有语句拒绝，则最终允许
+# 核心逻辑：候选动作集中存在被允许的动作，且没有任何一个动作被显式拒绝
 allow if {
 	some statement in input.policies[_].Statement
 	statement.Effect == "Allow"
-	action_matches(statement.Action, input.action)
+	some action in input.actions
+	action_matches(statement.Action, action)
 	resource_matches(statement.Resource, input.resource)
 	not deny
 }
 
-# 显式拒绝规则：只要有一个语句匹配且效果为 Deny，则结果为拒绝
+# 显式拒绝规则：只要候选动作集中的任一动作命中 Deny 语句，判定为拒绝
 deny if {
 	some statement in input.policies[_].Statement
 	statement.Effect == "Deny"
-	action_matches(statement.Action, input.action)
+	some action in input.actions
+	action_matches(statement.Action, action)
 	resource_matches(statement.Resource, input.resource)
 }
 

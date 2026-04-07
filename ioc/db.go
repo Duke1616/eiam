@@ -58,20 +58,19 @@ func InitDB() *gorm.DB {
 	}
 
 	// 注册多租户隔离插件
-	err = db.Use(gormx.NewTenantPlugin())
-	if err != nil {
+	if err = db.Use(gormx.NewTenantPlugin()); err != nil {
 		panic(err)
 	}
 
 	// AutoMigrate 创建/更新表结构（新增列、新建表）
-	err = dao.InitTables(db)
-	if err != nil {
+	if err = dao.InitTables(db); err != nil {
 		panic(err)
 	}
 
-	// goose 处理基础数据的初始化（Seeding）
-	// 以及 AutoMigrate 无法覆盖的复杂 DDL 变更
-	RunMigrations(db)
+	// RunMigrations 执行迁移升级
+	if err = RunMigrations(db); err != nil {
+		panic(err)
+	}
 
 	return db
 }

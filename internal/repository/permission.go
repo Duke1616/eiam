@@ -17,12 +17,14 @@ type IPermissionRepository interface {
 	// GetByCode 获取能力项元数据
 	GetByCode(ctx context.Context, code string) (domain.Permission, error)
 
-	// BindResources 全局绑定接口：定义哪些物理 ID 属于这个功能码
-	BindResources(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error
-	// FindCodesByResource 反查中心：通过物理资源定位功能逻辑码
-	FindCodesByResource(ctx context.Context, resType domain.ResourceType, resId int64) ([]string, error)
+	// BindResources 全局绑定接口：定义哪些物理标识属于这个功能码
+	BindResources(ctx context.Context, permId int64, permCode string, resURNs []string) error
+	// FindCodesByResource 反查中心：通过物理资源 URN 定位功能逻辑码
+	FindCodesByResource(ctx context.Context, resURN string) ([]string, error)
 	// FindBindingsByPerm 正查中心：查看一个功能码下聚合了哪些物理资源
 	FindBindingsByPerm(ctx context.Context, permId int64) ([]domain.ResourceBinding, error)
+	// FindCodesByResourceURNs 批量反向检索，返回 map[ResourceURN][]PermCode
+	FindCodesByResourceURNs(ctx context.Context, resURNs []string) (map[string][]string, error)
 }
 
 type PermissionRepository struct {
@@ -62,21 +64,20 @@ func (r *PermissionRepository) GetByCode(ctx context.Context, code string) (doma
 	}, nil
 }
 
-func (r *PermissionRepository) BindResources(ctx context.Context, permId int64, permCode string, resType domain.ResourceType, resIds []int64) error {
-	bindings := slice.Map(resIds, func(idx int, src int64) dao.PermissionBinding {
+func (r *PermissionRepository) BindResources(ctx context.Context, permId int64, permCode string, resURNs []string) error {
+	bindings := slice.Map(resURNs, func(idx int, src string) dao.PermissionBinding {
 		return dao.PermissionBinding{
-			PermId:       permId,
-			PermCode:     permCode,
-			ResourceType: resType.String(),
-			ResourceId:   src,
+			PermId:      permId,
+			PermCode:    permCode,
+			ResourceURN: src,
 		}
 	})
 
 	return r.dao.BindResources(ctx, bindings)
 }
 
-func (r *PermissionRepository) FindCodesByResource(ctx context.Context, resType domain.ResourceType, resId int64) ([]string, error) {
-	bindings, err := r.dao.GetBindingsByRes(ctx, resType.String(), resId)
+func (r *PermissionRepository) FindCodesByResource(ctx context.Context, resURN string) ([]string, error) {
+	bindings, err := r.dao.GetBindingsByRes(ctx, resURN)
 
 	return slice.Map(bindings, func(i int, src dao.PermissionBinding) string {
 		return src.PermCode
@@ -88,8 +89,20 @@ func (r *PermissionRepository) FindBindingsByPerm(ctx context.Context, permId in
 
 	return slice.Map(bindings, func(i int, src dao.PermissionBinding) domain.ResourceBinding {
 		return domain.ResourceBinding{
-			ResourceType: domain.ResourceType(src.ResourceType),
-			ResourceID:   src.ResourceId,
+			ResourceURN: src.ResourceURN,
 		}
 	}), err
+}
+
+func (r *PermissionRepository) FindCodesByResourceURNs(ctx context.Context, resURNs []string) (map[string][]string, error) {
+	bindings, err := r.dao.ListBindingsByResURNs(ctx, resURNs)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string][]string)
+	for _, b := range bindings {
+		res[b.ResourceURN] = append(res[b.ResourceURN], b.PermCode)
+	}
+	return res, nil
 }

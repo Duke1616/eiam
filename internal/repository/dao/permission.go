@@ -22,11 +22,10 @@ type Permission struct {
 // PermissionBinding 物理资产关联表 (全局通用映射)
 // 决定了 "iam:user:view" 这个 Code 映射了哪些 API 或 菜单
 type PermissionBinding struct {
-	Id           int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'映射ID'"`
-	PermId       int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'权限能力ID'"`
-	PermCode     string `gorm:"type:varchar(128);not null;index:idx_perm_code;comment:'权限能力码'"`
-	ResourceType string `gorm:"type:varchar(32);not null;index:idx_res;comment:'资源类型: menu/api'"`
-	ResourceId   int64  `gorm:"type:bigint;not null;index:idx_res;comment:'具体资产ID'"`
+	Id          int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'映射ID'"`
+	PermId      int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'权限能力ID'"`
+	PermCode    string `gorm:"type:varchar(128);not null;index:idx_perm_code;comment:'权限能力码'"`
+	ResourceURN string `gorm:"type:varchar(256);not null;index:idx_perm_res_urn;comment:'资源唯一标识'"`
 }
 
 type IPermissionDAO interface {
@@ -36,10 +35,12 @@ type IPermissionDAO interface {
 
 	// BindResources 批量关联物理资产
 	BindResources(ctx context.Context, bindings []PermissionBinding) error
-	// GetBindingsByRes 反查：查看 API/Menu 归属哪些能力码
-	GetBindingsByRes(ctx context.Context, resType string, resId int64) ([]PermissionBinding, error)
+	// GetBindingsByRes 反查：查看物理标识归属哪些能力码
+	GetBindingsByRes(ctx context.Context, resURN string) ([]PermissionBinding, error)
 	// ListBindingsByPerm 正查：查看能力项下的全部资产
 	ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error)
+	// ListBindingsByResURNs 批量反查：查看一组 URN 分别归属哪些能力码
+	ListBindingsByResURNs(ctx context.Context, resURNs []string) ([]PermissionBinding, error)
 }
 
 type PermissionDAO struct {
@@ -77,14 +78,20 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 	return d.db.WithContext(ctx).Create(&bindings).Error
 }
 
-func (d *PermissionDAO) GetBindingsByRes(ctx context.Context, resType string, resId int64) ([]PermissionBinding, error) {
+func (d *PermissionDAO) GetBindingsByRes(ctx context.Context, resURN string) ([]PermissionBinding, error) {
 	var res []PermissionBinding
-	err := d.db.WithContext(ctx).Where("resource_type = ? AND resource_id = ?", resType, resId).Find(&res).Error
+	err := d.db.WithContext(ctx).Where("resource_urn = ?", resURN).Find(&res).Error
 	return res, err
 }
 
 func (d *PermissionDAO) ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error) {
 	var res []PermissionBinding
 	err := d.db.WithContext(ctx).Where("perm_id = ?", permId).Find(&res).Error
+	return res, err
+}
+
+func (d *PermissionDAO) ListBindingsByResURNs(ctx context.Context, resURNs []string) ([]PermissionBinding, error) {
+	var res []PermissionBinding
+	err := d.db.WithContext(ctx).Where("resource_urn IN ?", resURNs).Find(&res).Error
 	return res, err
 }
