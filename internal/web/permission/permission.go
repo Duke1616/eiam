@@ -21,41 +21,10 @@ func NewPermissionHandler(svc permissionsvc.IPermissionService) *Handler {
 func (h *Handler) ProvidePermissions() []capability.Permission {
 	return []capability.Permission{
 		{
-			Code:  "iam:permission:create",
-			Name:  "录入逻辑权限",
-			Group: "系统管理",
-			Desc:  "允许向权限池中录入新的逻辑能力项",
-		},
-		{
-			Code:  "system:governance",
-			Name:  "全局系统治理",
-			Group: "系统管理",
-			Desc:  "具备租户、菜单、角色及全局用户权限的最高管理权限",
-		},
-		// CMDB 自发现存量权限 (待后续 CMDB 模块化重构时迁移)
-		{
-			Code:  "cmdb:dashboard:view",
-			Name:  "资产大盘查看",
-			Group: "资产中心",
-			Desc:  "允许访问 CMDB 全局搜索和资产概览仪表盘",
-		},
-		{
-			Code:  "cmdb:model:manager",
-			Name:  "模型管理",
-			Group: "资产中心",
-			Desc:  "允许进行模型定义、关联关系拓扑及模型变更管理",
-		},
-		{
-			Code:  "cmdb:resource:manager",
-			Name:  "物理资产管理",
-			Group: "资产中心",
-			Desc:  "允许在资产仓库中查看、录入及维护物理设备资产",
-		},
-		{
-			Code:  "cmdb:process:manager",
-			Name:  "流程中心治理",
-			Group: "工单中心",
-			Desc:  "允许进行流程引擎模板、工作流审批流的定义与管理",
+			Code:  "iam:menu:view",
+			Name:  "获取授权菜单",
+			Group: "资源中心",
+			Desc:  "允许获取当前用户拥有的层级菜单资产",
 		},
 	}
 }
@@ -64,8 +33,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/permission")
 
 	// 核心业务：查询当前用户的权限资产（用于前端渲染菜单）
-	// TODO: 后续可增加专门的逻辑权限点 iam:menu:view
-	g.GET("/menus", ginx.W(h.GetAuthorizedMenus))
+	// NOTE: 装饰器 capability.Capability 与 handler 声明必须完全匹配以触发全链路资产发现
+	g.GET("/menus", capability.Capability("获取授权菜单", "iam:menu:view")(
+		ginx.W(h.GetAuthorizedMenus)),
+	)
 }
 
 func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {

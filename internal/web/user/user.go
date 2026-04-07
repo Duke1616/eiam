@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,13 @@ func NewUserHandler(svc usersvc.IUserService, sp session.Provider) *Handler {
 	return &Handler{svc: svc, sp: sp}
 }
 
+func (h *Handler) ProvidePermissions() []capability.Permission {
+	return []capability.Permission{
+		{Code: "iam:user:profile", Name: "个人信息", Group: "用户中心", Desc: "允许用户查看及修正个人资料"},
+		{Code: "iam:user:logout", Name: "退出登录", Group: "用户中心", Desc: "允许安全销毁当前认证会话"},
+	}
+}
+
 func (h *Handler) PublicRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
 	g.POST("/signup", ginx.B[SignupRequest](h.Signup))
@@ -30,8 +38,12 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
-	g.GET("/profile", ginx.W(h.Profile))
-	g.POST("/logout", ginx.W(h.Logout))
+	g.GET("/profile", capability.Capability("查看个人资料", "iam:user:profile")(
+		ginx.W(h.Profile)),
+	)
+	g.POST("/logout", capability.Capability("退出登录", "iam:user:logout")(
+		ginx.W(h.Logout)),
+	)
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -79,7 +91,6 @@ func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult
 		},
 	}, nil
 }
-
 
 func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 	sess, err := session.Get(ctx)

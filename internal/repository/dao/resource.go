@@ -6,6 +6,7 @@ import (
 
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Menu 菜单资源表 (物理元数据)
@@ -116,18 +117,19 @@ func (d *ResourceDAO) UpdateMenuSort(ctx context.Context, id int64, parentID int
 }
 
 func (d *ResourceDAO) BatchUpdateMenuSort(ctx context.Context, menus []Menu) error {
-	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, m := range menus {
-			if err := tx.Model(&Menu{}).Where("id = ?", m.Id).Updates(map[string]interface{}{
-				"parent_id": m.ParentId,
-				"sort":      m.Sort,
-				"utime":     time.Now().UnixMilli(),
-			}).Error; err != nil {
-				return err
-			}
-		}
+	if len(menus) == 0 {
 		return nil
-	})
+	}
+
+	now := time.Now().UnixMilli()
+	for i := range menus {
+		menus[i].Utime = now
+	}
+
+	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"parent_id", "sort", "utime"}),
+	}).Create(&menus).Error
 }
 
 func (d *ResourceDAO) InsertAPI(ctx context.Context, a API) (int64, error) {

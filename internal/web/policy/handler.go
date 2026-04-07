@@ -36,7 +36,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 func (h *Handler) CheckLogin(ctx *ginx.Context) (ginx.Result, error) {
 	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
 	if err != nil {
-		return ginx.Result{Code: 401, Msg: "未登录"}, err
+		return ErrUnauthenticated, err
 	}
 
 	return ginx.Result{
@@ -52,7 +52,7 @@ func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Resul
 	// 1. 获取当前用户和租户上下文
 	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
 	if err != nil {
-		return ginx.Result{Code: 401, Msg: "未登录"}, err
+		return ErrUnauthenticated, err
 	}
 
 	// 2. 调用全链路 CheckAPI 逻辑 (物理 Path -> 能力码 -> 逻辑权限判定)

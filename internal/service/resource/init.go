@@ -17,6 +17,7 @@ import (
 var menuYaml []byte
 
 // IInitializer 负责系统资产的同步接口定义
+// 处理本地 EIAM 自身以及远程微服务的资产上报与初始化对齐
 type IInitializer interface {
 	// SyncDiscoveryAPIs 自动化发现并同步逻辑权限与物理 API 资产
 	SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error
@@ -57,6 +58,7 @@ func (i *Initializer) SyncPermissions(ctx context.Context, perms []capability.Pe
 			Desc:  p.Desc,
 			Group: p.Group,
 		}
+		// NOTE: 仅在权限不存在时录入，不做覆盖更新以保护 Admin 手动调整的元数据
 		if _, err := i.permRepo.CreatePermission(ctx, dp); err != nil {
 			elog.DefaultLogger.Debug("逻辑权限底数已存在或跳过同步", elog.String("code", p.Code))
 		}
@@ -68,12 +70,12 @@ func (i *Initializer) SyncPermissions(ctx context.Context, perms []capability.Pe
 
 // SyncSDKDiscovery 处理来自 SDK 的完整资产上报逻辑
 func (i *Initializer) SyncSDKDiscovery(ctx context.Context, service string, perms []capability.Permission, apis []capability.ResourceInfo) error {
-	// 1. 同步逻辑权限
+	// 1. 底座对齐：首先同步逻辑权限底数
 	if err := i.SyncPermissions(ctx, perms); err != nil {
 		return err
 	}
 
-	// 2. 同步物理路由资产与自动权限绑定
+	// 2. 资产录入：同步物理路由资产并执行自动权限绑定
 	for _, info := range apis {
 		svc := iif(info.Service != "", info.Service, service)
 
@@ -84,12 +86,13 @@ func (i *Initializer) SyncSDKDiscovery(ctx context.Context, service string, perm
 			Name:    info.Name,
 		}
 
-		// 录入物理资产
+		// 2.1 物理层：录入 API 资产
 		if _, err := i.repo.CreateAPI(ctx, api); err != nil {
 			elog.DefaultLogger.Debug("API 资产同步跳过：可能已存在", elog.String("path", api.Path))
 		}
 
-		// 执行自动权限绑定 (Dev-to-Bind)
+		// 2.2 映射层：执行自动权限绑定 (Dev-to-Bind)
+		// 开发者在代码中通过装饰器声明的代码在此处自动转化为数据库策略
 		for _, code := range info.Codes {
 			p, err := i.permRepo.GetByCode(ctx, code)
 			if err != nil {
@@ -108,23 +111,30 @@ func (i *Initializer) SyncSDKDiscovery(ctx context.Context, service string, perm
 
 // SyncDiscoveryAPIs 为本地 EIAM 提供基于 SDK Collector 的自发现支持
 func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error {
+	// 1. 资产收集：利用 SDK 扫描所有注册的 Provider 与路由装饰器
 	collector := capability.NewCollector(router).RegisterProviders(providers...)
 	perms, apis := collector.Collect()
 
+	// 2. 资产分发：标准化同步流程
 	return i.SyncSDKDiscovery(ctx, i.service, perms, apis)
 }
 
 func (i *Initializer) SyncMenus(ctx context.Context) error {
+	// 1. 数据解析：加载静态资源文件
 	var menus []*domain.Menu
 	if err := yaml.Unmarshal(menuYaml, &menus); err != nil {
 		return err
 	}
 
+	// 2. 权重计算：基于层级树自动生成 Sparse Index 初始分值
 	i.applyCalculatedSort(menus)
+
+	// 3. 资产落地：原子化同步至数据库
 	if err := i.repo.SyncMenuTree(ctx, menus); err != nil {
 		return err
 	}
 
+	// 4. 自动绑定：处理菜单与权限码的 URN 关联关系
 	bindings := make(map[string][]string)
 	i.collectMenuBindings(menus, bindings)
 
