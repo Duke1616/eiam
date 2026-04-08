@@ -1,17 +1,17 @@
 package resource
 
 import (
-	resource_init "github.com/Duke1616/eiam/internal/service/resource"
+	resourceinit "github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	initSvc resource_init.IInitializer
+	initSvc resourceinit.IInitializer
 }
 
-func NewHandler(initSvc resource_init.IInitializer) *Handler {
+func NewHandler(initSvc resourceinit.IInitializer) *Handler {
 	return &Handler{
 		initSvc: initSvc,
 	}

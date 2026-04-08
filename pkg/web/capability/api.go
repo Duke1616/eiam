@@ -39,6 +39,12 @@ var (
 	globalRegistries []IRegistry
 )
 
+// GetResourceInfo 根据 Handler 指针获取关联的资源元数据
+func GetResourceInfo(ptr uintptr) (ResourceInfo, bool) {
+	info, ok := handlerRegistry[ptr]
+	return info, ok
+}
+
 // Builder 辅助构建 API 能力声明
 type Builder struct {
 	registry IRegistry

@@ -8,8 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const CodePrefix = "iam"
-
 type Handler struct {
 	capability.IRegistry
 	svc permissionsvc.IPermissionService
@@ -26,10 +24,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/permission")
 
 	// 核心业务：查询当前用户的权限资产（用于前端渲染菜单）
-	// NOTE: 装饰器 capability.Capability 与 handler 声明 must be matched to trigger asset discovery
-	g.GET("/menus", h.Capability("获取授权菜单", "view").
-		Handle(ginx.W(h.GetAuthorizedMenus)),
-	)
+	g.GET("/menus", ginx.W(h.GetAuthorizedMenus))
 }
 
 func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {

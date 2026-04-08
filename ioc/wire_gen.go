@@ -62,7 +62,7 @@ func InitApp() (*App, error) {
 	string2 := InitServiceConfig()
 	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, string2)
 	resourceHandler := resource2.NewHandler(iInitializer)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, resourceHandler)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, resourceHandler, iPermissionService)
 	v3 := InitProviders()
 	app := &App{
 		Web:         component,
