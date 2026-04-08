@@ -546,6 +546,7 @@
   children:
   - name: RoleGovernance
     path: role
+    permission_code: iam:role:view
     component: /views/system/role/index.vue
     sort: 1
     meta:
@@ -556,6 +557,7 @@
       platforms: ["system"]
   - name: MenuGovernance
     path: menu
+    permission_code: "iam:menu:view"
     component: /views/system/menu/index.vue
     sort: 2
     meta:
@@ -576,6 +578,7 @@
       platforms: ["system"]
   - name: UserGovernance
     path: user
+    permission_code: "iam:user:view"
     component: /views/system/user/index.vue
     sort: 4
     meta:
@@ -596,6 +599,7 @@
       platforms: ["system", "alert"]
   - name: DepartmentGovernance
     path: department
+    permission_code: "iam:department:view"
     component: /views/system/department/index.vue
     sort: 6
     meta:
@@ -606,6 +610,7 @@
       platforms: ["system"]
   - name: APIInventory
     path: api
+    permission_code: "iam:api:view"
     component: /views/system/api/index.vue
     sort: 7
     meta:

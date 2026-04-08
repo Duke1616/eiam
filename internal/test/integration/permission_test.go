@@ -199,12 +199,12 @@ func (s *PermissionSuite) TestCheckAPI() {
 	})
 	require.NoError(t, err)
 	permIdTenant, err := s.permSvc.CreatePermission(ctxWithTenant, domain.Permission{
-		Code: "iam:tenant:create",
+		Code: "iam:tenant:add",
 		Name: "租户创建权",
 	})
 	require.NoError(t, err)
 	urnTenant := domain.API{Service: "iam", Method: "POST", Path: "/tenant/create"}.URN()
-	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdTenant, "iam:tenant:create", []string{urnTenant})
+	err = s.permSvc.BindResourcesToPermission(ctxWithTenant, permIdTenant, "iam:tenant:add", []string{urnTenant})
 	require.NoError(t, err)
 
 	// 9. Casbin 角色继承测试 (RBAC with Domains)

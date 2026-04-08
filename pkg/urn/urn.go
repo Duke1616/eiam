@@ -6,26 +6,24 @@ import (
 )
 
 // URN 代表 eIAM 统一资源名
-// 格式: eiam:{tenant}:{service}:{resource_type}:{resource_id}
-// 示例: eiam:0:iam:menu:user/list
+// 格式: eiam:{service}:{resource_type}:{resource_id}
+// 示例: eiam:iam:menu:user/list
 type URN struct {
 	Partition    string // 固定为 eiam
-	TenantID     string // 租户标识 (系统全局资产固定为 "0")
 	Service      string // 服务名 (iam, cmdb, etc.)
 	ResourceType string // 资源类型 (api, menu, role)
 	ResourceID   string // 资源路径或具体 ID (支持 * 通配符)
 }
 
 func (u URN) String() string {
-	return fmt.Sprintf("%s:%s:%s:%s:%s",
-		u.Partition, u.TenantID, u.Service, u.ResourceType, u.ResourceID)
+	return fmt.Sprintf("%s:%s:%s:%s",
+		u.Partition, u.Service, u.ResourceType, u.ResourceID)
 }
 
 // New 生成一个新的 URN
-func New(tenant, service, resType, resID string) URN {
+func New(service, resType, resID string) URN {
 	return URN{
 		Partition:    "eiam",
-		TenantID:     tenant,
 		Service:      service,
 		ResourceType: resType,
 		ResourceID:   resID,

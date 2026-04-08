@@ -12,9 +12,10 @@ import (
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
+	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
+	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
-	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	"github.com/google/wire"
 )
 
@@ -63,6 +64,7 @@ func InitApp() (*App, error) {
 		user.NewUserHandler,
 		policy.NewHandler,
 		tenanthdl.NewHandler,
+		resourcehdl.NewHandler,
 		// Handlers (Capabilities)
 		permissionhdl.NewPermissionHandler,
 		rolehdl.NewHandler,

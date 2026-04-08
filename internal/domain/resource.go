@@ -32,8 +32,7 @@ type Menu struct {
 }
 
 func (m Menu) URN() string {
-	// 全局资源租户 ID 固定为 "0"
-	return urn.New("0", "iam", "menu", m.Path).String()
+	return urn.New("iam", "menu", m.Path).String()
 }
 
 func (m Menu) GetID() int64 {
@@ -45,7 +44,7 @@ func (m Menu) GetSortKey() int64 {
 }
 
 func (a API) URN() string {
-	return urn.New("0", a.Service, "api", a.resID()).String()
+	return urn.New(a.Service, "api", a.resID()).String()
 }
 
 func (a API) resID() string {

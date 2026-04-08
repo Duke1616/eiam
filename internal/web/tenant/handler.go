@@ -12,22 +12,16 @@ import (
 )
 
 type Handler struct {
+	capability.IRegistry
 	svc  tenant.ITenantService
 	sess session.Provider
 }
 
 func NewHandler(svc tenant.ITenantService, sess session.Provider) *Handler {
 	return &Handler{
-		svc:  svc,
-		sess: sess,
-	}
-}
-
-func (h *Handler) ProvidePermissions() []capability.Permission {
-	return []capability.Permission{
-		{Code: "iam:tenant:create", Name: "创建租户空间", Group: "租户管理", Desc: "允许用户初始化并拥有一个全新的租户空间"},
-		{Code: "iam:tenant:list", Name: "获取所属租户", Group: "租户管理", Desc: "允许获取当前用户关联的所有租户清单"},
-		{Code: "iam:tenant:switch", Name: "切换租户上下文", Group: "租户管理", Desc: "允许在不同租户空间之间动态切换并重新鉴权"},
+		IRegistry: capability.NewRegistry("租户管理"),
+		svc:       svc,
+		sess:      sess,
 	}
 }
 
@@ -37,16 +31,16 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/tenant")
 	// 租户空间创建
-	g.POST("/create", capability.Capability("创建工作空间", "iam:tenant:create")(
-		ginx.B[CreateTenantReq](h.CreateTenant)),
+	g.POST("/create", h.Capability("创建工作空间", "iam:tenant:add").
+		Handle(ginx.B[CreateTenantReq](h.CreateTenant)),
 	)
 	// 获取我所属的所有租户列表 (用于下拉框展示)
-	g.GET("/list_mine", capability.Capability("检索我所属的租户", "iam:tenant:list")(
-		ginx.W(h.ListMyTenants)),
+	g.GET("/list_mine", h.Capability("检索我所属的租户", "iam:tenant:view").
+		Handle(ginx.W(h.ListMyTenants)),
 	)
 	// 【核心：租户上下文切换】
-	g.POST("/switch", capability.Capability("动态切换租户上下文", "iam:tenant:switch")(
-		ginx.B[SwitchTenantReq](h.SwitchTenant)),
+	g.POST("/switch", h.Capability("动态切换租户上下文", "iam:tenant:switch").
+		Handle(ginx.B[SwitchTenantReq](h.SwitchTenant)),
 	)
 }
 

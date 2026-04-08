@@ -232,7 +232,8 @@ func (s *permissionService) GetByCode(ctx context.Context, code string) (domain.
 }
 
 func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error {
-	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
+	tid := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
+	return s.permRepo.BindResources(ctx, permId, permCode, tid, resURNs)
 }
 
 func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
@@ -283,6 +284,5 @@ func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) (
 }
 
 func (s *permissionService) buildResourceURN(ctx context.Context, service, resScope, path string) string {
-	// 修正：全局资产身份统一使用租户 "0"
-	return urn.New("0", service, resScope, path).String()
+	return urn.New(service, resScope, path).String()
 }

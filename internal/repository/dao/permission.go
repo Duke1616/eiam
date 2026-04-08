@@ -5,18 +5,18 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Permission 逻辑权限能力定义 (全平台标准，不分租户)
 type Permission struct {
-	Id     int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'权限ID'"`
-	Code   string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_code;comment:'逻辑权限码'"`
-	Name   string `gorm:"type:varchar(255);not null;comment:'能力名称'"`
-	Desc   string `gorm:"type:varchar(512);not null;default:'';comment:'功能描述'"`
-	Group  string `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
-	Status int32  `gorm:"type:tinyint;not null;default:1;comment:'1-启用, 0-禁用'"`
-	Ctime  int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
-	Utime  int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Id      int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'权限ID'"`
+	Service string `gorm:"type:varchar(64);not null;default:'';index:idx_perm_service;comment:'所属服务'"`
+	Code    string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_code;comment:'逻辑权限码'"`
+	Name    string `gorm:"type:varchar(255);not null;comment:'能力名称'"`
+	Group   string `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
+	Ctime   int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
+	Utime   int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
 }
 
 // PermissionBinding 物理资产关联表 (全局通用映射)
@@ -24,16 +24,19 @@ type Permission struct {
 type PermissionBinding struct {
 	Id          int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'映射ID'"`
 	PermId      int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'权限能力ID'"`
-	PermCode    string `gorm:"type:varchar(128);not null;index:idx_perm_code;comment:'权限能力码'"`
-	ResourceURN string `gorm:"type:varchar(256);not null;index:idx_perm_res_urn;comment:'资源唯一标识'"`
+	PermCode    string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'权限能力码'"`
+	TenantID    string `gorm:"type:varchar(64);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'租户标识'"`
+	ResourceURN string `gorm:"type:varchar(256);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'资源唯一标识'"`
 }
 
 type IPermissionDAO interface {
 	Insert(ctx context.Context, p Permission) (int64, error)
+	BatchInsert(ctx context.Context, perms []Permission) error
 	Delete(ctx context.Context, id int64) error
 	GetByCode(ctx context.Context, code string) (Permission, error)
+	ListAll(ctx context.Context) ([]Permission, error)
 
-	// BindResources 批量关联物理资产
+	// BindResources 批量关联物理资产 (基于唯一索引实现幂等，不重复插入)
 	BindResources(ctx context.Context, bindings []PermissionBinding) error
 	// GetBindingsByRes 反查：查看物理标识归属哪些能力码
 	GetBindingsByRes(ctx context.Context, resURN string) ([]PermissionBinding, error)
@@ -59,6 +62,20 @@ func (d *PermissionDAO) Insert(ctx context.Context, p Permission) (int64, error)
 	return p.Id, err
 }
 
+func (d *PermissionDAO) BatchInsert(ctx context.Context, perms []Permission) error {
+	if len(perms) == 0 {
+		return nil
+	}
+
+	now := time.Now().UnixMilli()
+	for i := range perms {
+		perms[i].Ctime = now
+		perms[i].Utime = now
+	}
+
+	return d.db.WithContext(ctx).Create(&perms).Error
+}
+
 func (d *PermissionDAO) Delete(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("id = ?", id).Delete(&Permission{}).Error; err != nil {
@@ -74,8 +91,21 @@ func (d *PermissionDAO) GetByCode(ctx context.Context, code string) (Permission,
 	return p, err
 }
 
+func (d *PermissionDAO) ListAll(ctx context.Context) ([]Permission, error) {
+	var res []Permission
+	err := d.db.WithContext(ctx).Find(&res).Error
+	return res, err
+}
+
 func (d *PermissionDAO) BindResources(ctx context.Context, bindings []PermissionBinding) error {
-	return d.db.WithContext(ctx).Create(&bindings).Error
+	if len(bindings) == 0 {
+		return nil
+	}
+
+	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
+		DoNothing: true,
+	}).Create(&bindings).Error
 }
 
 func (d *PermissionDAO) GetBindingsByRes(ctx context.Context, resURN string) ([]PermissionBinding, error) {

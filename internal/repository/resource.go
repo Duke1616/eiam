@@ -12,10 +12,14 @@ import (
 type IResourceRepository interface {
 	// CreateAPI 录入一个新的物理接口资产
 	CreateAPI(ctx context.Context, a domain.API) (int64, error)
+	// BatchCreateAPI 批量录入物理接口资产
+	BatchCreateAPI(ctx context.Context, apis []domain.API) error
 	// FindAPIByPath 根据服务名、方法和路径精确匹配一个物理接口
 	FindAPIByPath(ctx context.Context, service, method, path string) (domain.API, error)
 	// ListAllAPIs 列出系统中注册的所有接口清单
 	ListAllAPIs(ctx context.Context) ([]domain.API, error)
+	// ListAPIsByService 获取指定服务的接口清单
+	ListAPIsByService(ctx context.Context, service string) ([]domain.API, error)
 
 	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
 	UpsertMenu(ctx context.Context, m *domain.Menu) error
@@ -53,6 +57,20 @@ func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64
 	})
 }
 
+func (r *ResourceRepository) BatchCreateAPI(ctx context.Context, apis []domain.API) error {
+	daoApis := make([]dao.API, 0, len(apis))
+	for _, a := range apis {
+		daoApis = append(daoApis, dao.API{
+			Service: a.Service,
+			Name:    a.Name,
+			Method:  a.Method,
+			Path:    a.Path,
+		})
+	}
+
+	return r.dao.BatchInsertAPI(ctx, daoApis)
+}
+
 // FindAPIByPath 执行接口物理路径查重与匹配
 func (r *ResourceRepository) FindAPIByPath(ctx context.Context, service, method, path string) (domain.API, error) {
 	// NOTE: 在实际高性能场景下，这里建议使用 Radix Tree 或 Map 缓存全量 API 路径
@@ -82,6 +100,27 @@ func (r *ResourceRepository) ListAllAPIs(ctx context.Context) ([]domain.API, err
 	if err != nil {
 		return nil, err
 	}
+	res := make([]domain.API, 0, len(apis))
+	for _, a := range apis {
+		res = append(res, domain.API{
+			ID:      a.Id,
+			Service: a.Service,
+			Name:    a.Name,
+			Method:  a.Method,
+			Path:    a.Path,
+			Ctime:   a.Ctime,
+			Utime:   a.Utime,
+		})
+	}
+	return res, nil
+}
+
+func (r *ResourceRepository) ListAPIsByService(ctx context.Context, service string) ([]domain.API, error) {
+	apis, err := r.dao.ListAPIsByService(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+
 	res := make([]domain.API, 0, len(apis))
 	for _, a := range apis {
 		res = append(res, domain.API{

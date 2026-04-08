@@ -6,6 +6,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
+	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
 	"github.com/Duke1616/eiam/internal/web/role"
 	"github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
@@ -21,7 +22,7 @@ import (
 func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.HandlerFunc,
 	userHdl *user.Handler, policyHdl *policy.Handler,
 	tenantHdl *tenant.Handler, permissionHdl *permission.Handler,
-	roleHdl *role.Handler) *egin.Component {
+	roleHdl *role.Handler, resourceHdl *resourcehdl.Handler) *egin.Component {
 	session.SetDefaultProvider(sp)
 
 	server := egin.Load("server.egin").Build(egin.WithListener(listener))
@@ -31,6 +32,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	userHdl.PublicRoutes(server.Engine)
 	policyHdl.PublicRoutes(server.Engine)
 	tenantHdl.PublicRoutes(server.Engine)
+	resourceHdl.PublicRoutes(server.Engine)
 
 	// 验证是否登录
 	server.Use(session.CheckLoginMiddleware())
@@ -41,6 +43,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	tenantHdl.PrivateRoutes(server.Engine)
 	permissionHdl.PrivateRoutes(server.Engine)
 	roleHdl.PrivateRoutes(server.Engine)
+	resourceHdl.PrivateRoutes(server.Engine)
 
 	return server
 }

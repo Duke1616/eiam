@@ -4,10 +4,13 @@ import (
 	"context"
 	_ "embed"
 
+	"strings"
+
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/pkg/utils"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/ecodeclub/ekit/slice"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"gopkg.in/yaml.v3"
@@ -16,21 +19,24 @@ import (
 //go:embed init/memu.yaml
 var menuYaml []byte
 
-// IInitializer 负责系统资产的同步接口定义
-// 处理本地 EIAM 自身以及远程微服务的资产上报与初始化对齐
+// IInitializer 负责中心化权限决策中心（EIAM）的资产同步接口。
+// 支持“本地自发现”与“远端 SDK 协议上报”两种归一化的对等发现逻辑。
 type IInitializer interface {
-	// SyncDiscoveryAPIs 自动化发现并同步逻辑权限与物理 API 资产
+	// SyncDiscoveryAPIs 为 EIAM 本地服务提供基于 SDK Collector 的自发现支持 (SDK 模式)
 	SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error
 
-	// SyncMenus 同步菜单物理资产
+	// SyncSDKDiscovery 处理符合标准 SDK 协议定义的资产同步请求 (SDK 模式)
+	SyncSDKDiscovery(ctx context.Context, req capability.SyncRequest) error
+
+	// SyncMenus 根据本地 YAML 定义，增量对齐 EIAM 自身维护的菜单物理资产
 	SyncMenus(ctx context.Context) error
 }
 
-// Initializer 负责中心化 EIAM 的资产同步逻辑。
+// Initializer 资产同步引擎实现。
 type Initializer struct {
 	repo     repository.IResourceRepository
 	permRepo repository.IPermissionRepository
-	service  string // 默认服务标识，用于 URN 生成
+	service  string // 当前服务的唯一标识，用于 URN 生成的前缀上下文
 
 	sorter *utils.Sorter[*domain.Menu, *domain.Menu]
 }
@@ -47,105 +53,238 @@ func NewResourceInitializer(repo repository.IResourceRepository, permRepo reposi
 	}
 }
 
-// SyncPermissions 使用 SDK 暴露的 Permission 结构同步权限底数 (逻辑能力项)
-func (i *Initializer) SyncPermissions(ctx context.Context, perms []capability.Permission) error {
-	elog.DefaultLogger.Info("开始启动逻辑权限（能力项）全量同步任务...", elog.Int("permissions_count", len(perms)))
+// SyncDiscoveryAPIs 提供 EIAM 本地全量资产的“一键同步”封装。
+func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error {
+	// 1. 资产收集：利用 SDK 扫描本地注册的 Provider 与路由装饰器
+	collector := capability.NewCollector(router).RegisterProviders(providers...)
+	perms, apis := collector.Collect()
 
-	for _, p := range perms {
-		dp := domain.Permission{
-			Code:  p.Code,
-			Name:  p.Name,
-			Desc:  p.Desc,
-			Group: p.Group,
-		}
-		// NOTE: 仅在权限不存在时录入，不做覆盖更新以保护 Admin 手动调整的元数据
-		if _, err := i.permRepo.CreatePermission(ctx, dp); err != nil {
-			elog.DefaultLogger.Debug("逻辑权限底数已存在或跳过同步", elog.String("code", p.Code))
-		}
-	}
-
-	elog.DefaultLogger.Info("逻辑权限底数同步完成")
-	return nil
+	// 2. 协议分发：转化为标准 SDK 协议语义执行同步内核逻辑
+	return i.SyncSDKDiscovery(ctx, capability.SyncRequest{
+		Service:     i.service,
+		Permissions: perms,
+		APIs:        apis,
+	})
 }
 
-// SyncSDKDiscovery 处理来自 SDK 的完整资产上报逻辑
-func (i *Initializer) SyncSDKDiscovery(ctx context.Context, service string, perms []capability.Permission, apis []capability.ResourceInfo) error {
-	// 1. 底座对齐：首先同步逻辑权限底数
-	if err := i.SyncPermissions(ctx, perms); err != nil {
+// SyncSDKDiscovery 实现高性能同步内核逻辑 (SDK 模式)。
+// 流程：底座对齐 -> 资产分析 -> 批量落盘。
+func (i *Initializer) SyncSDKDiscovery(ctx context.Context, req capability.SyncRequest) error {
+	// 1. 底座对齐：预加载全量逻辑权限，并补全上报中缺失的底数 (含物理资产引用的未知 Code)
+	permMap, err := i.alignPermissionBaseline(ctx, req)
+	if err != nil {
 		return err
 	}
 
-	// 2. 资产录入：同步物理路由资产并执行自动权限绑定
-	for _, info := range apis {
-		svc := iif(info.Service != "", info.Service, service)
+	// 2. 资产识别：在内存中完成物理资产判重，并聚合染色关系
+	toCreate, bindings, err := i.analyzeDiscoveryAssets(ctx, req)
+	if err != nil {
+		return err
+	}
 
+	// 3. 高能同步：执行高性能批量落地与染色
+	return i.persistenceDiscovery(ctx, toCreate, bindings, permMap)
+}
+
+// alignPermissionBaseline 确保权限底座包含所有已知的和被引用的权限码，并返回最新索引 Map
+func (i *Initializer) alignPermissionBaseline(ctx context.Context, req capability.SyncRequest) (map[string]domain.Permission, error) {
+	// 1. 预加载现有权限
+	permMap, err := i.getPermissionIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 提取全量候选 Code (显式声明的 + 物理资产引用的)
+	allCandidatePerms := i.extractAllCandidatePerms(req)
+
+	// 3. 批量补全缺失权限 (如果不存在则创建占位符)
+	if err = i.syncPermissionsBatch(ctx, req.Service, allCandidatePerms, permMap); err != nil {
+		return nil, err
+	}
+
+	// 4. 再次刷新索引，确保能获取到新录入权限的自增 ID
+	return i.getPermissionIndex(ctx)
+}
+
+// extractAllCandidatePerms 提取所有需要保证存在的权限定义
+// 策略：当物理资产引用了某个 Code，但该 Code 不在显式声明列表中时，为其创建 Skeleton 占位符
+func (i *Initializer) extractAllCandidatePerms(req capability.SyncRequest) []capability.Permission {
+	codeMap := make(map[string]capability.Permission)
+
+	// 1. 扫描物理 API 里的所有 Code，先初始化为 Skeleton (骨架)
+	for _, api := range req.APIs {
+		allCodes := append([]string{api.Code}, api.Dependencies...)
+		for _, code := range allCodes {
+			if code == "" {
+				continue
+			}
+
+			if _, ok := codeMap[code]; !ok {
+				group := "Auto-discovered"
+				if api.Group != "" {
+					group = api.Group
+				}
+				codeMap[code] = capability.Permission{
+					Code:  code,
+					Name:  code,
+					Group: group,
+				}
+			}
+		}
+	}
+
+	// 2. 收集显式声明的逻辑权限，高优先级覆盖 Skeleton 里的元数据 (Name/Desc/Group)
+	for _, p := range req.Permissions {
+		codeMap[p.Code] = p
+	}
+
+	// 3. 转化为切片输出
+	res := make([]capability.Permission, 0, len(codeMap))
+	for _, p := range codeMap {
+		res = append(res, p)
+	}
+	return res
+}
+
+// analyzeDiscoveryAssets 分析增量 API 资产并聚合逻辑染色映射关系
+func (i *Initializer) analyzeDiscoveryAssets(ctx context.Context, req capability.SyncRequest) ([]domain.API, map[string][]string, error) {
+	apiIndex, err := i.getAPIIndex(ctx, req.Service)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	toCreate := make([]domain.API, 0)
+	bindings := make(map[string][]string)
+
+	for _, info := range req.APIs {
 		api := domain.API{
-			Service: svc,
+			Service: iif(info.Service != "", info.Service, req.Service),
 			Method:  info.Method,
 			Path:    info.Path,
 			Name:    info.Name,
 		}
 
-		// 2.1 物理层：录入 API 资产
-		if _, err := i.repo.CreateAPI(ctx, api); err != nil {
-			elog.DefaultLogger.Debug("API 资产同步跳过：可能已存在", elog.String("path", api.Path))
+		// 判重：仅录入不存在的资产
+		if _, ok := apiIndex[api.URN()]; !ok {
+			toCreate = append(toCreate, api)
 		}
 
-		// 2.2 映射层：执行自动权限绑定 (Dev-to-Bind)
-		// 开发者在代码中通过装饰器声明的代码在此处自动转化为数据库策略
-		for _, code := range info.Codes {
-			p, err := i.permRepo.GetByCode(ctx, code)
-			if err != nil {
-				elog.DefaultLogger.Warn("绑定跳过：未找到逻辑权限码", elog.String("code", code), elog.String("path", api.Path))
-				continue
-			}
+		// 聚合：主权限码绑定到当前 API 的 URN
+		// 依赖权限码 (Includes) 不参与当前 API 的 URN 绑定，仅用于 Skeleton 发现
+		if info.Code != "" {
+			bindings[info.Code] = append(bindings[info.Code], api.URN())
+		}
+	}
 
-			if err := i.permRepo.BindResources(ctx, p.ID, code, []string{api.URN()}); err != nil {
-				elog.DefaultLogger.Error("API 权限自动绑定失败", elog.String("code", code), elog.String("path", api.Path))
-			}
+	return toCreate, bindings, nil
+}
+
+// persistenceDiscovery 执行资产落地与最终染色关系对齐
+func (i *Initializer) persistenceDiscovery(ctx context.Context, toCreate []domain.API, bindings map[string][]string, permMap map[string]domain.Permission) error {
+	// 1. API 资产批量落盘
+	if len(toCreate) > 0 {
+		if err := i.repo.BatchCreateAPI(ctx, toCreate); err != nil {
+			elog.DefaultLogger.Error("API 资产同步落地失败", elog.FieldErr(err))
+		}
+	}
+
+	// 2. 逻辑权限批量染色 (Global Binding)
+	if len(bindings) > 0 {
+		if err := i.permRepo.BatchBindResources(ctx, "0", bindings); err != nil {
+			elog.DefaultLogger.Error("API 资产逻辑染色失败", elog.FieldErr(err))
 		}
 	}
 
 	return nil
 }
 
-// SyncDiscoveryAPIs 为本地 EIAM 提供基于 SDK Collector 的自发现支持
-func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error {
-	// 1. 资产收集：利用 SDK 扫描所有注册的 Provider 与路由装饰器
-	collector := capability.NewCollector(router).RegisterProviders(providers...)
-	perms, apis := collector.Collect()
+// getPermissionIndex 构建权限码 -> 权限对象的全量索引
+func (i *Initializer) getPermissionIndex(ctx context.Context) (map[string]domain.Permission, error) {
+	all, err := i.permRepo.ListAllPermissions(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	// 2. 资产分发：标准化同步流程
-	return i.SyncSDKDiscovery(ctx, i.service, perms, apis)
+	return slice.ToMap(all, func(element domain.Permission) string {
+		return element.Code
+	}), nil
+}
+
+// getAPIIndex 构建物理标识 URN -> 接口对象的索引
+func (i *Initializer) getAPIIndex(ctx context.Context, service string) (map[string]struct{}, error) {
+	apis, err := i.repo.ListAPIsByService(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+
+	return slice.ToMapV(apis, func(a domain.API) (string, struct{}) {
+		return a.URN(), struct{}{}
+	}), nil
+}
+
+// syncPermissionsBatch 批量补全系统中不存在的权限底数
+func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService string, perms []capability.Permission, existMap map[string]domain.Permission) error {
+	// 1. 声明式流水线：先过滤出库中不存在的权限 (FindAll)，再转换为领域对象 (Map)
+	toCreate := slice.Map(slice.FindAll(perms, func(p capability.Permission) bool {
+		_, ok := existMap[p.Code]
+		return !ok
+	}), func(_ int, p capability.Permission) domain.Permission {
+		service := defaultService
+		if parts := strings.Split(p.Code, ":"); len(parts) > 0 && parts[0] != "" {
+			service = parts[0]
+		}
+
+		return domain.Permission{
+			Service: service,
+			Code:    p.Code,
+			Name:    p.Name,
+			Group:   p.Group,
+		}
+	})
+
+	// 2. 批量录入
+	if len(toCreate) > 0 {
+		return i.permRepo.BatchCreatePermission(ctx, toCreate)
+	}
+	return nil
 }
 
 func (i *Initializer) SyncMenus(ctx context.Context) error {
-	// 1. 数据解析：加载静态资源文件
+	// 1. 系统预热：加载内置菜单元数据并重平衡权重
+	menus, err := i.loadBuiltinMenus()
+	if err != nil {
+		return err
+	}
+	i.rebalanceMenuTree(menus)
+
+	// 2. 物理落地：执行菜单资产的高速原子化同步
+	if err = i.repo.SyncMenuTree(ctx, menus); err != nil {
+		return err
+	}
+
+	// 3. 染色对齐：一次性执行菜单与权限码的全局绑定
+	return i.syncMenuBindings(ctx, menus)
+}
+
+// loadBuiltinMenus 封装 YAML 加载与内置资源的内存反序列化逻辑
+func (i *Initializer) loadBuiltinMenus() ([]*domain.Menu, error) {
 	var menus []*domain.Menu
 	if err := yaml.Unmarshal(menuYaml, &menus); err != nil {
-		return err
+		return nil, err
 	}
+	return menus, nil
+}
 
-	// 2. 权重计算：基于层级树自动生成 Sparse Index 初始分值
-	i.applyCalculatedSort(menus)
-
-	// 3. 资产落地：原子化同步至数据库
-	if err := i.repo.SyncMenuTree(ctx, menus); err != nil {
-		return err
-	}
-
-	// 4. 自动绑定：处理菜单与权限码的 URN 关联关系
+// syncMenuBindings 封装菜单资源与逻辑权限的染色挂载全流程
+func (i *Initializer) syncMenuBindings(ctx context.Context, menus []*domain.Menu) error {
 	bindings := make(map[string][]string)
 	i.collectMenuBindings(menus, bindings)
 
-	for code, urns := range bindings {
-		p, err := i.permRepo.GetByCode(ctx, code)
-		if err == nil {
-			_ = i.permRepo.BindResources(ctx, p.ID, code, urns)
-		}
+	if len(bindings) == 0 {
+		return nil
 	}
 
-	return nil
+	return i.permRepo.BatchBindResources(ctx, "0", bindings)
 }
 
 func iif(cond bool, t, f string) string {
@@ -155,16 +294,18 @@ func iif(cond bool, t, f string) string {
 	return f
 }
 
+// collectMenuBindings 利用通用层级走访器，提取整棵树中所有声明了权限码的资源 URN
 func (i *Initializer) collectMenuBindings(menus []*domain.Menu, bindings map[string][]string) {
-	for _, m := range menus {
+	utils.WalkHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
+		return m.Children
+	}, func(m *domain.Menu) {
 		if m.PermissionCode != "" {
 			bindings[m.PermissionCode] = append(bindings[m.PermissionCode], m.URN())
 		}
-		i.collectMenuBindings(m.Children, bindings)
-	}
+	})
 }
 
-func (i *Initializer) applyCalculatedSort(menus []*domain.Menu) {
+func (i *Initializer) rebalanceMenuTree(menus []*domain.Menu) {
 	// 极致优雅：通过通用排序引擎一键递归重置整颗树的权重，消除局部循环逻辑与分配压力
 	i.sorter.RebalanceHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
 		return m.Children

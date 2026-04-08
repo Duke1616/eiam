@@ -14,18 +14,16 @@ import (
 )
 
 type Handler struct {
+	capability.IRegistry
 	svc usersvc.IUserService
 	sp  session.Provider
 }
 
 func NewUserHandler(svc usersvc.IUserService, sp session.Provider) *Handler {
-	return &Handler{svc: svc, sp: sp}
-}
-
-func (h *Handler) ProvidePermissions() []capability.Permission {
-	return []capability.Permission{
-		{Code: "iam:user:profile", Name: "个人信息", Group: "用户中心", Desc: "允许用户查看及修正个人资料"},
-		{Code: "iam:user:logout", Name: "退出登录", Group: "用户中心", Desc: "允许安全销毁当前认证会话"},
+	return &Handler{
+		IRegistry: capability.NewRegistry("用户中心"),
+		svc:       svc,
+		sp:        sp,
 	}
 }
 
@@ -38,11 +36,11 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
-	g.GET("/profile", capability.Capability("查看个人资料", "iam:user:profile")(
-		ginx.W(h.Profile)),
+	g.GET("/profile", h.Capability("查看个人资料", "iam:user:profile").
+		Handle(ginx.W(h.Profile)),
 	)
-	g.POST("/logout", capability.Capability("退出登录", "iam:user:logout")(
-		ginx.W(h.Logout)),
+	g.POST("/logout", h.Capability("退出登录", "iam:user:logout").
+		Handle(ginx.W(h.Logout)),
 	)
 }
 

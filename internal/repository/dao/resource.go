@@ -57,7 +57,9 @@ type IResourceDAO interface {
 	BatchUpdateMenuSort(ctx context.Context, menus []Menu) error
 
 	InsertAPI(ctx context.Context, a API) (int64, error)
+	BatchInsertAPI(ctx context.Context, apis []API) error
 	ListAllAPIs(ctx context.Context) ([]API, error)
+	ListAPIsByService(ctx context.Context, service string) ([]API, error)
 }
 
 type ResourceDAO struct {
@@ -140,8 +142,30 @@ func (d *ResourceDAO) InsertAPI(ctx context.Context, a API) (int64, error) {
 	return a.Id, err
 }
 
+func (d *ResourceDAO) BatchInsertAPI(ctx context.Context, apis []API) error {
+	if len(apis) == 0 {
+		return nil
+	}
+
+	now := time.Now().UnixMilli()
+	for i := range apis {
+		apis[i].Ctime = now
+		apis[i].Utime = now
+	}
+
+	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
+		DoUpdates: clause.AssignmentColumns([]string{"name", "utime"}),
+	}).Create(&apis).Error
+}
+
 func (d *ResourceDAO) ListAllAPIs(ctx context.Context) ([]API, error) {
 	var apis []API
 	err := d.db.WithContext(ctx).Find(&apis).Error
+	return apis, err
+}
+
+func (d *ResourceDAO) ListAPIsByService(ctx context.Context, service string) ([]API, error) {
+	var apis []API
+	err := d.db.WithContext(ctx).Where("service = ?", service).Find(&apis).Error
 	return apis, err
 }

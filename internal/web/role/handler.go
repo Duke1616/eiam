@@ -12,14 +12,16 @@ import (
 )
 
 type Handler struct {
+	capability.IRegistry
 	svc     rolesvc.IRoleService
 	permSvc permissionsvc.IPermissionService
 }
 
 func NewHandler(svc rolesvc.IRoleService, permSvc permissionsvc.IPermissionService) *Handler {
 	return &Handler{
-		svc:     svc,
-		permSvc: permSvc,
+		IRegistry: capability.NewRegistry("角色管理"),
+		svc:       svc,
+		permSvc:   permSvc,
 	}
 }
 
@@ -27,39 +29,29 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/role")
 
 	// 角色管理 (CRUD)
-	g.POST("/create", capability.Capability("创建角色", "iam:role:create")(
-		ginx.B[CreateRoleRequest](h.Create)),
+	g.POST("/create", h.Capability("创建角色", "iam:role:add").
+		Dependency("cmdb:codebook:view").
+		Handle(ginx.B[CreateRoleRequest](h.Create)),
 	)
-	g.POST("/update", capability.Capability("修改角色", "iam:role:update")(
-		ginx.B[UpdateRoleRequest](h.Update)),
+	g.POST("/update", h.Capability("修改角色", "iam:role:edit").
+		Handle(ginx.B[UpdateRoleRequest](h.Update)),
 	)
-	g.POST("/list", capability.Capability("角色列表查询", "iam:role:list")(
-		ginx.B[ListRoleRequest](h.List)),
+	g.POST("/list", h.Capability("角色列表查询", "iam:role:view").
+		Handle(ginx.B[ListRoleRequest](h.List)),
 	)
-	g.GET("/detail/:code", capability.Capability("角色详情查看", "iam:role:view")(
-		ginx.W(h.Detail)),
+	g.GET("/detail/:code", h.Capability("角色详情查看", "iam:role:get").
+		Handle(ginx.W(h.Detail)),
 	)
 
 	// 角色关系授权 (Relation)
-	g.POST("/assign", capability.Capability("角色分配操作", "iam:role:assign")(
-		ginx.BS[AssignRoleRequest](h.AssignRole)),
+	g.POST("/assign", h.Capability("角色分配操作", "iam:role:assign").
+		Handle(ginx.BS[AssignRoleRequest](h.AssignRole)),
 	)
 
 	// 查询当前用户的角色 (供 User Context 使用)
-	g.GET("/mine", capability.Capability("查看个人角色", "iam:role:view_mine")(
-		ginx.BS[any](h.GetMyRoles)),
+	g.GET("/mine", h.Capability("查看个人角色", "iam:role:view_mine").
+		Handle(ginx.BS[any](h.GetMyRoles)),
 	)
-}
-
-func (h *Handler) ProvidePermissions() []capability.Permission {
-	return []capability.Permission{
-		{Code: "iam:role:create", Name: "创建角色能力", Group: "角色管理", Desc: "允许在系统中录入新角色"},
-		{Code: "iam:role:update", Name: "修改角色能力", Group: "角色管理", Desc: "允许修改角色元数据及权限策略"},
-		{Code: "iam:role:list", Name: "角色列表查询能力", Group: "角色管理", Desc: "允许查看系统角色清单"},
-		{Code: "iam:role:view", Name: "角色详情查看能力", Group: "角色管理", Desc: "允许查看角色具体权限配置"},
-		{Code: "iam:role:assign", Name: "角色分配权限", Group: "角色管理", Desc: "允许将角色授予指定用户"},
-		{Code: "iam:role:view_mine", Name: "查看自我角色", Group: "基础能力", Desc: "允许用户查看自己拥有的角色列表"},
-	}
 }
 
 func (h *Handler) Create(ctx *ginx.Context, req CreateRoleRequest) (ginx.Result, error) {
