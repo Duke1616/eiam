@@ -88,17 +88,12 @@ func (i *Initializer) SyncSDKDiscovery(ctx context.Context, req capability.SyncR
 
 // alignPermissionBaseline 确保权限底座包含所有已知的和被引用的权限码，并返回最新索引 Map
 func (i *Initializer) alignPermissionBaseline(ctx context.Context, req capability.SyncRequest) (map[string]domain.Permission, error) {
-	// 1. 预加载现有权限
-	permMap, err := i.getPermissionIndex(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. 提取全量候选 Code (显式声明的 + 物理资产引用的)
+	// 1. 提取全量候选 Code (显式声明的 + 物理资产引用的)
 	allCandidatePerms := i.extractAllCandidatePerms(req)
 
-	// 3. 批量补全缺失权限 (如果不存在则创建占位符)
-	if err = i.syncPermissionsBatch(ctx, req.Service, allCandidatePerms, permMap); err != nil {
+	// 3. 批量补全缺失权限 (全量 Upsert，保证元数据对齐)
+	err := i.syncPermissionsBatch(ctx, req.Service, allCandidatePerms)
+	if err != nil {
 		return nil, err
 	}
 
@@ -111,24 +106,22 @@ func (i *Initializer) alignPermissionBaseline(ctx context.Context, req capabilit
 func (i *Initializer) extractAllCandidatePerms(req capability.SyncRequest) []capability.Permission {
 	codeMap := make(map[string]capability.Permission)
 
-	// 1. 扫描物理 API 里的所有 Code，先初始化为 Skeleton (骨架)
+	// 1. 扫描物理 API 里的所有主 Code，先初始化为 Skeleton (骨架)
 	for _, api := range req.APIs {
-		allCodes := append([]string{api.Code}, api.Dependencies...)
-		for _, code := range allCodes {
-			if code == "" {
-				continue
-			}
+		code := api.Code
+		if code == "" {
+			continue
+		}
 
-			if _, ok := codeMap[code]; !ok {
-				group := "Auto-discovered"
-				if api.Group != "" {
-					group = api.Group
-				}
-				codeMap[code] = capability.Permission{
-					Code:  code,
-					Name:  code,
-					Group: group,
-				}
+		if _, ok := codeMap[code]; !ok {
+			group := "Auto-discovered"
+			if api.Group != "" {
+				group = api.Group
+			}
+			codeMap[code] = capability.Permission{
+				Code:  code,
+				Name:  api.Name,
+				Group: group,
 			}
 		}
 	}
@@ -226,13 +219,10 @@ func (i *Initializer) getAPIIndex(ctx context.Context, service string) (map[stri
 	}), nil
 }
 
-// syncPermissionsBatch 批量补全系统中不存在的权限底数
-func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService string, perms []capability.Permission, existMap map[string]domain.Permission) error {
-	// 1. 声明式流水线：先过滤出库中不存在的权限 (FindAll)，再转换为领域对象 (Map)
-	toCreate := slice.Map(slice.FindAll(perms, func(p capability.Permission) bool {
-		_, ok := existMap[p.Code]
-		return !ok
-	}), func(_ int, p capability.Permission) domain.Permission {
+// syncPermissionsBatch 批量同步权限底数
+func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService string, perms []capability.Permission) error {
+	// 1. 转化为领域对象清单 (全量同步，依赖 DAO 层的 Upsert 逻辑保证一致性)
+	toCreate := slice.Map(perms, func(_ int, p capability.Permission) domain.Permission {
 		service := defaultService
 		if parts := strings.Split(p.Code, ":"); len(parts) > 0 && parts[0] != "" {
 			service = parts[0]
@@ -243,10 +233,11 @@ func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService s
 			Code:    p.Code,
 			Name:    p.Name,
 			Group:   p.Group,
+			Needs:   p.Needs,
 		}
 	})
 
-	// 2. 批量录入
+	// 2. 批量落盘 (Upsert)
 	if len(toCreate) > 0 {
 		return i.permRepo.BatchCreatePermission(ctx, toCreate)
 	}

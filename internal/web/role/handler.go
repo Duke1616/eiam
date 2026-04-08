@@ -30,7 +30,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 	// 角色管理 (CRUD)
 	g.POST("/create", h.Capability("创建角色", "add").
-		Dependency("cmdb:codebook:view").
+		Needs("cmdb:codebook:view").
 		Handle(ginx.B[CreateRoleRequest](h.Create)),
 	)
 	g.POST("/update", h.Capability("修改角色", "edit").
