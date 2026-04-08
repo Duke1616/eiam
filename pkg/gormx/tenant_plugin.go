@@ -19,12 +19,12 @@ func (p *TenantPlugin) Name() string { return "tenant_plugin" }
 func (p *TenantPlugin) Initialize(db *gorm.DB) error {
 	// 定义核心拦截点：在所有物理操作执行前插入隔离逻辑
 	cb := db.Callback()
-	
+
 	_ = cb.Create().Before("gorm:create").Register("tenant:handle_create", p.handleCreate)
 	_ = cb.Query().Before("gorm:query").Register("tenant:handle_query", p.handleQuery)
 	_ = cb.Update().Before("gorm:update").Register("tenant:handle_update", p.handleStrict)
 	_ = cb.Delete().Before("gorm:delete").Register("tenant:handle_delete", p.handleStrict)
-	
+
 	return nil
 }
 

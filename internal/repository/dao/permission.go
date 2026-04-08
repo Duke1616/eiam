@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Duke1616/eiam/pkg/gormx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -102,7 +103,7 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 		return nil
 	}
 
-	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 		DoNothing: true,
 	}).Create(&bindings).Error
