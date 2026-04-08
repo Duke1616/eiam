@@ -15,9 +15,9 @@ type Handler struct {
 	svc permissionsvc.IPermissionService
 }
 
-func NewPermissionHandler(svc permissionsvc.IPermissionService) *Handler {
+func NewHandler(svc permissionsvc.IPermissionService) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("资源中心"),
+		IRegistry: capability.NewRegistry("iam", "menu", "权限管理"),
 		svc:       svc,
 	}
 }
@@ -26,8 +26,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/permission")
 
 	// 核心业务：查询当前用户的权限资产（用于前端渲染菜单）
-	// NOTE: 装饰器 capability.Capability 与 handler 声明必须完全匹配以触发全链路资产发现
-	g.GET("/menus", h.Capability("获取授权菜单", "iam:menu:view").
+	// NOTE: 装饰器 capability.Capability 与 handler 声明 must be matched to trigger asset discovery
+	g.GET("/menus", h.Capability("获取授权菜单", "view").
 		Handle(ginx.W(h.GetAuthorizedMenus)),
 	)
 }

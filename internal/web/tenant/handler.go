@@ -19,7 +19,7 @@ type Handler struct {
 
 func NewHandler(svc tenant.ITenantService, sess session.Provider) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("租户管理"),
+		IRegistry: capability.NewRegistry("iam", "tenant", "租户管理"),
 		svc:       svc,
 		sess:      sess,
 	}
@@ -31,15 +31,15 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/tenant")
 	// 租户空间创建
-	g.POST("/create", h.Capability("创建工作空间", "iam:tenant:add").
+	g.POST("/create", h.Capability("创建租户空间", "add").
 		Handle(ginx.B[CreateTenantReq](h.CreateTenant)),
 	)
 	// 获取我所属的所有租户列表 (用于下拉框展示)
-	g.GET("/list_mine", h.Capability("检索我所属的租户", "iam:tenant:view").
+	g.GET("/list", h.Capability("查询我的租户列表", "view_mine").
 		Handle(ginx.W(h.ListMyTenants)),
 	)
 	// 【核心：租户上下文切换】
-	g.POST("/switch", h.Capability("动态切换租户上下文", "iam:tenant:switch").
+	g.POST("/switch", h.Capability("切换租户空间", "switch").
 		Handle(ginx.B[SwitchTenantReq](h.SwitchTenant)),
 	)
 }

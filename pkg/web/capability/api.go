@@ -8,9 +8,10 @@ import (
 
 // Permission 权限项定义 (逻辑权限项)
 type Permission struct {
-	Code  string `json:"code"`
-	Name  string `json:"name"`
-	Group string `json:"group"`
+	Service string `json:"service"`
+	Code    string `json:"code"`
+	Name    string `json:"name"`
+	Group   string `json:"group"`
 }
 
 // PermissionProvider 定义了逻辑权限能力项的供应接口
@@ -37,6 +38,7 @@ var (
 // Builder 辅助构建 API 能力声明
 type Builder struct {
 	registry     IRegistry
+	service      string
 	name         string
 	code         string
 	group        string
@@ -62,6 +64,7 @@ func (b *Builder) Dependency(codes ...string) *Builder {
 func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
 	handlerRegistry[ptr] = ResourceInfo{
+		Service:      b.service,
 		Name:         b.name,
 		Code:         b.code,
 		Dependencies: b.dependencies,
@@ -83,34 +86,75 @@ type IRegistry interface {
 
 // registry 权限注册中心默认实现
 type registry struct {
-	defaultGroup string
-	permissions  map[string]Permission
+	defaultService string
+	defaultModule  string
+	defaultGroup   string
+	permissions    map[string]Permission
 }
 
 // NewRegistry 创建一个新的权限注册中心实例
-func NewRegistry(group string) IRegistry {
+func NewRegistry(service, module, group string) IRegistry {
 	return &registry{
-		defaultGroup: group,
-		permissions:  make(map[string]Permission),
+		defaultService: service,
+		defaultModule:  module,
+		defaultGroup:   group,
+		permissions:    make(map[string]Permission),
 	}
 }
 
 func (r *registry) Capability(name, code string) *Builder {
-	r.permissions[code] = Permission{
-		Code:  code,
-		Name:  name,
-		Group: r.defaultGroup,
+	fullCode := r.normalizeCode(code)
+	r.permissions[fullCode] = Permission{
+		Service: r.defaultService,
+		Code:    fullCode,
+		Name:    name,
+		Group:   r.defaultGroup,
 	}
 	return &Builder{
 		registry: r,
+		service:  r.defaultService,
 		name:     name,
-		code:     code,
+		code:     fullCode,
 		group:    r.defaultGroup,
 	}
 }
 
 func (r *registry) Declare(name, code string) *Builder {
 	return r.Capability(name, code)
+}
+
+func (r *registry) normalizeCode(code string) string {
+	if r.defaultService == "" {
+		return code
+	}
+
+	// 场景 1：已经是完整路径 (eiam:iam:user:add) 或已包含服务 (iam:user:add)
+	// 判断标准：以 service: 开头
+	servicePrefix := r.defaultService + ":"
+	if len(code) >= len(servicePrefix) && code[:len(servicePrefix)] == servicePrefix {
+		return code
+	}
+
+	// 场景 2：包含模块但缺少服务 (user:add)
+	// 判断标准：包含 ":"
+	hasDelimiter := false
+	for i := 0; i < len(code); i++ {
+		if code[i] == ':' {
+			hasDelimiter = true
+			break
+		}
+	}
+	if hasDelimiter {
+		return servicePrefix + code
+	}
+
+	// 场景 3：极致精简方案 (add -> iam:role:add)
+	// 判断标准：仅有动作
+	if r.defaultModule != "" {
+		return servicePrefix + r.defaultModule + ":" + code
+	}
+
+	return servicePrefix + code
 }
 
 func (r *registry) updatePermissionGroup(code string, group string) {

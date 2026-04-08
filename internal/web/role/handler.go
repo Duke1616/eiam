@@ -19,7 +19,7 @@ type Handler struct {
 
 func NewHandler(svc rolesvc.IRoleService, permSvc permissionsvc.IPermissionService) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("角色管理"),
+		IRegistry: capability.NewRegistry("iam", "role", "角色管理"),
 		svc:       svc,
 		permSvc:   permSvc,
 	}
@@ -29,27 +29,27 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/role")
 
 	// 角色管理 (CRUD)
-	g.POST("/create", h.Capability("创建角色", "iam:role:add").
+	g.POST("/create", h.Capability("创建角色", "add").
 		Dependency("cmdb:codebook:view").
 		Handle(ginx.B[CreateRoleRequest](h.Create)),
 	)
-	g.POST("/update", h.Capability("修改角色", "iam:role:edit").
+	g.POST("/update", h.Capability("修改角色", "edit").
 		Handle(ginx.B[UpdateRoleRequest](h.Update)),
 	)
-	g.POST("/list", h.Capability("角色列表查询", "iam:role:view").
+	g.POST("/list", h.Capability("角色列表", "view").
 		Handle(ginx.B[ListRoleRequest](h.List)),
 	)
-	g.GET("/detail/:code", h.Capability("角色详情查看", "iam:role:get").
+	g.GET("/detail/:code", h.Capability("角色详情", "get").
 		Handle(ginx.W(h.Detail)),
 	)
 
 	// 角色关系授权 (Relation)
-	g.POST("/assign", h.Capability("角色分配操作", "iam:role:assign").
+	g.POST("/assign", h.Capability("角色分配", "assign").
 		Handle(ginx.BS[AssignRoleRequest](h.AssignRole)),
 	)
 
 	// 查询当前用户的角色 (供 User Context 使用)
-	g.GET("/mine", h.Capability("查看个人角色", "iam:role:view_mine").
+	g.GET("/mine", h.Capability("查看个人角色", "view_mine").
 		Handle(ginx.BS[any](h.GetMyRoles)),
 	)
 }

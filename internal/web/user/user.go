@@ -21,7 +21,7 @@ type Handler struct {
 
 func NewUserHandler(svc usersvc.IUserService, sp session.Provider) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("用户中心"),
+		IRegistry: capability.NewRegistry("iam", "user", "用户管理"),
 		svc:       svc,
 		sp:        sp,
 	}
@@ -36,10 +36,10 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
-	g.GET("/profile", h.Capability("查看个人资料", "iam:user:profile").
+	g.GET("/profile", h.Capability("查看个人资料", "profile").
 		Handle(ginx.W(h.Profile)),
 	)
-	g.POST("/logout", h.Capability("退出登录", "iam:user:logout").
+	g.POST("/logout", h.Capability("退出登录", "logout").
 		Handle(ginx.W(h.Logout)),
 	)
 }

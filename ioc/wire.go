@@ -66,7 +66,7 @@ func InitApp() (*App, error) {
 		tenanthdl.NewHandler,
 		resourcehdl.NewHandler,
 		// Handlers (Capabilities)
-		permissionhdl.NewPermissionHandler,
+		permissionhdl.NewHandler,
 		rolehdl.NewHandler,
 
 		// Providers Registry

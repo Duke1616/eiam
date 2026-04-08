@@ -13,9 +13,9 @@ import (
 
 // SyncRequest 定义了 SDK 上报资产给 EIAM 的标准协议
 type SyncRequest struct {
-	Service     string         `json:"service"`     // 服务标识，如 "order-service"
-	Permissions []Permission   `json:"permissions"` // 逻辑权限全集
-	APIs        []ResourceInfo `json:"apis"`        // 物理 API 资产全集
+	Service     string         `json:"service"`     // 服务标识 (独立仓库或部署单元，如 eiam)
+	Permissions []Permission   `json:"permissions"` // 逻辑权限清单 (内部携带各条权限所属的 Service)
+	APIs        []ResourceInfo `json:"apis"`        // 物理 API 清单 (内部携带各条 API 所属的 Service)
 }
 
 // PermSyncer 资产同步 SDK 的核心交互接口。
@@ -36,7 +36,7 @@ type defaultPermSyncer struct {
 }
 
 // NewPermSyncer 构建一个标准权限同步 SDK 实例
-// service: 当前服务的唯一标识 (URN 前缀)
+// service: 当前仓库的全局标识 (部署单元)
 // endpoint: EIAM 中心化发现 API 的完整路径
 func NewPermSyncer(service, endpoint string) PermSyncer {
 	return &defaultPermSyncer{

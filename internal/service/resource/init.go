@@ -156,12 +156,16 @@ func (i *Initializer) analyzeDiscoveryAssets(ctx context.Context, req capability
 	toCreate := make([]domain.API, 0)
 	bindings := make(map[string][]string)
 
-	for _, info := range req.APIs {
+	for _, a := range req.APIs {
+		service := req.Service
+		if a.Service != "" {
+			service = a.Service
+		}
 		api := domain.API{
-			Service: iif(info.Service != "", info.Service, req.Service),
-			Method:  info.Method,
-			Path:    info.Path,
-			Name:    info.Name,
+			Service: service,
+			Method:  a.Method,
+			Path:    a.Path,
+			Name:    a.Name,
 		}
 
 		// 判重：仅录入不存在的资产
@@ -171,8 +175,8 @@ func (i *Initializer) analyzeDiscoveryAssets(ctx context.Context, req capability
 
 		// 聚合：主权限码绑定到当前 API 的 URN
 		// 依赖权限码 (Includes) 不参与当前 API 的 URN 绑定，仅用于 Skeleton 发现
-		if info.Code != "" {
-			bindings[info.Code] = append(bindings[info.Code], api.URN())
+		if a.Code != "" {
+			bindings[a.Code] = append(bindings[a.Code], api.URN())
 		}
 	}
 
