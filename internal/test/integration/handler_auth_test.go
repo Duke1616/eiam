@@ -115,7 +115,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 		wantCode int
 	}{
 		{
-			name: "场景1：用户未注册任何角色和 API -> 预期 403",
+			name: "场景1: 用户未注册任何角色和 API -> 预期 403",
 			before: func(ctx context.Context, tid int64) {
 				// 核心修复：切换到非 Owner 的普通用户，防止被 ADMIN 角色放行
 				s.testUid = 1001
@@ -131,7 +131,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 			wantCode: http.StatusForbidden,
 		},
 		{
-			name: "场景2：用户拥有其他权限但没有当前接口权限 -> 预期 403",
+			name: "场景2: 用户拥有其他权限但没有当前接口权限 -> 预期 403",
 			before: func(ctx context.Context, tid int64) {
 				s.testUid = 1002
 				// 1. 注册 API 并关联其真正的权限码 iam:user:add
@@ -143,7 +143,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 				// 2. 赋予用户一个完全不相关的权限 (如 iam:user:view)
 				_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "OPERATOR", TenantID: tid})
 				_ = s.roleSvc.UpdatePolicies(ctx, "OPERATOR", []domain.Policy{{
-					Type: domain.CustomPolicy,
+					Type:      domain.CustomPolicy,
 					Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"iam:user:view"}, Resource: []string{"*"}}},
 				}})
 				_, _ = s.permSvc.AssignRoleToUser(ctx, s.testUid, "OPERATOR")
@@ -151,7 +151,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 			wantCode: http.StatusForbidden,
 		},
 		{
-			name: "场景3：用户拥有精准匹配的角色权限 -> 预期 200",
+			name: "场景3: 用户拥有精准匹配的角色权限 -> 预期 200",
 			before: func(ctx context.Context, tid int64) {
 				s.testUid = 1003
 				api := domain.API{Service: "iam", Method: "POST", Path: "/api/user/add"}

@@ -82,7 +82,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 		verify func(t *testing.T, menus []domain.Menu)
 	}{
 		{
-			name: "场景1：用户拥有全量菜单权限 -> 预期可见完整树",
+			name: "场景1: 用户拥有全量菜单权限 -> 预期可见完整树",
 			before: func(t *testing.T) {
 				ctx := ctxutil.WithTenantID(context.Background(), s.testTid)
 
@@ -119,7 +119,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 			},
 		},
 		{
-			name: "场景2：用户仅拥有部分子菜单权限 -> 预期父菜单保留，子菜单按需过滤",
+			name: "场景2: 用户仅拥有部分子菜单权限 -> 预期父菜单保留，子菜单按需过滤",
 			before: func(t *testing.T) {
 				ctx := ctxutil.WithTenantID(context.Background(), s.testTid)
 

@@ -79,7 +79,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 		run    func(ctx context.Context, tid int64) // 支持自定义运行逻辑，方便测试跨租户
 	}{
 		{
-			name: "场景1：ADMIN 用户请求已授权的 API 应通过",
+			name: "场景1: ADMIN 用户请求已授权的 API 应通过",
 			before: func(ctx context.Context, tid int64) {
 				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "ADMIN")
 				api := domain.API{Service: serviceName, Path: path, Method: method}
@@ -94,7 +94,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 			},
 		},
 		{
-			name: "场景2：DEVELOPER 角色请求已授权 API 应通过",
+			name: "场景2: DEVELOPER 角色请求已授权 API 应通过",
 			before: func(ctx context.Context, tid int64) {
 				_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "DEVELOPER", Name: "开发", TenantID: tid})
 				_ = s.roleSvc.UpdatePolicies(ctx, "DEVELOPER", []domain.Policy{{
@@ -114,17 +114,17 @@ func (s *PermissionSuite) TestCheckAPI() {
 			},
 		},
 		{
-			name: "场景3：多租户隔离拦截跨租户请求",
+			name: "场景3: 多租户隔离拦截跨租户请求",
 			before: func(ctx context.Context, tid int64) {
 				// 1. 在租户 A 下注册 API 并授权
 				api := domain.API{Service: serviceName, Path: path, Method: method}
 				_, _ = s.resourceSvc.CreateAPI(ctx, api)
 				permId, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "view"})
 				_ = s.permSvc.BindResourcesToPermission(ctx, permId, "view", []string{api.URN()})
-				
+
 				_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "VIEWER", TenantID: tid})
 				_ = s.roleSvc.UpdatePolicies(ctx, "VIEWER", []domain.Policy{{
-					Type: domain.CustomPolicy,
+					Type:      domain.CustomPolicy,
 					Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"view"}, Resource: []string{"*"}}},
 				}})
 				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "VIEWER")
@@ -133,14 +133,14 @@ func (s *PermissionSuite) TestCheckAPI() {
 				// 2. 模拟切换至租户 B 的上下文进行请求
 				shadowTid := int64(9991)
 				shadowCtx := ctxutil.WithTenantID(context.Background(), shadowTid)
-				
+
 				ok, err := s.permSvc.CheckAPI(shadowCtx, 8888, serviceName, method, path)
 				assert.NoError(s.T(), err)
 				assert.False(s.T(), ok, "跨租户请求应被拦截")
 			},
 		},
 		{
-			name: "场景4：Fail-closed 拦截未注册资产",
+			name: "场景4: Fail-closed 拦截未注册资产",
 			before: func(ctx context.Context, tid int64) {
 				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "SUPER_ADMIN")
 			},

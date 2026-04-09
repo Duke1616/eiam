@@ -4,49 +4,55 @@ import rego.v1
 
 default allow := false
 
-# 核心逻辑：任意一个语句允许且没有语句拒绝，则最终允许
-# 核心逻辑：候选动作集中存在被允许的动作，且没有任何一个动作被显式拒绝
+# --- 核心判定逻辑 ---
+
+# 判定原则：
+# 1. 输入的 Actions 中，必须至少有一个动作被“允许” (Match Allow)
+# 2. 输入的 Actions 中，没有任何一个动作被“显式拒绝” (Match Deny)
 allow if {
-	some statement in input.policies[_].Statement
-	statement.Effect == "Allow"
 	some action in input.actions
-	action_matches(statement.Action, action)
-	resource_matches(statement.Resource, input.resource)
-	not deny
+	is_allowed(action)
+	not has_deny_action
 }
 
-# 显式拒绝规则：只要候选动作集中的任一动作命中 Deny 语句，判定为拒绝
-deny if {
-	some statement in input.policies[_].Statement
+# --- 准入谓词 ---
+
+# 检查特定动作为什么被允许
+is_allowed(action) if {
+	some statement in resource_scoped_statements
+	statement.Effect == "Allow"
+	match_pattern(statement.Action, action)
+}
+
+# 检查是否存在任何被拒绝的动作
+# 一次性判定，只要 input.actions 中任一动作命中 Deny 语句，则整个请求熔断
+has_deny_action if {
+	some statement in resource_scoped_statements
 	statement.Effect == "Deny"
 	some action in input.actions
-	action_matches(statement.Action, action)
-	resource_matches(statement.Resource, input.resource)
+	match_pattern(statement.Action, action)
 }
 
-# 辅助规则：Action 匹配（支持通配符，如 iam:*）
-action_matches(actions, target_action) if {
-	some action in actions
-	action == "*"
+# --- 预处理：资源作用域过滤 ---
+
+# 性能优化核心：预先筛选出匹配当前 URN 的所有语句，避免在 allow/deny 判定中重复计算资源匹配
+resource_scoped_statements contains statement if {
+	some policy in input.policies
+	some statement in policy.Statement
+	match_pattern(statement.Resource, input.resource)
 }
 
-action_matches(actions, target_action) if {
-	some action in actions
-	action != "*"
-	# 显式处理包含通配符的字符串，如果 target_action 也是通配符，则直接通过
-	glob.match(action, [":"], target_action)
+# --- 通用匹配工具 ---
+
+# 支持通配符 "*" 全量匹配
+match_pattern(patterns, target) if {
+	"*" in patterns
 }
 
-# 辅助规则：Resource 匹配（支持通配符）
-resource_matches(resources, target_resource) if {
-	some resource in resources
-	# 如果是 "*" 则匹配所有
-	resource == "*"
-}
-
-resource_matches(resources, target_resource) if {
-	some resource in resources
-	resource != "*"
-	# 将 ":" 包装成数组 [":"]
-	glob.match(resource, [":"], target_resource)
+# 支持 Glob 模式匹配（如 "iam:user:*"）
+match_pattern(patterns, target) if {
+	some pattern in patterns
+	pattern != "*"
+	# 利用 glob.match 处理分段匹配，[":"] 为分隔符，对 URN 友好
+	glob.match(pattern, [":"], target)
 }

@@ -11,14 +11,14 @@ import (
 
 // Permission 逻辑权限能力定义 (全平台标准，不分租户)
 type Permission struct {
-	Id           int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'权限ID'"`
-	Service      string `gorm:"type:varchar(64);not null;default:'';index:idx_perm_service;comment:'所属服务'"`
-	Code         string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_code;comment:'逻辑权限码'"`
-	Name         string `gorm:"type:varchar(255);not null;comment:'能力名称'"`
-	Group        string   `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
-	Needs        []string `gorm:"serializer:json;type:text;comment:'依赖能力项'"`
-	Ctime        int64    `gorm:"type:bigint;not null;comment:'创建时间'"`
-	Utime        int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Id      int64    `gorm:"type:bigint;primaryKey;autoIncrement;comment:'权限ID'"`
+	Service string   `gorm:"type:varchar(64);not null;default:'';index:idx_perm_service;comment:'所属服务'"`
+	Code    string   `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_code;comment:'逻辑权限码'"`
+	Name    string   `gorm:"type:varchar(255);not null;comment:'能力名称'"`
+	Group   string   `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
+	Needs   []string `gorm:"serializer:json;type:text;comment:'依赖能力项'"`
+	Ctime   int64    `gorm:"type:bigint;not null;comment:'创建时间'"`
+	Utime   int64    `gorm:"type:bigint;not null;comment:'更新时间'"`
 }
 
 // PermissionBinding 物理资产关联表 (全局通用映射)
@@ -27,7 +27,7 @@ type PermissionBinding struct {
 	Id          int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'映射ID'"`
 	PermId      int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'权限能力ID'"`
 	PermCode    string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'权限能力码'"`
-	TenantID    string `gorm:"type:varchar(64);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'租户标识'"`
+	TenantId    int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'租户标识'"`
 	ResourceURN string `gorm:"type:varchar(256);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'资源唯一标识'"`
 }
 

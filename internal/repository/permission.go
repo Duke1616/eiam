@@ -22,9 +22,9 @@ type IPermissionRepository interface {
 	ListAllPermissions(ctx context.Context) ([]domain.Permission, error)
 
 	// BindResources 全局绑定接口：定义哪些物理标识属于这个功能码
-	BindResources(ctx context.Context, permId int64, permCode string, tenantID string, resURNs []string) error
+	BindResources(ctx context.Context, permId int64, permCode string, tenantID int64, resURNs []string) error
 	// BatchBindResources 批量执行资源染色逻辑 (高性能模式)
-	BatchBindResources(ctx context.Context, tenantID string, bindings map[string][]string) error
+	BatchBindResources(ctx context.Context, tenantID int64, bindings map[string][]string) error
 	// FindCodesByResource 反查中心：通过物理资源 URN 定位功能逻辑码
 	FindCodesByResource(ctx context.Context, resURN string) ([]string, error)
 	// FindBindingsByPerm 正查中心：查看一个功能码下聚合了哪些物理资源
@@ -100,12 +100,12 @@ func (r *PermissionRepository) toDomain(p dao.Permission) domain.Permission {
 	}
 }
 
-func (r *PermissionRepository) BindResources(ctx context.Context, permId int64, permCode string, tenantID string, resURNs []string) error {
+func (r *PermissionRepository) BindResources(ctx context.Context, permId int64, permCode string, tenantID int64, resURNs []string) error {
 	bindings := slice.Map(resURNs, func(idx int, src string) dao.PermissionBinding {
 		return dao.PermissionBinding{
 			PermId:      permId,
 			PermCode:    permCode,
-			TenantID:    tenantID,
+			TenantId:    tenantID,
 			ResourceURN: src,
 		}
 	})
@@ -113,7 +113,7 @@ func (r *PermissionRepository) BindResources(ctx context.Context, permId int64, 
 	return r.dao.BindResources(ctx, bindings)
 }
 
-func (r *PermissionRepository) BatchBindResources(ctx context.Context, tenantID string, bindings map[string][]string) error {
+func (r *PermissionRepository) BatchBindResources(ctx context.Context, tenantID int64, bindings map[string][]string) error {
 	// 1. 预加载权限索引，批量获取 PermID (避免在循环中触发 GetByCode)
 	all, err := r.ListAllPermissions(ctx)
 	if err != nil {
@@ -136,7 +136,7 @@ func (r *PermissionRepository) BatchBindResources(ctx context.Context, tenantID 
 			daoBindings = append(daoBindings, dao.PermissionBinding{
 				PermId:      id,
 				PermCode:    code,
-				TenantID:    tenantID,
+				TenantId:    tenantID,
 				ResourceURN: urn,
 			})
 		}
@@ -162,7 +162,7 @@ func (r *PermissionRepository) FindBindingsByPerm(ctx context.Context, permId in
 
 	return slice.Map(bindings, func(i int, src dao.PermissionBinding) domain.ResourceBinding {
 		return domain.ResourceBinding{
-			TenantID:    src.TenantID,
+			TenantId:    src.TenantId,
 			ResourceURN: src.ResourceURN,
 		}
 	}), err
