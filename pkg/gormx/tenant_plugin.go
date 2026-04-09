@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"gorm.io/gorm"
@@ -17,7 +18,10 @@ const (
 )
 
 // TenantPlugin 提供多租户自动隔离的核心插件
-type TenantPlugin struct{}
+type TenantPlugin struct {
+	// cache 用于存储模型是否共享的判定结果，Key 为表名，Value 为 bool
+	cache sync.Map
+}
 
 func (p *TenantPlugin) Name() string { return "tenant_plugin" }
 
@@ -49,7 +53,6 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 		return
 	}
 
-	// 核心修复：处理批量插入场景 (ReflectValue 为 Slice)
 	rv := db.Statement.ReflectValue
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
@@ -65,7 +68,6 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 
 // setTenantField 安全设置字段值
 func (p *TenantPlugin) setTenantField(ctx context.Context, field *schema.Field, value reflect.Value, tid int64) {
-	// 如果已经是指针/接口，递归取值
 	for value.Kind() == reflect.Ptr || value.Kind() == reflect.Interface {
 		if value.IsNil() {
 			return
@@ -82,7 +84,7 @@ func (p *TenantPlugin) setTenantField(ctx context.Context, field *schema.Field, 
 	}
 }
 
-// handleQuery 查询时的租户条件：允许看到当前租户或系统全局（0号）租户
+// handleQuery 查询时的租户条件
 func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	if p.shouldSkip(db) {
 		return
@@ -90,9 +92,9 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 
 	tid := ctxutil.GetTenantID(db.Statement.Context)
 	if tid != 0 {
-		if field, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
-			tag := string(field.Tag)
-			if strings.Contains(tag, `eiam:"shared"`) || strings.Contains(tag, `eiam:'shared'`) {
+		if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
+			// 核心优化：利用插件内部缓存探测结果
+			if p.isShared(db.Statement.Schema) {
 				db.Where(fmt.Sprintf("%s IN (?, 0)", tenantColumn), tid)
 			} else {
 				db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid)
@@ -101,7 +103,28 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	}
 }
 
-// handleStrict 更新/删除时的租户条件：严禁跨租户或篡改全局数据
+// isShared 探测该模型是否标记为 eiam:"shared"
+func (p *TenantPlugin) isShared(sch *schema.Schema) bool {
+	// 1. 尝试从缓存读取 (Key 使用表名，因为 Schema 是单例)
+	if val, ok := p.cache.Load(sch.Table); ok {
+		return val.(bool)
+	}
+
+	// 2. 缓存未命中，执行探测逻辑
+	isShared := false
+	if field, ok := sch.FieldsByDBName[tenantColumn]; ok {
+		tag := string(field.Tag)
+		if strings.Contains(tag, `eiam:"shared"`) || strings.Contains(tag, `eiam:'shared'`) {
+			isShared = true
+		}
+	}
+
+	// 3. 结果存入缓存
+	p.cache.Store(sch.Table, isShared)
+	return isShared
+}
+
+// handleStrict 更新/删除时的租户条件
 func (p *TenantPlugin) handleStrict(db *gorm.DB) {
 	if p.shouldSkip(db) {
 		return

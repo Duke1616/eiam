@@ -92,7 +92,7 @@ func (d *RoleDAO) GetByCode(ctx context.Context, code string) (Role, error) {
 func (d *RoleDAO) ListByIncludeCodes(ctx context.Context, codes []string) ([]Role, error) {
 	var roles []Role
 	err := d.db.WithContext(ctx).Where("code IN ?", codes).
-		Order("ctime DESC").Find(&roles).Error
+		Order("tenant_id DESC, ctime DESC").Find(&roles).Error
 	return roles, err
 }
 

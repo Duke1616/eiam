@@ -70,9 +70,20 @@ func (r *RoleRepository) ListByIncludeCodes(ctx context.Context, codes []string)
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
-		return r.toDomain(src)
-	}), nil
+
+	// 核心去重逻辑：同一个 Code 仅保留优先级最高的角色。
+	// 由于 DAO 已经按 tenant_id DESC 排序，第一个被遇到的即为租户私有角色（若存在）。
+	seen := make(map[string]struct{})
+	res := make([]domain.Role, 0, len(roles))
+	for _, role := range roles {
+		if _, ok := seen[role.Code]; ok {
+			continue
+		}
+		seen[role.Code] = struct{}{}
+		res = append(res, r.toDomain(role))
+	}
+
+	return res, nil
 }
 
 func (r *RoleRepository) UpdatePolicies(ctx context.Context, code string, policies []domain.Policy) error {

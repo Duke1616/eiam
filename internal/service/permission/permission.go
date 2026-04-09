@@ -11,7 +11,6 @@ import (
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
-	"github.com/Duke1616/eiam/pkg/urn"
 	"github.com/casbin/casbin/v2"
 	"github.com/ecodeclub/ekit/slice"
 )
@@ -91,13 +90,10 @@ func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceN
 		return false, err
 	}
 
-	// 4. 环境聚合：直接使用资源的唯一身份标识 (URN)
-	resURN := api.URN()
-
-	// 5. OPA 裁决：一次性提交该 API 的所有身份码，让 OPA 处理“全局允许 (SUPER_ADMIN *)”与“特定熔断 (ADMIN Deny)”
+	// 4. OPA 裁决：一次性提交该 API 的所有身份码，让 OPA 处理“全局允许 (SUPER_ADMIN *)”与“特定熔断 (ADMIN Deny)”
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
 		Actions:  codes,
-		Resource: resURN,
+		Resource: api.URN(),
 		Policies: policies,
 	})
 }
@@ -114,6 +110,76 @@ func (s *permissionService) CheckPermission(ctx context.Context, userId int64, a
 		Resource: resourceURN,
 		Policies: policies,
 	})
+}
+
+// GetAuthorizedMenus 过滤授权菜单并构建层级树 (重构版：逻辑清晰、职责分离)
+func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
+	// 1. 数据准备：加载资产全集、染色映射及用户策略
+	allMenus, err := s.resourceSvc.ListAllMenus(ctx)
+	if err != nil || len(allMenus) == 0 {
+		return []domain.Menu{}, err
+	}
+
+	menuURNs := slice.Map(allMenus, func(_ int, m domain.Menu) string { return m.URN() })
+	codesMap, err := s.permRepo.FindCodesByResourceURNs(ctx, menuURNs)
+	if err != nil {
+		return nil, err
+	}
+
+	policies, err := s.getEffectivePolicies(ctx, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 批量鉴权：利用 OPA 向量化能力一次性判定所有 URN
+	allowedURNs, err := s.authorizer.AuthorizeBatch(ctx, authz.AuthInput{
+		BatchResources:  menuURNs,
+		ResourceActions: s.buildResourceActionMap(menuURNs, codesMap),
+		Policies:        policies,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 结果精炼：合并 OPA 判权结果与“公共菜单”放行逻辑
+	authorizedNodes := s.filterAccessibleMenus(allMenus, codesMap, allowedURNs)
+
+	// 4. 结构构建：构建高性能树形视图
+	return s.buildMenuTree(authorizedNodes), nil
+}
+
+// buildResourceActionMap 构建 URN -> 动作候选集的映射表
+func (s *permissionService) buildResourceActionMap(urns []string, codesMap map[string][]string) map[string][]string {
+	resActions := make(map[string][]string, len(urns))
+	for _, u := range urns {
+		actions := []string{"*"} // 默认通配符
+		if codes, ok := codesMap[u]; ok {
+			actions = append(actions, codes...)
+		}
+		resActions[u] = actions
+	}
+	return resActions
+}
+
+// filterAccessibleMenus 根据 OPA 允许列表及公共资产定义，筛选最终可见节点
+func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap map[string][]string, allowedURNs []string) []domain.Menu {
+	allowedSet := make(map[string]string, len(allowedURNs))
+	for _, u := range allowedURNs {
+		allowedSet[u] = u
+	}
+
+	res := make([]domain.Menu, 0)
+	for _, m := range all {
+		mURN := m.URN()
+		_, isAllowed := allowedSet[mURN]
+		_, isBound := codesMap[mURN]
+
+		// 判权通过 OR 服务端未对其进行任何权限染色的资产（公共资产）
+		if isAllowed || !isBound {
+			res = append(res, m)
+		}
+	}
+	return res
 }
 
 // getEffectivePolicies 聚合用户在当前上下文下的所有有效策略 (含系统预设逻辑)
@@ -138,65 +204,10 @@ func (s *permissionService) getEffectivePolicies(ctx context.Context, userId int
 	return allPolicies, nil
 }
 
-// GetAuthorizedMenus 过滤授权菜单并构建层级树
-func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
-	// 1. 批量加载物理资产库 (资产全集)
-	allMenus, err := s.resourceSvc.ListAllMenus(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(allMenus) == 0 {
-		return []domain.Menu{}, nil
-	}
-
-	// 2. 批量加载逻辑映射关系 (找出所有关联的 Code)
-	menuURNs := slice.Map(allMenus, func(i int, m domain.Menu) string { return m.URN() })
-	codesMap, err := s.permRepo.FindCodesByResourceURNs(ctx, menuURNs)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. 预加载用户全局策略集
-	policies, err := s.getEffectivePolicies(ctx, userId)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. 内存过滤：判定哪些菜单允许访问
-	var authorizedNodes []domain.Menu
-	for _, menu := range allMenus {
-		// 收集该菜单的 Actions 候选集
-		candidates := []string{"*"}
-		mURN := menu.URN()
-		if codes, ok := codesMap[mURN]; ok {
-			candidates = append(candidates, codes...)
-		} else {
-			// NOTE: 未映射能力的菜单视为公共菜单 (根据业务策略决定是否放行)
-			authorizedNodes = append(authorizedNodes, menu)
-			continue
-		}
-
-		resURN := menu.URN()
-		ok, err := s.authorizer.Authorize(ctx, authz.AuthInput{
-			Actions:  candidates,
-			Resource: resURN,
-			Policies: policies,
-		})
-
-		if err == nil && ok {
-			authorizedNodes = append(authorizedNodes, menu)
-		}
-	}
-
-	// 5. 高性能构建菜单树 (O(N) 复杂度)
-	return s.buildMenuTree(authorizedNodes), nil
-}
-
 // buildMenuTree 高性能构建树结构
 func (s *permissionService) buildMenuTree(nodes []domain.Menu) []domain.Menu {
 	nodeMap := make(map[int64]*domain.Menu)
 	for i := range nodes {
-		// 复制一份，避免切片底层冲突，并初始化 Children
 		menu := nodes[i]
 		menu.Children = make([]*domain.Menu, 0)
 		nodeMap[menu.ID] = &menu
@@ -207,14 +218,12 @@ func (s *permissionService) buildMenuTree(nodes []domain.Menu) []domain.Menu {
 		if m.ParentID == 0 {
 			roots = append(roots, *m)
 		} else {
-			// 只有父节点也被授权了，子节点才挂载上去 (或者你可以选择在这里保留断层)
 			if parent, exists := nodeMap[m.ParentID]; exists {
 				parent.Children = append(parent.Children, m)
 			}
 		}
 	}
 
-	// 重新把 root 里的 children 指针更新 (因为上面 Map 里更新的是指针)
 	for i := range roots {
 		if node, exists := nodeMap[roots[i].ID]; exists {
 			roots[i].Children = node.Children
@@ -270,14 +279,6 @@ func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) (
 	sub := strconv.FormatInt(userId, 10)
 	tid := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
 
-	// 1. 本地链路解析
-	// 得益于 ioc/casbin.go 中的 AddDomainMatchingFunc("0") 配置：
-	// 当我们查询 tid 时，Casbin 会自动将 tid 匹配到域 "0"，并在内部图搜索中完成：
-	// - 租户级继承 (g, A, B, tid)
-	// - 全局继承 (g, ADMIN, READER, 0)
-	// - 跨域继承 (g, A, ADMIN, tid)
-	// - 乃至直接分配的全局角色 (g, sub, SUPER_ADMIN, 0)
-	// 所有的路径都在这一行解析器内自动闭环。
 	allPotentialCodes, err := s.enforcer.GetImplicitRolesForUser(sub, tid)
 	if err != nil {
 		return nil, err
@@ -297,8 +298,4 @@ func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) (
 	return slice.Map(roles, func(idx int, r domain.Role) string {
 		return r.Code
 	}), nil
-}
-
-func (s *permissionService) buildResourceURN(ctx context.Context, service, resScope, path string) string {
-	return urn.New(service, resScope, path).String()
 }
