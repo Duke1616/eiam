@@ -24,8 +24,6 @@ import (
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 	"gorm.io/gorm"
@@ -44,36 +42,27 @@ type HandlerAuthTestSuite struct {
 	resourceSvc resource.IResourceService
 	roleSvc     role.IRoleService
 
-	// 测试元数据
-	testUid  int64
-	testTid  int64
-	testCode string
+	testTid int64
+	testUid int64
 }
 
 func (s *HandlerAuthTestSuite) SetupSuite() {
-	// 1. 初始化运行配置项
-	dir, err := os.Getwd()
-	require.NoError(s.T(), err)
+	dir, _ := os.Getwd()
 	viper.SetConfigFile(filepath.Join(dir, "../config/config.yaml"))
-	err = viper.ReadInConfig()
-	require.NoError(s.T(), err, "请确保能在当前目录的上两级找到 config/config.yaml")
+	err := viper.ReadInConfig()
+	s.Require().NoError(err)
 
-	// 2. 初始化集成测试依赖 (数据库、Casbin、Service)
 	deps, err := testioc.InitPermissionSuiteDeps()
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 
 	s.db = deps.DB
 	s.enforcer = deps.Enforcer
-
 	s.permSvc = deps.PermSvc
 	s.tenantSvc = deps.TenantSvc
 	s.resourceSvc = deps.ResourceSvc
 	s.roleSvc = deps.RoleSvc
-	s.testUid = 9527
-	s.testCode = "iam:user:add"
 	s.ctrl = gomock.NewController(s.T())
 
-	// 使用 MockGen 生成的 Provider
 	sp := testmocks.NewMockProvider(s.ctrl)
 	sp.EXPECT().Get(gomock.Any()).AnyTimes().DoAndReturn(func(ctx *gctx.Context) (session.Session, error) {
 		if sess, ok := ctx.Get("_session"); ok {
@@ -83,191 +72,30 @@ func (s *HandlerAuthTestSuite) SetupSuite() {
 	})
 	session.SetDefaultProvider(sp)
 
-	// 2. 初始化测试租户
-	tid, err := s.tenantSvc.CreateTenant(context.Background(), "核心业务部", "core-biz", s.testUid)
-	require.NoError(s.T(), err)
-	s.testTid = tid
-
-	// 3. 构造 Web 服务器并挂载中间件
 	gin.SetMode(gin.TestMode)
 	server := gin.New()
-
-	// 注入模拟 Session 及 租户上下文
 	server.Use(func(ctx *gin.Context) {
 		newCtx := ctxutil.WithTenantID(ctx.Request.Context(), s.testTid)
 		newCtx = ctxutil.WithUserID(newCtx, s.testUid)
 		ctx.Request = ctx.Request.WithContext(newCtx)
-		ctx.Set("_session", session.NewMemorySession(session.Claims{
-			Uid: s.testUid,
-		}))
+		ctx.Set("_session", session.NewMemorySession(session.Claims{Uid: s.testUid}))
 	})
-
-	// 挂载鉴权中间件
 	server.Use(middleware.CheckPermission(s.permSvc))
 
-	// 注册带装饰器的测试接口
 	registry := capability.NewRegistry("iam", "user", "用户管理")
 	server.POST("/api/user/add", registry.Capability("新增用户", "add").
 		Handle(ginx.W(func(ctx *ginx.Context) (ginx.Result, error) {
 			return ginx.Result{Data: "OK"}, nil
 		})),
 	)
-
 	s.server = server
-}
-
-func (s *HandlerAuthTestSuite) TearDownTest() {
 }
 
 func (s *HandlerAuthTestSuite) TearDownSubTest() {
 	s.clearAll()
 }
 
-func (s *HandlerAuthTestSuite) TearDownSuite() {
-}
-
-func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
-
-	testCases := []struct {
-		name     string
-		before   func(t *testing.T)
-		wantCode int
-	}{
-		{
-			name: "场景1：用户未获得授权 -> 预期 403",
-			before: func(t *testing.T) {
-				// 确保环境中没有相关策略
-				s.db.Exec("DELETE FROM casbin_rule")
-			},
-			wantCode: http.StatusForbidden,
-		},
-		{
-			name: "场景2：用户获得授权 -> 预期 403 (权限不匹配)",
-			before: func(t *testing.T) {
-				ctx := ctxutil.WithTenantID(context.Background(), s.testTid)
-
-				// 切换为一个全新的用户，避开租户所有者的 ADMIN 角色
-				s.testUid = 9999
-
-				// 1. 创建并注册 API (这一步对 CheckAPI 很关键)
-				api := domain.API{
-					Service: "iam",
-					Method:  "POST",
-					Path:    "/api/user/add",
-					Name:    "新增用户",
-				}
-				_, err := s.resourceSvc.CreateAPI(ctx, api)
-				require.NoError(t, err)
-
-				// 2. 创建权限点并绑定到 API URN
-				permId, err := s.permSvc.CreatePermission(ctx, domain.Permission{
-					Code: s.testCode,
-					Name: "用户创建权",
-				})
-				require.NoError(t, err)
-				err = s.permSvc.BindResourcesToPermission(ctx, permId, s.testCode, []string{api.URN()})
-				require.NoError(t, err)
-
-				// 3. 创建并配置角色（仅给予删除权限）
-				_, err = s.roleSvc.Create(ctx, domain.Role{
-					Code:     "TEST_OPERATOR",
-					Name:     "普通操作员",
-					TenantID: s.testTid,
-					Policies: []domain.Policy{
-						{
-							Type: domain.SystemPolicy,
-							Statement: []domain.Statement{
-								{
-									Effect:   domain.Allow,
-									Action:   []string{"iam:user:delete"},
-									Resource: []string{"*"},
-								},
-							},
-						},
-					},
-				})
-				require.NoError(t, err)
-
-				// 4. 将新用户加入该角色
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "TEST_OPERATOR")
-				require.NoError(t, err)
-			},
-			wantCode: http.StatusForbidden,
-		},
-		{
-			name: "场景3：用户获得授权 -> 预期 200 (权限精准匹配)",
-			before: func(t *testing.T) {
-				ctx := ctxutil.WithTenantID(context.Background(), s.testTid)
-
-				// 使用普通业务用户
-				s.testUid = 7777
-
-				// 1. 创建并注册 API
-				api := domain.API{
-					Service: "iam",
-					Method:  "POST",
-					Path:    "/api/user/add",
-					Name:    "新增用户",
-				}
-				_, err := s.resourceSvc.CreateAPI(ctx, api)
-				require.NoError(t, err)
-
-				// 2. 创建权限点并绑定到 API URN
-				permId, err := s.permSvc.CreatePermission(ctx, domain.Permission{
-					Code: s.testCode,
-					Name: "用户创建权",
-				})
-				require.NoError(t, err)
-				err = s.permSvc.BindResourcesToPermission(ctx, permId, s.testCode, []string{api.URN()})
-				require.NoError(t, err)
-
-				// 3. 创建并配置角色（给予正确的 Add 权限）
-				_, err = s.roleSvc.Create(ctx, domain.Role{
-					Code:     "TEST_MANAGER",
-					Name:     "管理员",
-					TenantID: s.testTid,
-					Policies: []domain.Policy{
-						{
-							Type: domain.SystemPolicy,
-							Statement: []domain.Statement{
-								{
-									Effect:   domain.Allow,
-									Action:   []string{s.testCode},
-									Resource: []string{"*"},
-								},
-							},
-						},
-					},
-				})
-				require.NoError(t, err)
-
-				// 4. 将用户加入该角色
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "TEST_MANAGER")
-				require.NoError(t, err)
-			},
-			wantCode: http.StatusOK,
-		},
-	}
-
-	for _, tc := range testCases {
-		s.Run(tc.name, func() {
-			tc.before(s.T())
-
-			req, err := http.NewRequest(http.MethodPost, "/api/user/add", nil)
-			require.NoError(s.T(), err)
-			recorder := httptest.NewRecorder()
-			s.server.ServeHTTP(recorder, req)
-
-			assert.Equal(s.T(), tc.wantCode, recorder.Code)
-		})
-	}
-}
-
 func (s *HandlerAuthTestSuite) clearAll() {
-	// 清理测试环境遗留数据，确保隔离
-	t := s.T()
-	t.Helper()
-
 	s.db.Exec("DROP TABLE IF EXISTS goose_db_version")
 	s.db.Exec("DELETE FROM casbin_rule")
 	s.db.Exec("DELETE FROM permission")
@@ -276,6 +104,90 @@ func (s *HandlerAuthTestSuite) clearAll() {
 	s.db.Exec("DELETE FROM tenant")
 	s.db.Exec("DELETE FROM membership")
 	s.db.Exec("DELETE FROM api")
+	_ = s.enforcer.LoadPolicy()
+}
+
+func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
+
+	testcases := []struct {
+		name     string
+		before   func(ctx context.Context, tid int64)
+		wantCode int
+	}{
+		{
+			name: "场景1：用户未注册任何角色和 API -> 预期 403",
+			before: func(ctx context.Context, tid int64) {
+				// 核心修复：切换到非 Owner 的普通用户，防止被 ADMIN 角色放行
+				s.testUid = 1001
+				// 这里注册 API 实体，但不要给用户任何授权
+				api := domain.API{Service: "iam", Method: "POST", Path: "/api/user/add"}
+				_, err := s.resourceSvc.CreateAPI(ctx, api)
+				s.Require().NoError(err)
+
+				// 即使建立了能力项，不绑定用户也应阻断
+				pid, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "iam:user:add"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:add", []string{api.URN()})
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "场景2：用户拥有其他权限但没有当前接口权限 -> 预期 403",
+			before: func(ctx context.Context, tid int64) {
+				s.testUid = 1002
+				// 1. 注册 API 并关联其真正的权限码 iam:user:add
+				api := domain.API{Service: "iam", Method: "POST", Path: "/api/user/add"}
+				_, _ = s.resourceSvc.CreateAPI(ctx, api)
+				pid, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "iam:user:add"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:add", []string{api.URN()})
+
+				// 2. 赋予用户一个完全不相关的权限 (如 iam:user:view)
+				_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "OPERATOR", TenantID: tid})
+				_ = s.roleSvc.UpdatePolicies(ctx, "OPERATOR", []domain.Policy{{
+					Type: domain.CustomPolicy,
+					Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"iam:user:view"}, Resource: []string{"*"}}},
+				}})
+				_, _ = s.permSvc.AssignRoleToUser(ctx, s.testUid, "OPERATOR")
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "场景3：用户拥有精准匹配的角色权限 -> 预期 200",
+			before: func(ctx context.Context, tid int64) {
+				s.testUid = 1003
+				api := domain.API{Service: "iam", Method: "POST", Path: "/api/user/add"}
+				_, _ = s.resourceSvc.CreateAPI(ctx, api)
+
+				pid, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "iam:user:add"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:add", []string{api.URN()})
+
+				_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "ADMIN_ROLE", TenantID: tid})
+				_ = s.roleSvc.UpdatePolicies(ctx, "ADMIN_ROLE", []domain.Policy{{
+					Type:      domain.CustomPolicy,
+					Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"iam:user:add"}, Resource: []string{"*"}}},
+				}})
+				_, _ = s.permSvc.AssignRoleToUser(ctx, s.testUid, "ADMIN_ROLE")
+			},
+			wantCode: http.StatusOK,
+		},
+	}
+
+	for _, tc := range testcases {
+		s.Run(tc.name, func() {
+			// 初始化干净的租户环境
+			tid, err := s.tenantSvc.CreateTenant(context.Background(), "单元", "unit", 9999)
+			s.Require().NoError(err)
+			s.testTid = tid
+			ctx := ctxutil.WithTenantID(context.Background(), tid)
+
+			tc.before(ctx, tid)
+
+			req, _ := http.NewRequest(http.MethodPost, "/api/user/add", nil)
+			recorder := httptest.NewRecorder()
+			s.server.ServeHTTP(recorder, req)
+
+			s.Assert().Equal(tc.wantCode, recorder.Code)
+		})
+	}
 }
 
 func TestHandlerAuth(t *testing.T) {
