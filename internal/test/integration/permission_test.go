@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
@@ -378,6 +379,37 @@ func (s *PermissionSuite) TestCheckAPI() {
 }
 
 // 统一执行套件入口
+// TestRoleCycleDetection 验证角色继承死循环检测逻辑
+func (s *PermissionSuite) TestRoleCycleDetection() {
+	t := s.T()
+	defer s.clearAll()
+
+	// 1. 初始化租户
+	userId := int64(8888)
+	tenantId, err := s.tenantSvc.CreateTenant(context.Background(), "死循环测试租户", "cycle-test", userId)
+	require.NoError(t, err)
+
+	ctx := ctxutil.WithTenantID(context.Background(), tenantId)
+
+	// 2. 创建两个测试角色
+	roleA := "ROLE_A"
+	roleB := "ROLE_B"
+	_, err = s.roleSvc.Create(ctx, domain.Role{Code: roleA, Name: "角色A"})
+	require.NoError(t, err)
+	_, err = s.roleSvc.Create(ctx, domain.Role{Code: roleB, Name: "角色B"})
+	require.NoError(t, err)
+
+	// 3. 设置 A 继承 B (A -> B)，预期成功
+	ok, err := s.permSvc.AssignRoleInheritance(ctx, roleA, roleB)
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	// 4. 设置 B 继承 A (B -> A)，此时 B 的祖先中包含 A，预期触发死循环报错
+	ok, err = s.permSvc.AssignRoleInheritance(ctx, roleB, roleA)
+	assert.ErrorIs(t, err, errs.ErrRoleCycleInheritance)
+	assert.False(t, ok)
+}
+
 func TestPermissionSuite(t *testing.T) {
 	suite.Run(t, new(PermissionSuite))
 }

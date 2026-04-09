@@ -6,6 +6,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/authz"
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
@@ -245,8 +246,24 @@ func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, 
 
 func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error) {
 	tenantId := ctxutil.GetTenantID(ctx)
+	tid := strconv.FormatInt(tenantId, 10)
 
-	return s.enforcer.AddGroupingPolicy(childRole, parentRole, strconv.FormatInt(tenantId, 10))
+	// 1. 死循环检测 (Cycle Detection)
+	// 如果我们要让 childRole 继承 parentRole (child -> parent)，
+	// 那么必须保证 parentRole 此时并没有直接或间接地继承自 childRole。
+	// 利用 Casbin 的 GetImplicitRolesForUser 可以查出 parentRole 的所有隐式祖先。
+	ancestors, err := s.enforcer.GetImplicitRolesForUser(parentRole, tid)
+	if err != nil {
+		return false, err
+	}
+
+	for _, ancestor := range ancestors {
+		if ancestor == childRole {
+			return false, errs.ErrRoleCycleInheritance
+		}
+	}
+
+	return s.enforcer.AddGroupingPolicy(childRole, parentRole, tid)
 }
 
 // GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
