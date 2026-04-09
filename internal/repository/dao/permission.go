@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/Duke1616/eiam/pkg/gormx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -27,7 +26,7 @@ type PermissionBinding struct {
 	Id          int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'映射ID'"`
 	PermId      int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'权限能力ID'"`
 	PermCode    string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'权限能力码'"`
-	TenantId    int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'租户标识'"`
+	TenantId    int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'租户标识';eiam:'shared'"`
 	ResourceURN string `gorm:"type:varchar(256);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'资源唯一标识'"`
 }
 
@@ -107,7 +106,7 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 		return nil
 	}
 
-	return d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Clauses(clause.OnConflict{
+	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 		DoNothing: true,
 	}).Create(&bindings).Error

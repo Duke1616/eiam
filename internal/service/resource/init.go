@@ -187,7 +187,7 @@ func (i *Initializer) persistenceDiscovery(ctx context.Context, toCreate []domai
 
 	// 2. 逻辑权限批量染色 (Global Binding)
 	if len(bindings) > 0 {
-		if err := i.permRepo.BatchBindResources(ctx, 0, bindings); err != nil {
+		if err := i.permRepo.BatchBindResources(ctx, bindings); err != nil {
 			elog.DefaultLogger.Error("API 资产逻辑染色失败", elog.FieldErr(err))
 		}
 	}
@@ -279,7 +279,7 @@ func (i *Initializer) syncMenuBindings(ctx context.Context, menus []*domain.Menu
 		return nil
 	}
 
-	return i.permRepo.BatchBindResources(ctx, 0, bindings)
+	return i.permRepo.BatchBindResources(ctx, bindings)
 }
 
 func iif(cond bool, t, f string) string {

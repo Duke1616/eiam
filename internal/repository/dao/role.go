@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/pkg/gormx"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
 )
@@ -13,7 +12,7 @@ import (
 // Role 角色持久化实体
 type Role struct {
 	Id       int64                            `gorm:"type:bigint;primaryKey;autoIncrement;comment:'角色ID'"`
-	TenantId int64                            `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_idx_tenant_role_code,priority:1;comment:'租户ID，0为系统全局角色'"`
+	TenantId int64                            `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_idx_tenant_role_code,priority:1;comment:'租户ID，0为系统全局角色';eiam:'shared'"`
 	Name     string                           `gorm:"type:varchar(255);not null;comment:'角色名称'"`
 	Code     string                           `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_tenant_role_code,priority:2;comment:'角色标识码'"`
 	Desc     string                           `gorm:"type:varchar(512);not null;default:'';comment:'角色描述信息'"`
@@ -55,14 +54,13 @@ func (d *RoleDAO) Insert(ctx context.Context, r Role) (int64, error) {
 	now := time.Now().UnixMilli()
 	r.Ctime = now
 	r.Utime = now
-	// NOTE: 显式跳过租户插件，因为我们需要支持创建 TenantID = 0 的系统预设角色
-	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Create(&r).Error
+	err := d.db.WithContext(ctx).Create(&r).Error
 	return r.Id, err
 }
 
 func (d *RoleDAO) Update(ctx context.Context, r Role) (int64, error) {
-	res := d.db.WithContext(ctx).Model(&Role{}).Scopes(gormx.IgnoreTenant()).
-		Where("id = ? AND tenant_id = ?", r.Id, r.TenantId).Updates(map[string]interface{}{
+	res := d.db.WithContext(ctx).Model(&Role{}).
+		Where("id = ?", r.Id).Updates(map[string]interface{}{
 		"name":   r.Name,
 		"desc":   r.Desc,
 		"status": r.Status,

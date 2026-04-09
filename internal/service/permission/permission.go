@@ -233,8 +233,7 @@ func (s *permissionService) GetByCode(ctx context.Context, code string) (domain.
 }
 
 func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error {
-	tid := ctxutil.GetTenantID(ctx)
-	return s.permRepo.BindResources(ctx, permId, permCode, tid, resURNs)
+	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
 }
 
 func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
