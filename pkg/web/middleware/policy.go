@@ -95,20 +95,16 @@ func (s *SDK) CheckPolicy(resource string) gin.HandlerFunc {
 			return
 		}
 
-		// 2. 提取自动识别的服务名和模板路径 (解决 /user/:id 这种动态参数问题)
-		service := info.Service
-		path := info.Path
-
-		// 3. 环境聚合
+		// 2. 环境聚合
 		if resource == "" {
 			resource = "*"
 		}
 
-		// 4. 发起远程判定
+		// 3. 发起远程判定
 		var res apiResult[authorizeResult]
 		if err := s.callAPI(ctx, "/api/policy/check_policy", checkPolicyReq{
-			Service:  service,
-			Path:     path,
+			Service:  info.Service,
+			Path:     ctx.FullPath(),
 			Method:   ctx.Request.Method,
 			Resource: resource,
 		}, &res); err != nil {
@@ -117,8 +113,8 @@ func (s *SDK) CheckPolicy(resource string) gin.HandlerFunc {
 
 		if !res.Data.Allowed {
 			s.logger.Warn("鉴权拒绝",
-				elog.String("service", service),
-				elog.String("path", path),
+				elog.String("service", info.Service),
+				elog.String("path", ctx.FullPath()),
 				elog.String("resource", resource),
 				elog.String("reason", res.Data.Reason))
 			ctx.AbortWithStatus(http.StatusForbidden)
