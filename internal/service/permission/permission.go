@@ -72,35 +72,35 @@ func NewPermissionService(
 
 // CheckAPI 针对物理接口访问进行判定
 func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error) {
-	// 1. 物理层拦截：未注册的物理资产视为不存在，严禁任何访问 (Fail-closed)
+	// 1. 物理层拦截
 	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
 	if err != nil || api.ID == 0 {
 		return false, err
 	}
 
-	// 2. 映射层发现：物理资产必须至少挂载一个逻辑能力码 (Permission Code) 才能进行业务判定
+	// 2. 映射层发现
 	codes, err := s.permRepo.FindCodesByResource(ctx, api.URN())
 	if err != nil || len(codes) == 0 {
 		return false, nil
 	}
 
-	// 3. 策略预加载：获取用户及其继承链路的所有有效策略文档
-	policies, err := s.getEffectivePolicies(ctx, userId)
+	// 3. 策略预加载 (优化点：减少重复查询)
+	roles, err := s.getEffectiveRoles(ctx, userId)
 	if err != nil {
 		return false, err
 	}
 
-	// 4. OPA 裁决：一次性提交该 API 的所有身份码，让 OPA 处理“全局允许 (SUPER_ADMIN *)”与“特定熔断 (ADMIN Deny)”
+	// 4. OPA 裁决
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
 		Actions:  codes,
 		Resource: api.URN(),
-		Policies: policies,
+		Policies: s.flattenPolicies(roles),
 	})
 }
 
-// CheckPermission 针对特定 URN 的直接 Action 匹配 (用于 UI 渲染、菜单显示等逻辑)
+// CheckPermission 针对特定 URN 的直接 Action 匹配
 func (s *permissionService) CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error) {
-	policies, err := s.getEffectivePolicies(ctx, userId)
+	roles, err := s.getEffectiveRoles(ctx, userId)
 	if err != nil {
 		return false, err
 	}
@@ -108,13 +108,12 @@ func (s *permissionService) CheckPermission(ctx context.Context, userId int64, a
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
 		Actions:  []string{action},
 		Resource: resourceURN,
-		Policies: policies,
+		Policies: s.flattenPolicies(roles),
 	})
 }
 
-// GetAuthorizedMenus 过滤授权菜单并构建层级树 (重构版：逻辑清晰、职责分离)
+// GetAuthorizedMenus 过滤授权菜单并构建层级树
 func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
-	// 1. 数据准备：加载资产全集、染色映射及用户策略
 	allMenus, err := s.resourceSvc.ListAllMenus(ctx)
 	if err != nil || len(allMenus) == 0 {
 		return []domain.Menu{}, err
@@ -126,25 +125,21 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64
 		return nil, err
 	}
 
-	policies, err := s.getEffectivePolicies(ctx, userId)
+	roles, err := s.getEffectiveRoles(ctx, userId)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. 批量鉴权：利用 OPA 向量化能力一次性判定所有 URN
 	allowedURNs, err := s.authorizer.AuthorizeBatch(ctx, authz.AuthInput{
 		BatchResources:  menuURNs,
 		ResourceActions: s.buildResourceActionMap(menuURNs, codesMap),
-		Policies:        policies,
+		Policies:        s.flattenPolicies(roles),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. 结果精炼：合并 OPA 判权结果与“公共菜单”放行逻辑
 	authorizedNodes := s.filterAccessibleMenus(allMenus, codesMap, allowedURNs)
-
-	// 4. 结构构建：构建高性能树形视图
 	return s.buildMenuTree(authorizedNodes), nil
 }
 
@@ -152,7 +147,7 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64
 func (s *permissionService) buildResourceActionMap(urns []string, codesMap map[string][]string) map[string][]string {
 	resActions := make(map[string][]string, len(urns))
 	for _, u := range urns {
-		actions := []string{"*"} // 默认通配符
+		actions := []string{"*"}
 		if codes, ok := codesMap[u]; ok {
 			actions = append(actions, codes...)
 		}
@@ -173,8 +168,6 @@ func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap ma
 		mURN := m.URN()
 		_, isAllowed := allowedSet[mURN]
 		_, isBound := codesMap[mURN]
-
-		// 判权通过 OR 服务端未对其进行任何权限染色的资产（公共资产）
 		if isAllowed || !isBound {
 			res = append(res, m)
 		}
@@ -182,26 +175,31 @@ func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap ma
 	return res
 }
 
-// getEffectivePolicies 聚合用户在当前上下文下的所有有效策略 (含系统预设逻辑)
-func (s *permissionService) getEffectivePolicies(ctx context.Context, userId int64) ([]domain.Policy, error) {
-	// 1. 获取用户关联的所有角色 Code (通过底层穿透后的全链路结果)
-	roleCodes, err := s.GetRolesForUser(ctx, userId)
+// getEffectiveRoles 获取用户在当前上下文中所有有效的 Role 对象 (含系统角色)
+func (s *permissionService) getEffectiveRoles(ctx context.Context, userId int64) ([]domain.Role, error) {
+	sub := strconv.FormatInt(userId, 10)
+	tid := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
+
+	// 1. Casbin 链路解析 (O(1) 内存图搜索)
+	roleCodes, err := s.enforcer.GetImplicitRolesForUser(sub, tid)
 	if err != nil {
 		return nil, err
 	}
-
-	// 2. 加载角色的具体 Policies 文档 (受 SQL 物理隔离保护)
-	roles, err := s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
-	if err != nil {
-		return nil, err
+	if len(roleCodes) == 0 {
+		return []domain.Role{}, nil
 	}
 
-	var allPolicies []domain.Policy
+	// 2. 数据库批量拉取详情 (受租户隔离保护，且支持 Global Override 逻辑)
+	return s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
+}
+
+// flattenPolicies 压平角色中的策略文档
+func (s *permissionService) flattenPolicies(roles []domain.Role) []domain.Policy {
+	var policies []domain.Policy
 	for _, r := range roles {
-		allPolicies = append(allPolicies, r.Policies...)
+		policies = append(policies, r.Policies...)
 	}
-
-	return allPolicies, nil
+	return policies
 }
 
 // buildMenuTree 高性能构建树结构
@@ -245,21 +243,32 @@ func (s *permissionService) BindResourcesToPermission(ctx context.Context, permI
 	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
 }
 
+// AssignRoleToUser 绑定用户与角色 (增加一致性校验)
 func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
+	// 前置校验角色是否存在且合法
+	_, err := s.roleSvc.GetByCode(ctx, roleCode)
+	if err != nil {
+		return false, err
+	}
+
 	sub := strconv.FormatInt(userId, 10)
 	tenantId := ctxutil.GetTenantID(ctx)
-
 	return s.enforcer.AddGroupingPolicy(sub, roleCode, strconv.FormatInt(tenantId, 10))
 }
 
+// AssignRoleInheritance 设置角色继承关系 (增加两端一致性校验)
 func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error) {
+	// 双重验证，严禁为不存在的角色创建继承关系
+	if _, err := s.roleSvc.GetByCode(ctx, childRole); err != nil {
+		return false, err
+	}
+	if _, err := s.roleSvc.GetByCode(ctx, parentRole); err != nil {
+		return false, err
+	}
+
 	tenantId := ctxutil.GetTenantID(ctx)
 	tid := strconv.FormatInt(tenantId, 10)
 
-	// 1. 死循环检测 (Cycle Detection)
-	// 如果我们要让 childRole 继承 parentRole (child -> parent)，
-	// 那么必须保证 parentRole 此时并没有直接或间接地继承自 childRole。
-	// 利用 Casbin 的 GetImplicitRolesForUser 可以查出 parentRole 的所有隐式祖先。
 	ancestors, err := s.enforcer.GetImplicitRolesForUser(parentRole, tid)
 	if err != nil {
 		return false, err
@@ -274,28 +283,14 @@ func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole
 	return s.enforcer.AddGroupingPolicy(childRole, parentRole, tid)
 }
 
-// GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
+// GetRolesForUser 获取用户的有效角色切片
 func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) ([]string, error) {
-	sub := strconv.FormatInt(userId, 10)
-	tid := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
-
-	allPotentialCodes, err := s.enforcer.GetImplicitRolesForUser(sub, tid)
+	roles, err := s.getEffectiveRoles(ctx, userId)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(allPotentialCodes) == 0 {
-		return []string{}, nil
-	}
-
-	// 2. 最后通过数据库进行物理隔离过滤
-	roles, err := s.roleSvc.ListByIncludeCodes(ctx, allPotentialCodes)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. 提取最终有效的 Role Code
-	return slice.Map(roles, func(idx int, r domain.Role) string {
+	return slice.Map(roles, func(_ int, r domain.Role) string {
 		return r.Code
 	}), nil
 }

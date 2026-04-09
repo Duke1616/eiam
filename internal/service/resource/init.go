@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	_ "embed"
+	"fmt"
 
 	"strings"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/elog"
 	"gopkg.in/yaml.v3"
 )
 
@@ -181,14 +181,14 @@ func (i *Initializer) persistenceDiscovery(ctx context.Context, toCreate []domai
 	// 1. API 资产批量落盘
 	if len(toCreate) > 0 {
 		if err := i.repo.BatchCreateAPI(ctx, toCreate); err != nil {
-			elog.DefaultLogger.Error("API 资产同步落地失败", elog.FieldErr(err))
+			return fmt.Errorf("API 资产同步落地失败: %w", err)
 		}
 	}
 
 	// 2. 逻辑权限批量染色 (Global Binding)
 	if len(bindings) > 0 {
 		if err := i.permRepo.BatchBindResources(ctx, bindings); err != nil {
-			elog.DefaultLogger.Error("API 资产逻辑染色失败", elog.FieldErr(err))
+			return fmt.Errorf("API 资产逻辑染色失败: %w", err)
 		}
 	}
 

@@ -1,4 +1,4 @@
-package ioc
+package testioc
 
 import (
 	"context"
@@ -19,23 +19,6 @@ import (
 )
 
 func InitDB() *gorm.DB {
-	db := InitDBWithoutMigrate()
-
-	// AutoMigrate 创建/更新表结构
-	if err := dao.InitTables(db); err != nil {
-		panic(err)
-	}
-
-	// RunMigrations 执行迁移升级 (含 Seed)
-	if err := RunMigrations(db); err != nil {
-		panic(err)
-	}
-
-	return db
-}
-
-// InitDBWithoutMigrate 初始化数据库连接并配置基础插件，但不执行 DDL/DML 迁移
-func InitDBWithoutMigrate() *gorm.DB {
 	dsn := viper.GetString("mysql.dsn")
 	WaitForDBSetup(dsn)
 
@@ -51,7 +34,7 @@ func InitDBWithoutMigrate() *gorm.DB {
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
-			SingularTable: true,
+			SingularTable: true, // 使用单数表名
 		},
 		Logger: myLogger,
 	})
@@ -61,6 +44,11 @@ func InitDBWithoutMigrate() *gorm.DB {
 
 	// 注册多租户隔离插件
 	if err = db.Use(gormx.NewTenantPlugin()); err != nil {
+		panic(err)
+	}
+
+	// 自动迁移逻辑 (对齐 dao.Entity 结构)
+	if err = dao.InitTables(db); err != nil {
 		panic(err)
 	}
 

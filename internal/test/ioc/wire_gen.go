@@ -19,7 +19,7 @@ import (
 // Injectors from wire.go:
 
 func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
-	db := ioc.InitDB()
+	db := InitDB()
 	syncedEnforcer := ioc.InitCasbin(db)
 	iTenantDAO := dao.NewTenantDAO(db)
 	iTenantRepository := repository.NewTenantRepository(iTenantDAO)

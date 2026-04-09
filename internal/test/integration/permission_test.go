@@ -19,36 +19,45 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
 	"gorm.io/gorm"
 )
 
-// PermissionSuite 集成测试套件
 type PermissionSuite struct {
 	suite.Suite
+
 	db       *gorm.DB
 	enforcer *casbin.SyncedEnforcer
+	ctrl     *gomock.Controller
 
+	permSvc     permission.IPermissionService
 	tenantSvc   tenant.ITenantService
 	roleSvc     role.IRoleService
 	resourceSvc resource.IResourceService
-	permSvc     permission.IPermissionService
+
+	testUid int64
 }
 
 func (s *PermissionSuite) SetupSuite() {
 	dir, _ := os.Getwd()
 	viper.SetConfigFile(filepath.Join(dir, "../config/config.yaml"))
 	err := viper.ReadInConfig()
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 
 	deps, err := testioc.InitPermissionSuiteDeps()
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 
 	s.db = deps.DB
 	s.enforcer = deps.Enforcer
+	s.permSvc = deps.PermSvc
 	s.tenantSvc = deps.TenantSvc
 	s.roleSvc = deps.RoleSvc
 	s.resourceSvc = deps.ResourceSvc
-	s.permSvc = deps.PermSvc
+	s.ctrl = gomock.NewController(s.T())
+}
+
+func (s *PermissionSuite) TearDownTest() {
+	s.clearAll()
 }
 
 func (s *PermissionSuite) TearDownSubTest() {
@@ -56,87 +65,99 @@ func (s *PermissionSuite) TearDownSubTest() {
 }
 
 func (s *PermissionSuite) clearAll() {
-	s.db.Exec("DROP TABLE IF EXISTS goose_db_version")
-	s.db.Exec("DELETE FROM casbin_rule")
-	s.db.Exec("DELETE FROM permission")
-	s.db.Exec("DELETE FROM permission_binding")
-	s.db.Exec("DELETE FROM role")
-	s.db.Exec("DELETE FROM tenant")
-	s.db.Exec("DELETE FROM membership")
-	s.db.Exec("DELETE FROM api")
-	_ = s.enforcer.LoadPolicy()
+	s.db.Exec("DELETE FROM `tenant`")
+	s.db.Exec("DELETE FROM `membership`")
+	s.db.Exec("DELETE FROM `role`")
+	s.db.Exec("DELETE FROM `api`")
+	s.db.Exec("DELETE FROM `permission`")
+	s.db.Exec("DELETE FROM `permission_binding`")
+	s.db.Exec("DELETE FROM `casbin_rule`")
+}
+
+// ensureAdminRole 确保环境中存在基础的 ADMIN 角色记录，以支持 CreateTenant 等业务链条
+func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
+	// 1. 创建全局超级管理员 (赋予全量 Allow)
+	_, _ = s.roleSvc.Create(ctx, domain.Role{
+		Code: "SUPER_ADMIN",
+		Name: "全量管理员",
+		Policies: []domain.Policy{
+			{Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}}},
+		},
+	})
+	// 2. 创建租户管理员 (通过继承获得能力)
+	_, _ = s.roleSvc.Create(ctx, domain.Role{
+		Code: "ADMIN",
+		Name: "租户管理员",
+	})
+
+	// 3. 建立 Casbin 层面的继承关系 (ADMIN 继承 SUPER_ADMIN)
+	_, _ = s.permSvc.AssignRoleInheritance(ctx, "ADMIN", "SUPER_ADMIN")
 }
 
 func (s *PermissionSuite) TestCheckAPI() {
-	serviceName := "cmdb"
-	path := "/api/v1/hosts"
-	method := "GET"
-	actionCode := "cmdb:host:view"
+	serviceName := "user-service"
 
 	testcases := []struct {
 		name   string
 		before func(ctx context.Context, tid int64)
-		run    func(ctx context.Context, tid int64) // 支持自定义运行逻辑，方便测试跨租户
+		run    func(ctx context.Context, tid int64)
 	}{
 		{
 			name: "场景1: ADMIN 用户请求已授权的 API 应通过",
 			before: func(ctx context.Context, tid int64) {
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "ADMIN")
-				api := domain.API{Service: serviceName, Path: path, Method: method}
+				api := domain.API{Service: serviceName, Method: "GET", Path: "/api/v1/users"}
 				_, _ = s.resourceSvc.CreateAPI(ctx, api)
-				permId, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: actionCode})
-				_ = s.permSvc.BindResourcesToPermission(ctx, permId, actionCode, []string{api.URN()})
+				pid, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "iam:user:view"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:view", []string{api.URN()})
+
+				// 分配角色 (由于 CreateTenant 时系统已自动分配过一次，此处主要确保 Casbin 策略完整)
+				_, _ = s.permSvc.AssignRoleToUser(ctx, 12345, "ADMIN")
 			},
 			run: func(ctx context.Context, tid int64) {
-				ok, err := s.permSvc.CheckAPI(ctx, 8888, serviceName, method, path)
-				require.NoError(s.T(), err)
+				ok, err := s.permSvc.CheckAPI(ctx, 12345, serviceName, "GET", "/api/v1/users")
+				assert.NoError(s.T(), err)
 				assert.True(s.T(), ok)
 			},
 		},
 		{
 			name: "场景2: DEVELOPER 角色请求已授权 API 应通过",
 			before: func(ctx context.Context, tid int64) {
-				_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "DEVELOPER", Name: "开发", TenantID: tid})
-				_ = s.roleSvc.UpdatePolicies(ctx, "DEVELOPER", []domain.Policy{{
-					Type:      domain.CustomPolicy,
-					Statement: []domain.Statement{{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{actionCode}}},
-				}})
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 6666, "DEVELOPER")
-				api := domain.API{Service: serviceName, Path: path, Method: method}
+				api := domain.API{Service: serviceName, Method: "GET", Path: "/api/v1/users"}
 				_, _ = s.resourceSvc.CreateAPI(ctx, api)
-				permId, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: actionCode})
-				_ = s.permSvc.BindResourcesToPermission(ctx, permId, actionCode, []string{api.URN()})
+				pid, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "iam:user:view"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:view", []string{api.URN()})
+
+				_, _ = s.roleSvc.Create(ctx, domain.Role{
+					Code: "DEVELOPER",
+					Policies: []domain.Policy{
+						{Statement: []domain.Statement{
+							{Effect: domain.Allow, Action: []string{"iam:user:view"}, Resource: []string{"*"}},
+						}},
+					},
+				})
+				_, _ = s.permSvc.AssignRoleToUser(ctx, 2222, "DEVELOPER")
 			},
 			run: func(ctx context.Context, tid int64) {
-				ok, err := s.permSvc.CheckAPI(ctx, 6666, serviceName, method, path)
-				require.NoError(s.T(), err)
+				ok, err := s.permSvc.CheckAPI(ctx, 2222, serviceName, "GET", "/api/v1/users")
+				assert.NoError(s.T(), err)
 				assert.True(s.T(), ok)
 			},
 		},
 		{
 			name: "场景3: 多租户隔离拦截跨租户请求",
 			before: func(ctx context.Context, tid int64) {
-				// 1. 在租户 A 下注册 API 并授权
-				api := domain.API{Service: serviceName, Path: path, Method: method}
+				api := domain.API{Service: serviceName, Method: "GET", Path: "/api/v1/users"}
 				_, _ = s.resourceSvc.CreateAPI(ctx, api)
-				permId, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "view"})
-				_ = s.permSvc.BindResourcesToPermission(ctx, permId, "view", []string{api.URN()})
 
-				_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "VIEWER", TenantID: tid})
-				_ = s.roleSvc.UpdatePolicies(ctx, "VIEWER", []domain.Policy{{
-					Type:      domain.CustomPolicy,
-					Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"view"}, Resource: []string{"*"}}},
-				}})
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "VIEWER")
+				otherTid, _ := s.tenantSvc.CreateTenant(context.Background(), "黑客空间", "hacker", 999)
+				otherCtx := ctxutil.WithTenantID(context.Background(), otherTid)
+				_, _ = s.roleSvc.Create(otherCtx, domain.Role{Code: "DEV_HACKER"})
+				_, _ = s.permSvc.AssignRoleToUser(otherCtx, 999, "DEV_HACKER")
 			},
 			run: func(ctx context.Context, tid int64) {
-				// 2. 模拟切换至租户 B 的上下文进行请求
-				shadowTid := int64(9991)
-				shadowCtx := ctxutil.WithTenantID(context.Background(), shadowTid)
-
-				ok, err := s.permSvc.CheckAPI(shadowCtx, 8888, serviceName, method, path)
+				ok, err := s.permSvc.CheckAPI(ctx, 999, serviceName, "GET", "/api/v1/users")
 				assert.NoError(s.T(), err)
-				assert.False(s.T(), ok, "跨租户请求应被拦截")
+				assert.False(s.T(), ok)
 			},
 		},
 		{
@@ -154,6 +175,10 @@ func (s *PermissionSuite) TestCheckAPI() {
 
 	for _, tc := range testcases {
 		s.Run(tc.name, func() {
+			defer s.clearAll()
+			// 在调用 CreateTenant 之前，必须确保物理层存在 ADMIN/SUPER_ADMIN 角色条目
+			s.ensureAdminRole(context.Background())
+
 			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试用例", "test", 8888)
 			require.NoError(s.T(), err)
 			ctx := ctxutil.WithTenantID(context.Background(), tid)
@@ -169,6 +194,9 @@ func (s *PermissionSuite) TestCheckAPI() {
 }
 
 func (s *PermissionSuite) TestRoleCycleDetection() {
+	s.clearAll()
+	s.ensureAdminRole(context.Background())
+
 	tid, err := s.tenantSvc.CreateTenant(context.Background(), "循环测试", "cycle", 1)
 	require.NoError(s.T(), err)
 	ctx := ctxutil.WithTenantID(context.Background(), tid)

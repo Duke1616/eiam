@@ -15,8 +15,8 @@ import (
 
 func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	wire.Build(
-		// 基础组件
-		mainioc.InitDB,
+		// 基础组件：使用 testioc 本地定义的 InitDB (跳过 goose 迁移)
+		InitDB,
 		mainioc.InitCasbin,
 		mainioc.InitOPA,
 

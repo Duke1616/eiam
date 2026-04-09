@@ -113,8 +113,9 @@ func (p *TenantPlugin) isShared(sch *schema.Schema) bool {
 	// 2. 缓存未命中，执行探测逻辑
 	isShared := false
 	if field, ok := sch.FieldsByDBName[tenantColumn]; ok {
-		tag := string(field.Tag)
-		if strings.Contains(tag, `eiam:"shared"`) || strings.Contains(tag, `eiam:'shared'`) {
+		tag := strings.ToLower(string(field.Tag))
+		// 只要标签中包含 eiam 和 shared 关键字即判定为共享字段，提升对引号格式的包容度
+		if strings.Contains(tag, "eiam") && strings.Contains(tag, "shared") {
 			isShared = true
 		}
 	}
