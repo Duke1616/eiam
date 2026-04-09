@@ -1,7 +1,6 @@
 - name: PlatformDashboard
   path: /
   component: Layouts
-  sort: 875
   redirect: /cmdb/dashboard
   meta:
     title: 平台主页
@@ -13,7 +12,6 @@
   - name: GlobalSearchDiscovery
     path: /cmdb/dashboard/search
     component: /views/search/tabs-info.vue
-    sort: 0
     meta:
       title: 搜索列表
       icon: 
@@ -23,7 +21,6 @@
   - name: GlobalSearchCenter
     path: /cmdb/dashboard
     component: /views/search/search.vue
-    sort: 1000
     meta:
       title: 全局搜索
       icon: search
@@ -33,7 +30,6 @@
 - name: ModelGovernance
   path: /cmdb/model
   component: Layouts
-  sort: 1750
   redirect: /cmdb/model/index
   meta:
     title: 模型管理
@@ -45,7 +41,6 @@
   - name: ModelInventory
     path: index
     component: /views/model/index.vue
-    sort: 1
     meta:
       title: 模型资产
       icon: model-one
@@ -55,7 +50,6 @@
   - name: ModelDetail
     path: info
     component: /views/model/info/index.vue
-    sort: 2
     meta:
       title: 模型详情
       icon: 
@@ -65,7 +59,6 @@
   - name: RelationshipTopology
     path: relation
     component: /views/model/relation-graph/index.vue
-    sort: 3
     meta:
       title: 关联关系
       icon: relation-graph
@@ -75,7 +68,6 @@
   - name: RelationshipDefinition
     path: relation-type
     component: /views/model/relation-type/index.vue
-    sort: 4
     meta:
       title: 关联类型
       icon: relation-type
@@ -85,7 +77,6 @@
 - name: AssetGovernance
   path: /cmdb/resource
   component: Layouts
-  sort: 4000
   redirect: /cmdb/resource/index
   meta:
     title: 资产管理
@@ -97,7 +88,6 @@
   - name: AssetRegistry
     path: index
     component: /views/resource/warehouse/index.vue
-    sort: 1
     meta:
       title: 资产仓库
       icon: resource
@@ -107,7 +97,6 @@
   - name: AssetList
     path: list
     component: /views/resource/warehouse/list/list.vue
-    sort: 2
     meta:
       title: 资产列表
       icon: 
@@ -117,7 +106,6 @@
   - name: AssetDetail
     path: info
     component: /views/resource/warehouse/info/info.vue
-    sort: 3
     meta:
       title: 资产详情
       icon: 
@@ -127,7 +115,6 @@
 - name: OrderServiceCenter
   path: /cmdb/order
   component: Layouts
-  sort: 5000
   redirect: /cmdb/order/index
   meta:
     title: 工单中心
@@ -139,7 +126,6 @@
   - name: OrderSubmission
     path: start
     component: /views/order/start/index.vue
-    sort: 1000
     meta:
       title: 提交工单
       icon: submit-order
@@ -149,7 +135,6 @@
   - name: OrderList
     path: list
     component: /views/order/index.vue
-    sort: 2000
     meta:
       title: 工单列表
       icon: order-list
@@ -159,7 +144,6 @@
   - name: History
     path: history
     component: /views/task/history/index.vue
-    sort: 2500
     meta:
       title: 任务记录
       icon: task-history
@@ -169,7 +153,6 @@
 - name: WorkflowEngine
   path: /cmdb/process
   component: Layouts
-  sort: 6000
   redirect: /cmdb/process/index
   meta:
     title: 流程控制
@@ -181,7 +164,6 @@
   - name: TemplateGovernance
     path: template
     component: /views/process/template/index.vue
-    sort: 1
     meta:
       title: 模版管理
       icon: template
@@ -191,7 +173,6 @@
   - name: WorkflowGovernance
     path: workflow
     component: /views/process/manager/index.vue
-    sort: 2
     meta:
       title: 流程管理
       icon: process
@@ -201,7 +182,6 @@
 - name: JobControlCenter
   path: /cmdb/task
   component: Layouts
-  sort: 7000
   redirect: /cmdb/task/codebook
   meta:
     title: 任务中心
@@ -213,7 +193,6 @@
   - name: JobGovernance
     path: /task/manager
     component: /views/task/manager/index.vue
-    sort: 0
     meta:
       title: 任务管理
       icon: task-manager
@@ -223,7 +202,6 @@
   - name: JobTemplateRegistry
     path: codebook
     component: /views/task/codebook/index.vue
-    sort: 1
     meta:
       title: 任务模版
       icon: template
@@ -233,7 +211,6 @@
   - name: JobExecutorPool
     path: /task/executor
     component: /views/task/worker/index.vue
-    sort: 2
     meta:
       title: 执行节点
       icon: worker
@@ -243,7 +220,6 @@
   - name: JobRunnerInsight
     path: runner
     component: /views/task/runner/index.vue
-    sort: 3
     meta:
       title: 执行单元
       icon: runner
@@ -253,7 +229,6 @@
 - name: AlertWorkbench
   path: /alert/workbench
   component: Layouts
-  sort: 8000
   redirect: /alert/workbench/workspace
   meta:
     title: 告警平台
@@ -265,7 +240,6 @@
   - name: AlertWorkspace
     path: /alert/workspace
     component: /pages/alert/workspace/index.vue
-    sort: 1
     meta:
       title: 工作空间
       icon: workspace
@@ -275,7 +249,6 @@
   - name: AlertWorkspaceDetail
     path: /alert/workspace/:id
     component: /pages/alert/workspace/detail.vue
-    sort: 2
     meta:
       title: 空间详情
       icon: 
@@ -285,7 +258,6 @@
 - name: TimeSeriesInsight
   path: /alert/time_series
   component: Layouts
-  sort: 9000
   redirect: /alert/time_series/query
   meta:
     title: 时序指标
@@ -297,7 +269,6 @@
   - name: TimeSeriesInstantQuery
     path: /alert/time_series/query
     component: /pages/alert/query/index.vue
-    sort: 1
     meta:
       title: 即时查询
       icon: search
@@ -307,7 +278,6 @@
 - name: AlertManager
   path: /alert/manager
   component: Layouts
-  sort: 10000
   redirect: /alert/manager/current
   meta:
     title: 告警管理
@@ -319,7 +289,6 @@
   - name: DataSourceRegistry
     path: /alert/manager/datasource
     component: /pages/alert/datasource/index.vue
-    sort: 0
     meta:
       title: 数据源
       icon: datasource
@@ -329,7 +298,6 @@
   - name: AlertRuleDefinition
     path: /alert/manager/rule
     component: /pages/alert/rule/index.vue
-    sort: 1
     meta:
       title: 告警规则
       icon: alert_rule
@@ -339,7 +307,6 @@
   - name: AlertRuleCreation
     path: /alert/manager/rule/create
     component: /pages/alert/rule/create.vue
-    sort: 3
     meta:
       title: 新增规则
       icon: component
@@ -349,7 +316,6 @@
   - name: AlertRuleAdjustment
     path: /alert/manager/rule/edit/:id
     component: /pages/alert/rule/edit.vue
-    sort: 4
     meta:
       title: 编辑规则
       icon: component
@@ -359,7 +325,6 @@
   - name: ActiveAlertMonitor
     path: /alert/manager/current
     component: /pages/alert/current/index.vue
-    sort: 5
     meta:
       title: 当前告警
       icon: alert_cur
@@ -369,7 +334,6 @@
   - name: AlertHistoryArchive
     path: /alert/manager/history
     component: /pages/alert/history/index.vue
-    sort: 6
     meta:
       title: 历史告警
       icon: alert_his
@@ -379,7 +343,6 @@
   - name: AlertRoutingLogic
     path: /alert/manager/routing
     component: /pages/alert/routing/index.vue
-    sort: 7
     meta:
       title: 路由规则
       icon: dispatch_rule
@@ -389,7 +352,6 @@
 - name: NotificationService
   path: /alert/notify
   component: Layouts
-  sort: 11000
   redirect: /alert/notify/template
   meta:
     title: 通知管理
@@ -401,7 +363,6 @@
   - name: TemplateGovernance
     path: /alert/notify/template
     component: /pages/alert/template/index.vue
-    sort: 0
     meta:
       title: 模版管理
       icon: notify_template
@@ -411,7 +372,6 @@
   - name: AlertNotifyTemplateCreate
     path: /alert/notify/template/create
     component: /pages/alert/template/detail.vue
-    sort: 0
     meta:
       title: 创建模版
       icon: 
@@ -421,7 +381,6 @@
   - name: AlertNotifyTemplateEditId
     path: /alert/notify/template/edit/:id
     component: /pages/alert/template/detail.vue
-    sort: 2
     meta:
       title: 变更模版
       icon: 
@@ -431,7 +390,6 @@
   - name: NotificationTemplateGroup
     path: /alert/notify/template-set
     component: /pages/alert/template_set/index.vue
-    sort: 4
     meta:
       title: 模版集合
       icon: template_set
@@ -441,7 +399,6 @@
   - name: NotificationTemplateItem
     path: /alert/notify/template-set/items/:id
     component: /pages/alert/template_set/items.vue
-    sort: 5
     meta:
       title: 集合条目
       icon: 
@@ -451,7 +408,6 @@
   - name: AlertEscalationPipeline
     path: /alert/notify/escalation
     component: 1
-    sort: 6
     redirect: /pages/alert/escalation/index.vue
     meta:
       title: 通知升级
@@ -463,7 +419,6 @@
     - name: EscalationPolicy
       path: /alert/notify/escalation/config
       component: /pages/alert/escalation/index.vue
-      sort: 1
       meta:
         title: 升级配置
         icon: escalation_config
@@ -473,7 +428,6 @@
     - name: EscalationStepTemplate
       path: /alert/notify/escalation/templates
       component: /pages/alert/escalation/templates.vue
-      sort: 2
       meta:
         title: 步骤模版
         icon: escalation_step
@@ -483,7 +437,6 @@
     - name: EscalationPolicyCreation
       path: /alert/notify/escalation/config/create
       component: /pages/alert/escalation/create.vue
-      sort: 3
       meta:
         title: 创建升级配置
         icon: template_set
@@ -493,7 +446,6 @@
     - name: EscalationStepGovernance
       path: /alert/notify/escalation/steps/:id
       component: /pages/alert/escalation/steps.vue
-      sort: 4
       meta:
         title: 步骤管理
         icon: template_set
@@ -503,7 +455,6 @@
 - name: ShiftRotaLifecycle
   path: /cmdb/rota
   component: Layouts
-  sort: 12000
   redirect: /cmdb/rota
   meta:
     title: 排班管理
@@ -515,7 +466,6 @@
   - name: ShiftRotaLifecycle
     path: /cmdb/rota
     component: /views/rota/index.vue
-    sort: 1
     meta:
       title: 排班管理
       icon: schedule
@@ -525,7 +475,6 @@
   - name: ShiftRotaDetail
     path: /cmdb/rota/detail
     component: /views/rota/detail.vue
-    sort: 2
     meta:
       title: 排班详情
       icon: 
@@ -535,7 +484,6 @@
 - name: SystemGovernance
   path: /cmdb/system
   component: Layouts
-  sort: 13000
   redirect: /cmdb/system/menu
   meta:
     title: 系统管理
@@ -548,7 +496,6 @@
     path: role
     permission_code: iam:role:view
     component: /views/system/role/index.vue
-    sort: 1
     meta:
       title: 角色管理
       icon: role
@@ -559,7 +506,6 @@
     path: menu
     permission_code: "iam:menu:view"
     component: /views/system/menu/index.vue
-    sort: 2
     meta:
       title: 菜单管理
       icon: menu
@@ -569,7 +515,6 @@
   - name: RolePermissionMatrix
     path: /system/role/permission-matrix/:roleCode
     component: /views/system/role/matrix.vue
-    sort: 3
     meta:
       title: 权限配置
       icon: 
@@ -580,7 +525,6 @@
     path: user
     permission_code: "iam:user:view"
     component: /views/system/user/index.vue
-    sort: 4
     meta:
       title: 用户管理
       icon: user
@@ -590,7 +534,6 @@
   - name: TeamGovernance
     path: /alert/system/team
     component: /pages/alert/team/index.vue
-    sort: 5
     meta:
       title: 团队管理
       icon: team
@@ -601,7 +544,6 @@
     path: department
     permission_code: "iam:department:view"
     component: /views/system/department/index.vue
-    sort: 6
     meta:
       title: 部门管理
       icon: role
@@ -612,7 +554,6 @@
     path: api
     permission_code: "iam:api:view"
     component: /views/system/api/index.vue
-    sort: 7
     meta:
       title: 接口管理
       icon: bug

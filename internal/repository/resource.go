@@ -6,6 +6,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
+	"github.com/ecodeclub/ekit/slice"
 )
 
 // IResourceRepository 物理资源仓库，负责全量 Menu 和 API 资产的底数管理
@@ -23,8 +24,8 @@ type IResourceRepository interface {
 
 	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
 	UpsertMenu(ctx context.Context, m *domain.Menu) error
-	// SyncMenuTree 高性能同步菜单树，消除 N+1 查询
-	SyncMenuTree(ctx context.Context, menus []*domain.Menu) error
+	// SyncMenus 高性能同步菜单资产，基于领域对象自带的 ParentName 自动解析拓扑
+	SyncMenus(ctx context.Context, menus domain.MenuList) error
 	// ListAllMenus 获取系统中注册的所有全量菜单
 	ListAllMenus(ctx context.Context) ([]domain.Menu, error)
 	// GetMenu 根据 ID 获取菜单
@@ -42,12 +43,54 @@ type ResourceRepository struct {
 	dao dao.IResourceDAO
 }
 
-// NewResourceRepository 创建资源仓库实例
 func NewResourceRepository(dao dao.IResourceDAO) IResourceRepository {
 	return &ResourceRepository{dao: dao}
 }
 
-// CreateAPI 实现 API 资产落地
+// SyncMenus 实现高性能的原子级资产同步 (领域驱动版)
+func (r *ResourceRepository) SyncMenus(ctx context.Context, menus domain.MenuList) error {
+	names := slice.Map(menus, func(_ int, m domain.Menu) string { return m.Name })
+
+	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
+		// 元数据对齐
+		daoEntities := slice.Map(menus, func(_ int, m domain.Menu) dao.Menu { return r.toDAOMenu(m) })
+		if err := r.dao.BatchUpsertMenus(txCtx, daoEntities); err != nil {
+			return err
+		}
+
+		// 拓扑对齐 (基于 ParentName 修正 ParentID)
+		if err := r.alignTopology(txCtx, daoEntities, menus); err != nil {
+			return err
+		}
+
+		// 孤儿清理
+		return r.dao.DeleteMenusByNames(txCtx, names)
+	})
+}
+
+func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.Menu, source domain.MenuList) error {
+	latest, err := r.dao.ListAllMenus(ctx)
+	if err != nil {
+		return err
+	}
+	nameMap := slice.ToMap(latest, func(m dao.Menu) string { return m.Name })
+
+	for i := range entities {
+		pName := source[i].ParentName
+		if pName != "" {
+			if parent, exists := nameMap[pName]; exists {
+				entities[i].ParentId = parent.Id
+			}
+		} else {
+			entities[i].ParentId = 0
+		}
+	}
+
+	return r.dao.BatchUpsertMenus(ctx, entities)
+}
+
+// --- 其它方法保持简洁 ---
+
 func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64, error) {
 	return r.dao.InsertAPI(ctx, dao.API{
 		Service: a.Service,
@@ -58,61 +101,31 @@ func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64
 }
 
 func (r *ResourceRepository) BatchCreateAPI(ctx context.Context, apis []domain.API) error {
-	daoApis := make([]dao.API, 0, len(apis))
-	for _, a := range apis {
-		daoApis = append(daoApis, dao.API{
-			Service: a.Service,
-			Name:    a.Name,
-			Method:  a.Method,
-			Path:    a.Path,
-		})
-	}
-
+	daoApis := slice.Map(apis, func(_ int, a domain.API) dao.API {
+		return dao.API{Service: a.Service, Name: a.Name, Method: a.Method, Path: a.Path}
+	})
 	return r.dao.BatchInsertAPI(ctx, daoApis)
 }
 
-// FindAPIByPath 执行接口物理路径查重与匹配
 func (r *ResourceRepository) FindAPIByPath(ctx context.Context, service, method, path string) (domain.API, error) {
-	// NOTE: 在实际高性能场景下，这里建议使用 Radix Tree 或 Map 缓存全量 API 路径
 	apis, err := r.dao.ListAllAPIs(ctx)
 	if err != nil {
 		return domain.API{}, err
 	}
 	for _, a := range apis {
 		if a.Service == service && a.Method == method && a.Path == path {
-			return domain.API{
-				ID:      a.Id,
-				Service: a.Service,
-				Name:    a.Name,
-				Method:  a.Method,
-				Path:    a.Path,
-				Ctime:   a.Ctime,
-				Utime:   a.Utime,
-			}, nil
+			return r.toDomainAPI(a), nil
 		}
 	}
 	return domain.API{}, nil
 }
 
-// ListAllAPIs 获取系统物理边界清单
 func (r *ResourceRepository) ListAllAPIs(ctx context.Context) ([]domain.API, error) {
 	apis, err := r.dao.ListAllAPIs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	res := make([]domain.API, 0, len(apis))
-	for _, a := range apis {
-		res = append(res, domain.API{
-			ID:      a.Id,
-			Service: a.Service,
-			Name:    a.Name,
-			Method:  a.Method,
-			Path:    a.Path,
-			Ctime:   a.Ctime,
-			Utime:   a.Utime,
-		})
-	}
-	return res, nil
+	return slice.Map(apis, func(_ int, a dao.API) domain.API { return r.toDomainAPI(a) }), nil
 }
 
 func (r *ResourceRepository) ListAPIsByService(ctx context.Context, service string) ([]domain.API, error) {
@@ -120,23 +133,9 @@ func (r *ResourceRepository) ListAPIsByService(ctx context.Context, service stri
 	if err != nil {
 		return nil, err
 	}
-
-	res := make([]domain.API, 0, len(apis))
-	for _, a := range apis {
-		res = append(res, domain.API{
-			ID:      a.Id,
-			Service: a.Service,
-			Name:    a.Name,
-			Method:  a.Method,
-			Path:    a.Path,
-			Ctime:   a.Ctime,
-			Utime:   a.Utime,
-		})
-	}
-	return res, nil
+	return slice.Map(apis, func(_ int, a dao.API) domain.API { return r.toDomainAPI(a) }), nil
 }
 
-// UpsertMenu 核心幂等同步逻辑：Name 存在则更新，不存在则新增
 func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) error {
 	row, err := r.dao.FindMenuByName(ctx, m.Name)
 	if err == nil {
@@ -152,47 +151,45 @@ func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) err
 	return nil
 }
 
-// SyncMenuTree 实现高性能的原子级资产同步
-func (r *ResourceRepository) SyncMenuTree(ctx context.Context, menus []*domain.Menu) error {
-	// 1. 批量预加载：一次性拉取全量底数，构建 O(1) 内存索引
+func (r *ResourceRepository) ListAllMenus(ctx context.Context) ([]domain.Menu, error) {
+	menus, err := r.dao.ListAllMenus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slice.Map(menus, func(_ int, m dao.Menu) domain.Menu { return r.toDomainMenu(m) }), nil
+}
+
+func (r *ResourceRepository) GetMenu(ctx context.Context, id int64) (domain.Menu, error) {
 	all, err := r.dao.ListAllMenus(ctx)
 	if err != nil {
-		return err
+		return domain.Menu{}, err
 	}
-	index := make(map[string]int64, len(all))
 	for _, m := range all {
-		index[m.Name] = m.Id
-	}
-
-	// 2. 递归对齐：在内存中完成“资产存在性”判定，避免 N+1 IO
-	return r.recursiveSync(ctx, menus, 0, index)
-}
-
-func (r *ResourceRepository) recursiveSync(ctx context.Context, menus []*domain.Menu, parentID int64, index map[string]int64) error {
-	for _, m := range menus {
-		m.ParentID = parentID
-		// 内存级匹配，无需数据库交互
-		if id, ok := index[m.Name]; ok {
-			m.ID = id
-			if err := r.dao.UpdateMenu(ctx, r.toDAOMenu(*m)); err != nil {
-				return err
-			}
-		} else {
-			id, err := r.dao.InsertMenu(ctx, r.toDAOMenu(*m))
-			if err != nil {
-				return err
-			}
-			m.ID = id
-		}
-
-		if len(m.Children) > 0 {
-			if err := r.recursiveSync(ctx, m.Children, m.ID, index); err != nil {
-				return err
-			}
+		if m.Id == id {
+			return r.toDomainMenu(m), nil
 		}
 	}
-	return nil
+	return domain.Menu{}, nil
 }
+
+func (r *ResourceRepository) ListMenusByParentID(ctx context.Context, parentID int64) ([]domain.Menu, error) {
+	menus, err := r.dao.ListMenusByParentID(ctx, parentID)
+	if err != nil {
+		return nil, err
+	}
+	return slice.Map(menus, func(_ int, m dao.Menu) domain.Menu { return r.toDomainMenu(m) }), nil
+}
+
+func (r *ResourceRepository) UpdateMenuSort(ctx context.Context, id int64, parentID int64, sortKey int64) error {
+	return r.dao.UpdateMenuSort(ctx, id, parentID, sortKey)
+}
+
+func (r *ResourceRepository) BatchUpdateMenuSort(ctx context.Context, menus []domain.Menu) error {
+	daoMenus := slice.Map(menus, func(_ int, m domain.Menu) dao.Menu { return r.toDAOMenu(m) })
+	return r.dao.BatchUpdateMenuSort(ctx, daoMenus)
+}
+
+// --- 转换助手 (Mapper) ---
 
 func (r *ResourceRepository) toDAOMenu(m domain.Menu) dao.Menu {
 	return dao.Menu{
@@ -218,58 +215,6 @@ func (r *ResourceRepository) toDAOMenu(m domain.Menu) dao.Menu {
 	}
 }
 
-// ListAllMenus 获取系统中注册的所有全量菜单
-func (r *ResourceRepository) ListAllMenus(ctx context.Context) ([]domain.Menu, error) {
-	menus, err := r.dao.ListAllMenus(ctx)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]domain.Menu, 0, len(menus))
-	for _, m := range menus {
-		res = append(res, r.toDomainMenu(m))
-	}
-	return res, nil
-}
-
-func (r *ResourceRepository) GetMenu(ctx context.Context, id int64) (domain.Menu, error) {
-	// 暂时简单复用全量列表查找，或在 DAO 增加单个查询
-	// 为高性能考虑建议在 IResourceDAO 补充 FindMenuByID
-	all, err := r.dao.ListAllMenus(ctx)
-	if err != nil {
-		return domain.Menu{}, err
-	}
-	for _, m := range all {
-		if m.Id == id {
-			return r.toDomainMenu(m), nil
-		}
-	}
-	return domain.Menu{}, nil
-}
-
-func (r *ResourceRepository) ListMenusByParentID(ctx context.Context, parentID int64) ([]domain.Menu, error) {
-	menus, err := r.dao.ListMenusByParentID(ctx, parentID)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]domain.Menu, 0, len(menus))
-	for _, m := range menus {
-		res = append(res, r.toDomainMenu(m))
-	}
-	return res, nil
-}
-
-func (r *ResourceRepository) UpdateMenuSort(ctx context.Context, id int64, parentID int64, sortKey int64) error {
-	return r.dao.UpdateMenuSort(ctx, id, parentID, sortKey)
-}
-
-func (r *ResourceRepository) BatchUpdateMenuSort(ctx context.Context, menus []domain.Menu) error {
-	daoMenus := make([]dao.Menu, 0, len(menus))
-	for _, m := range menus {
-		daoMenus = append(daoMenus, r.toDAOMenu(m))
-	}
-	return r.dao.BatchUpdateMenuSort(ctx, daoMenus)
-}
-
 func (r *ResourceRepository) toDomainMenu(m dao.Menu) domain.Menu {
 	return domain.Menu{
 		ID:             m.Id,
@@ -290,5 +235,17 @@ func (r *ResourceRepository) toDomainMenu(m dao.Menu) domain.Menu {
 		},
 		Ctime: m.Ctime,
 		Utime: m.Utime,
+	}
+}
+
+func (r *ResourceRepository) toDomainAPI(a dao.API) domain.API {
+	return domain.API{
+		ID:      a.Id,
+		Service: a.Service,
+		Name:    a.Name,
+		Method:  a.Method,
+		Path:    a.Path,
+		Ctime:   a.Ctime,
+		Utime:   a.Utime,
 	}
 }

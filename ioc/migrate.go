@@ -14,11 +14,11 @@ import (
 func RunMigrations(db *gorm.DB) error {
 	sqlDB, err := db.DB()
 	if err != nil {
-		return fmt.Errorf("获取 *sql.DB 实例失败: " + err.Error())
+		return fmt.Errorf("获取 *sql.DB 实例失败: %w", err)
 	}
 
 	if err = runGooseMigrations(sqlDB, db.Dialector.Name()); err != nil {
-		return fmt.Errorf("数据库迁移失败（请检查 deploy/migrations/ 下的脚本）: " + err.Error())
+		return fmt.Errorf("数据库迁移失败（请检查 deploy/migrations/ 下的脚本）: %w", err)
 	}
 
 	return nil

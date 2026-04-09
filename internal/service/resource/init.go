@@ -245,41 +245,47 @@ func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService s
 }
 
 func (i *Initializer) SyncMenus(ctx context.Context) error {
-	// 1. 系统预热：加载内置菜单元数据并重平衡权重
+	// 1. 系统预热：加载内置菜单元数据
 	menus, err := i.loadBuiltinMenus()
 	if err != nil {
 		return err
 	}
-	i.rebalanceMenuTree(menus)
 
-	// 2. 物理落地：执行菜单资产的高速原子化同步
-	if err = i.repo.SyncMenuTree(ctx, menus); err != nil {
+	// 2. 核心预处理：打平结构、血缘自映射
+	i.sorter.RebalanceHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
+		return m.Children
+	})
+
+	flatList := menus.Flatten()
+
+	// 提取染色映射
+	bindings := make(map[string][]string)
+	for _, m := range flatList {
+		if m.PermissionCode != "" {
+			bindings[m.PermissionCode] = append(bindings[m.PermissionCode], m.URN())
+		}
+	}
+
+	// 3. 物理落地：执行菜单资产的高速原子化同步
+	if err = i.repo.SyncMenus(ctx, flatList); err != nil {
 		return err
 	}
 
-	// 3. 染色对齐：一次性执行菜单与权限码的全局绑定
-	return i.syncMenuBindings(ctx, menus)
+	// 4. 染色对齐：一次性执行菜单与权限码的全局绑定
+	if len(bindings) > 0 {
+		return i.permRepo.BatchBindResources(ctx, bindings)
+	}
+
+	return nil
 }
 
 // loadBuiltinMenus 封装 YAML 加载与内置资源的内存反序列化逻辑
-func (i *Initializer) loadBuiltinMenus() ([]*domain.Menu, error) {
+func (i *Initializer) loadBuiltinMenus() (domain.MenuTree, error) {
 	var menus []*domain.Menu
 	if err := yaml.Unmarshal(menuYaml, &menus); err != nil {
 		return nil, err
 	}
 	return menus, nil
-}
-
-// syncMenuBindings 封装菜单资源与逻辑权限的染色挂载全流程
-func (i *Initializer) syncMenuBindings(ctx context.Context, menus []*domain.Menu) error {
-	bindings := make(map[string][]string)
-	i.collectMenuBindings(menus, bindings)
-
-	if len(bindings) == 0 {
-		return nil
-	}
-
-	return i.permRepo.BatchBindResources(ctx, bindings)
 }
 
 func iif(cond bool, t, f string) string {
@@ -289,19 +295,8 @@ func iif(cond bool, t, f string) string {
 	return f
 }
 
-// collectMenuBindings 利用通用层级走访器，提取整棵树中所有声明了权限码的资源 URN
-func (i *Initializer) collectMenuBindings(menus []*domain.Menu, bindings map[string][]string) {
-	utils.WalkHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
-		return m.Children
-	}, func(m *domain.Menu) {
-		if m.PermissionCode != "" {
-			bindings[m.PermissionCode] = append(bindings[m.PermissionCode], m.URN())
-		}
-	})
-}
-
-func (i *Initializer) rebalanceMenuTree(menus []*domain.Menu) {
-	// 极致优雅：通过通用排序引擎一键递归重置整颗树的权重，消除局部循环逻辑与分配压力
+func (i *Initializer) rebalanceMenuTree(menus domain.MenuTree) {
+	// 已被 SyncMenus 内部逻辑覆盖，保留作为 Sorter 的语义包装（可选，若想更简洁可彻底移除）
 	i.sorter.RebalanceHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
 		return m.Children
 	})

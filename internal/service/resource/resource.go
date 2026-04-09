@@ -21,7 +21,7 @@ type IResourceService interface {
 	// --- 2. 菜单层级管理 (Hierarchy Management) ---
 
 	// SyncMenus 高性能同步菜单树状资产 (通常用于启动初始化)
-	SyncMenus(ctx context.Context, menus []*domain.Menu) error
+	SyncMenus(ctx context.Context, menus domain.MenuTree) error
 	// ListAllMenus 获取系统中注册的所有全量菜单
 	ListAllMenus(ctx context.Context) ([]domain.Menu, error)
 	// ReorderMenu 菜单重排序：将 id 移动至 targetPid 下的 targetPosition 位置 (0-based)
@@ -44,8 +44,8 @@ func (s *resourceService) FindAPIByPath(ctx context.Context, service, method, pa
 	return s.repo.FindAPIByPath(ctx, service, method, path)
 }
 
-func (s *resourceService) SyncMenus(ctx context.Context, menus []*domain.Menu) error {
-	return s.repo.SyncMenuTree(ctx, menus)
+func (s *resourceService) SyncMenus(ctx context.Context, menus domain.MenuTree) error {
+	return s.repo.SyncMenus(ctx, menus.Flatten())
 }
 
 func (s *resourceService) ListAllMenus(ctx context.Context) ([]domain.Menu, error) {
