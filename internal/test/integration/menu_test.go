@@ -68,7 +68,7 @@ func (s *MenuTreeSuite) TearDownSubTest() {
 
 func (s *MenuTreeSuite) SetupSubTest() {
 	s.clearAll() // 前置清理，防止场景干扰
-	
+
 	// 初始化租户 (每个场景共用一个干净的租户环境)
 	tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试中心", "test-center", 12345)
 	require.NoError(s.T(), err)
@@ -183,6 +183,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 }
 
 func (s *MenuTreeSuite) clearAll() {
+	s.db.Exec("DROP TABLE IF EXISTS goose_db_version")
 	s.db.Exec("DELETE FROM casbin_rule")
 	s.db.Exec("DELETE FROM permission")
 	s.db.Exec("DELETE FROM permission_binding")

@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -38,6 +39,9 @@ func NewRoleService(repo repository.IRoleRepository) IRoleService {
 }
 
 func (s *roleService) Create(ctx context.Context, r domain.Role) (int64, error) {
+	if r.TenantID == 0 {
+		r.TenantID = ctxutil.GetTenantID(ctx)
+	}
 	return s.repo.Create(ctx, r)
 }
 
@@ -68,6 +72,9 @@ func (s *roleService) List(ctx context.Context, offset, limit int64) ([]domain.R
 }
 
 func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) {
+	if r.TenantID == 0 {
+		r.TenantID = ctxutil.GetTenantID(ctx)
+	}
 	return s.repo.Update(ctx, r)
 }
 

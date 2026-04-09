@@ -2,21 +2,18 @@ package permission
 
 import (
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
-	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	capability.IRegistry
 	svc permissionsvc.IPermissionService
 }
 
 func NewHandler(svc permissionsvc.IPermissionService) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("iam", "menu", "权限管理"),
-		svc:       svc,
+		svc: svc,
 	}
 }
 

@@ -1,19 +1,11 @@
 package domain
 
 import (
-	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/Duke1616/eiam/pkg/urn"
 )
 
-var (
-	// 模仿 Casbin KeyMatch2：匹配路径中的 :xxx 样式参数
-	idParamRegex = regexp.MustCompile(`:[^/]+`)
-	// 模仿 Casbin KeyMatch3：匹配路径中的 {xxx} 样式参数
-	braceParamRegex = regexp.MustCompile(`\{[^/]+\}`)
-)
 
 // Menu 菜单资源 (纯展示层元数据)
 type Menu struct {
@@ -44,17 +36,9 @@ func (m Menu) GetSortKey() int64 {
 }
 
 func (a API) URN() string {
-	return urn.New(a.Service, "api", a.resID()).String()
-}
-
-func (a API) resID() string {
-	// 使用 : 分隔 Method 和 Path，并对路径进行通配符归一化
-	// 以便 OPA glob.match 能够处理 /v1/users/:id 这种资产定义
-	path := a.Path
-	path = idParamRegex.ReplaceAllString(path, "*")
-	path = braceParamRegex.ReplaceAllString(path, "*")
-
-	return fmt.Sprintf("%s:%s", strings.ToLower(a.Method), path)
+	// 直接使用原生的 Path 模板作为唯一标识 (如 /api/:id)
+	// 这在 URN 层面天然隔离了不同的路径定义，且与 Gin 的 FullPath() 完美契合
+	return urn.New(a.Service, "api", strings.ToLower(a.Method)+":"+a.Path).String()
 }
 
 // MenuMeta 菜单核心 UI 控制属性

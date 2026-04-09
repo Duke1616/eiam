@@ -59,8 +59,7 @@ func (s *PermissionSuite) clearAll() {
 	t := s.T()
 	t.Helper()
 
-	// 仅清理非系统级别的租户数据，保留 Goose 注入的 0 号租户种子角色
-	s.db.Exec("DROP TABLE goose_db_version")
+	s.db.Exec("DROP TABLE IF EXISTS goose_db_version")
 	s.db.Exec("DELETE FROM casbin_rule")
 	s.db.Exec("DELETE FROM permission")
 	s.db.Exec("DELETE FROM permission_binding")

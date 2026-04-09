@@ -170,8 +170,9 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 
 				// 3. 创建并配置角色（仅给予删除权限）
 				_, err = s.roleSvc.Create(ctx, domain.Role{
-					Code: "OPERATOR",
-					Name: "普通操作员",
+					Code:     "TEST_OPERATOR",
+					Name:     "普通操作员",
+					TenantID: s.testTid,
 					Policies: []domain.Policy{
 						{
 							Type: domain.SystemPolicy,
@@ -188,7 +189,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 				require.NoError(t, err)
 
 				// 4. 将新用户加入该角色
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "OPERATOR")
+				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "TEST_OPERATOR")
 				require.NoError(t, err)
 			},
 			wantCode: http.StatusForbidden,
@@ -222,8 +223,9 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 
 				// 3. 创建并配置角色（给予正确的 Add 权限）
 				_, err = s.roleSvc.Create(ctx, domain.Role{
-					Code: "MANAGER",
-					Name: "管理员",
+					Code:     "TEST_MANAGER",
+					Name:     "管理员",
+					TenantID: s.testTid,
 					Policies: []domain.Policy{
 						{
 							Type: domain.SystemPolicy,
@@ -240,7 +242,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 				require.NoError(t, err)
 
 				// 4. 将用户加入该角色
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "MANAGER")
+				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "TEST_MANAGER")
 				require.NoError(t, err)
 			},
 			wantCode: http.StatusOK,
@@ -266,7 +268,7 @@ func (s *HandlerAuthTestSuite) clearAll() {
 	t := s.T()
 	t.Helper()
 
-	// 仅清理非系统级别的租户数据，保留 Goose 注入的 0 号租户种子角色
+	s.db.Exec("DROP TABLE IF EXISTS goose_db_version")
 	s.db.Exec("DELETE FROM casbin_rule")
 	s.db.Exec("DELETE FROM permission")
 	s.db.Exec("DELETE FROM permission_binding")
