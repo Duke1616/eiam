@@ -1,7 +1,9 @@
 package permission
 
 import (
+	"github.com/Duke1616/eiam/internal/domain"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -35,5 +37,27 @@ func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrAuthMenuFailed, err
 	}
 
-	return ginx.Result{Data: menus}, nil
+	return ginx.Result{Data: h.toMenuVOs(menus)}, nil
+}
+
+func (h *Handler) toMenuVOs(menus domain.MenuTree) []Menu {
+	return slice.Map(menus, func(idx int, m *domain.Menu) Menu {
+		return Menu{
+			ID:        m.ID,
+			ParentID:  m.ParentID,
+			Name:      m.Name,
+			Path:      m.Path,
+			Component: m.Component,
+			Redirect:  m.Redirect,
+			Meta: Meta{
+				Title:       m.Meta.Title,
+				Icon:        m.Meta.Icon,
+				IsHidden:    m.Meta.IsHidden,
+				IsKeepAlive: m.Meta.IsKeepAlive,
+				IsAffix:     m.Meta.IsAffix,
+				Platforms:   m.Meta.Platforms,
+			},
+			Children: h.toMenuVOs(m.Children),
+		}
+	})
 }
