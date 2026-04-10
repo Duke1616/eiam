@@ -75,7 +75,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 	testCases := []struct {
 		name   string
 		before func(ctx context.Context)
-		verify func(t *testing.T, menus []domain.Menu)
+		verify func(t *testing.T, menus domain.MenuTree)
 	}{
 		{
 			name: "场景1: 用户拥有全量菜单权限 -> 预期可见完整树",
@@ -104,7 +104,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "ALL_VIEWER")
 				require.NoError(s.T(), err)
 			},
-			verify: func(t *testing.T, menus []domain.Menu) {
+			verify: func(t *testing.T, menus domain.MenuTree) {
 				require.Len(t, menus, 1)
 				assert.Equal(t, "系统管理", menus[0].Name)
 				assert.Len(t, menus[0].Children, 2)
@@ -143,7 +143,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "SERVER_VIEWER")
 				require.NoError(s.T(), err)
 			},
-			verify: func(t *testing.T, menus []domain.Menu) {
+			verify: func(t *testing.T, menus domain.MenuTree) {
 				require.Len(t, menus, 1)
 				assert.Equal(t, "资产中心", menus[0].Name)
 				assert.Len(t, menus[0].Children, 1)

@@ -29,6 +29,37 @@ func (t MenuTree) Flatten() MenuList {
 	return res
 }
 
+// ToTree 将扁平列表转换为层级树结构，并按 Sort 字段排序
+func (l MenuList) ToTree() MenuTree {
+	nodeMap := make(map[int64]*Menu)
+	for i := range l {
+		menu := l[i]
+		menu.Children = make([]*Menu, 0)
+		nodeMap[menu.ID] = &menu
+	}
+
+	var roots MenuTree
+	for _, m := range nodeMap {
+		if m.ParentID == 0 {
+			roots = append(roots, m)
+		} else {
+			if parent, exists := nodeMap[m.ParentID]; exists {
+				parent.Children = append(parent.Children, m)
+			}
+		}
+	}
+
+	// 递归逻辑已扁平化为 Map 遍历，只需对各层级执行排序
+	for _, m := range nodeMap {
+		if len(m.Children) > 1 {
+			utils.SortBySortKey(m.Children)
+		}
+	}
+	utils.SortBySortKey(roots)
+
+	return roots
+}
+
 // Menu 菜单资源 (纯展示层元数据)
 type Menu struct {
 	ID             int64    `json:"id" yaml:"-"`

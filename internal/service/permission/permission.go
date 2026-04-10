@@ -2,7 +2,6 @@ package permission
 
 import (
 	"context"
-	"sort"
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/authz"
@@ -13,6 +12,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/casbin/casbin/v2"
+	"github.com/ecodeclub/ekit/set"
 	"github.com/ecodeclub/ekit/slice"
 )
 
@@ -27,7 +27,7 @@ type IPermissionService interface {
 	// CheckPermission 用户是否拥有在该租户下对具体 URN 的特定 Action 权限
 	CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error)
 	// GetAuthorizedMenus 过滤用户拥有的前端菜单
-	GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error)
+	GetAuthorizedMenus(ctx context.Context, userId int64) (domain.MenuTree, error)
 
 	// --- 2. 能力中心 (Admin) ---
 
@@ -114,12 +114,14 @@ func (s *permissionService) CheckPermission(ctx context.Context, userId int64, a
 }
 
 // GetAuthorizedMenus 过滤授权菜单并构建层级树
-func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) ([]domain.Menu, error) {
+func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) (domain.MenuTree, error) {
+	// 1. 拉取元数据全集体
 	allMenus, err := s.resourceSvc.ListAllMenus(ctx)
 	if err != nil || len(allMenus) == 0 {
-		return []domain.Menu{}, err
+		return domain.MenuTree{}, err
 	}
 
+	// 2. 获取权限底数与策略池
 	menuURNs := slice.Map(allMenus, func(_ int, m domain.Menu) string { return m.URN() })
 	codesMap, err := s.permRepo.FindCodesByResourceURNs(ctx, menuURNs)
 	if err != nil {
@@ -131,6 +133,7 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64
 		return nil, err
 	}
 
+	// 3. 执行 OPA 批量裁决
 	allowedURNs, err := s.authorizer.AuthorizeBatch(ctx, authz.AuthInput{
 		BatchResources:  menuURNs,
 		ResourceActions: s.buildResourceActionMap(menuURNs, codesMap),
@@ -140,8 +143,9 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64
 		return nil, err
 	}
 
-	authorizedNodes := s.filterAccessibleMenus(allMenus, codesMap, allowedURNs)
-	return s.buildMenuTree(authorizedNodes), nil
+	// 4. 执行可见性过滤与拓扑恢复
+	filtered := s.filterAccessibleMenus(allMenus, codesMap, allowedURNs)
+	return domain.MenuList(filtered).ToTree(), nil
 }
 
 // buildResourceActionMap 构建 URN -> 动作候选集的映射表
@@ -159,21 +163,46 @@ func (s *permissionService) buildResourceActionMap(urns []string, codesMap map[s
 
 // filterAccessibleMenus 根据 OPA 允许列表及公共资产定义，筛选最终可见节点
 func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap map[string][]string, allowedURNs []string) []domain.Menu {
-	allowedSet := make(map[string]string, len(allowedURNs))
+	// 1. 预处理数据
+	allowedSet := set.NewMapSet[string](len(allowedURNs))
 	for _, u := range allowedURNs {
-		allowedSet[u] = u
+		allowedSet.Add(u)
 	}
+	idMap := slice.ToMap(all, func(m domain.Menu) int64 { return m.ID })
 
-	res := make([]domain.Menu, 0)
+	// 统计是否有子节点，用于判定公共叶子
+	hasChildren := make(map[int64]bool, len(all))
 	for _, m := range all {
-		mURN := m.URN()
-		_, isAllowed := allowedSet[mURN]
-		_, isBound := codesMap[mURN]
-		if isAllowed || !isBound {
-			res = append(res, m)
+		if m.ParentID != 0 {
+			hasChildren[m.ParentID] = true
 		}
 	}
-	return res
+
+	// 2. 使用 Set 记录可见 ID，并执行回溯
+	visible := set.NewMapSet[int64](len(all))
+	for _, m := range all {
+		u := m.URN()
+		_, isBound := codesMap[u]
+		if allowedSet.Exist(u) || (!isBound && !hasChildren[m.ID]) {
+			for id := m.ID; id != 0 && !visible.Exist(id); id = idMap[id].ParentID {
+				visible.Add(id)
+			}
+		}
+	}
+
+	// 3. 收集结果
+	return slice.Map(visible.Keys(), func(_ int, id int64) domain.Menu {
+		return idMap[id]
+	})
+}
+
+// flattenPolicies 压平角色中的策略文档
+func (s *permissionService) flattenPolicies(roles []domain.Role) []domain.Policy {
+	var policies []domain.Policy
+	for _, r := range roles {
+		policies = append(policies, r.Policies...)
+	}
+	return policies
 }
 
 // getEffectiveRoles 获取用户在当前上下文中所有有效的 Role 对象 (含系统角色)
@@ -198,59 +227,6 @@ func (s *permissionService) getEffectiveRoles(ctx context.Context, userId int64)
 
 	// 2. 数据库批量拉取详情 (受租户隔离保护，且支持 Global Override 逻辑)
 	return s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
-}
-
-// flattenPolicies 压平角色中的策略文档
-func (s *permissionService) flattenPolicies(roles []domain.Role) []domain.Policy {
-	var policies []domain.Policy
-	for _, r := range roles {
-		policies = append(policies, r.Policies...)
-	}
-	return policies
-}
-
-// buildMenuTree 高性能构建树结构
-func (s *permissionService) buildMenuTree(nodes []domain.Menu) []domain.Menu {
-	nodeMap := make(map[int64]*domain.Menu)
-	for i := range nodes {
-		menu := nodes[i]
-		menu.Children = make([]*domain.Menu, 0)
-		nodeMap[menu.ID] = &menu
-	}
-
-	var roots []domain.Menu
-	for _, m := range nodeMap {
-		if m.ParentID == 0 {
-			roots = append(roots, *m)
-		} else {
-			if parent, exists := nodeMap[m.ParentID]; exists {
-				parent.Children = append(parent.Children, m)
-			}
-		}
-	}
-
-	// 对所有节点的子菜单进行排序 (In-place)
-	for _, m := range nodeMap {
-		if len(m.Children) > 1 {
-			sort.Slice(m.Children, func(i, j int) bool {
-				return m.Children[i].Sort < m.Children[j].Sort
-			})
-		}
-	}
-
-	// 对根菜单进行排序
-	sort.Slice(roots, func(i, j int) bool {
-		return roots[i].Sort < roots[j].Sort
-	})
-
-	// 重新关联根节点的 Children 指针 (因为之前 roots append 的是副本)
-	for i := range roots {
-		if node, exists := nodeMap[roots[i].ID]; exists {
-			roots[i].Children = node.Children
-		}
-	}
-
-	return roots
 }
 
 func (s *permissionService) CreatePermission(ctx context.Context, p domain.Permission) (int64, error) {

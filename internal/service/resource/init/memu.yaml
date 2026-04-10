@@ -1,5 +1,4 @@
 - name: PlatformDashboard
-  permission_code: "cmdb:platform_dashboard:view"
   path: /
   component: Layouts
   redirect: /cmdb/dashboard
@@ -31,7 +30,6 @@
       is_keepalive: false
       platforms: ["cmdb"]
 - name: ModelGovernance
-  permission_code: "cmdb:model:view"
   path: /cmdb/model
   component: Layouts
   redirect: /cmdb/model/index
@@ -83,7 +81,6 @@
       is_keepalive: false
       platforms: ["cmdb"]
 - name: AssetGovernance
-  permission_code: "cmdb:resource:view"
   path: /cmdb/resource
   component: Layouts
   redirect: /cmdb/resource/index
@@ -125,7 +122,6 @@
       is_keepalive: false
       platforms: ["cmdb"]
 - name: OrderServiceCenter
-  permission_code: "order:order:view"
   path: /cmdb/order
   component: Layouts
   redirect: /cmdb/order/index
@@ -167,7 +163,6 @@
       is_keepalive: false
       platforms: ["order"]
 - name: WorkflowEngine
-  permission_code: "order:workflow_engine:view"
   path: /cmdb/process
   component: Layouts
   redirect: /cmdb/process/index
@@ -199,7 +194,6 @@
       is_keepalive: false
       platforms: ["order"]
 - name: JobControlCenter
-  permission_code: "order:job_control:view"
   path: /cmdb/task
   component: Layouts
   redirect: /cmdb/task/codebook
@@ -251,7 +245,6 @@
       is_keepalive: false
       platforms: ["automation"]
 - name: AlertWorkbench
-  permission_code: "alert:workbench:view"
   path: /alert/workbench
   component: Layouts
   redirect: /alert/workbench/workspace
@@ -283,7 +276,6 @@
       is_keepalive: false
       platforms: ["alert"]
 - name: TimeSeriesInsight
-  permission_code: "alert:metric:view"
   path: /alert/time_series
   component: Layouts
   redirect: /alert/time_series/query
@@ -305,7 +297,6 @@
       is_keepalive: false
       platforms: ["alert"]
 - name: AlertManager
-  permission_code: "alert:alert_manager:view"
   path: /alert/manager
   component: Layouts
   redirect: /alert/manager/current
@@ -387,7 +378,6 @@
       is_keepalive: false
       platforms: ["alert"]
 - name: NotificationService
-  permission_code: "alert:notify:view"
   path: /alert/notify
   component: Layouts
   redirect: /alert/notify/template
@@ -449,7 +439,6 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertEscalationPipeline
-    permission_code: "order:notify:view"
     path: /alert/notify/escalation
     component: 1
     redirect: /pages/alert/escalation/index.vue
@@ -501,7 +490,6 @@
         is_keepalive: false
         platforms: ["order", "alert"]
 - name: ShiftRotaLifecycle
-  permission_code: "iam:rota:view"
   path: /cmdb/rota
   component: Layouts
   redirect: /cmdb/rota
@@ -533,7 +521,6 @@
       is_keepalive: false
       platforms: ["system"]
 - name: SystemGovernance
-  permission_code: "iam:system:view"
   path: /cmdb/system
   component: Layouts
   redirect: /cmdb/system/menu

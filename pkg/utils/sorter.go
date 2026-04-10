@@ -170,3 +170,16 @@ func (s *Sorter[E, T]) RebalanceHierarchical(elems []E, childrenFn func(E) []E) 
 		}
 	}
 }
+
+// SortBySortKey 通用排序辅助函数
+func SortBySortKey[E Sortable](elems []E) {
+	slices.SortFunc(elems, func(a, b E) int {
+		if a.GetSortKey() < b.GetSortKey() {
+			return -1
+		}
+		if a.GetSortKey() > b.GetSortKey() {
+			return 1
+		}
+		return 0
+	})
+}
