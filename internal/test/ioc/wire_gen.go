@@ -43,6 +43,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		Enforcer:    syncedEnforcer,
 		TenantSvc:   iTenantService,
 		RoleSvc:     iRoleService,
+		PolicySvc:   iPolicyService,
 		ResourceSvc: iResourceService,
 		PermSvc:     iPermissionService,
 	}

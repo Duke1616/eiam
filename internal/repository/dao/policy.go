@@ -70,6 +70,15 @@ func (d *policyDAO) GetByCode(ctx context.Context, code string) (Policy, error) 
 	return p, err
 }
 
+func (d *policyDAO) GetCodesByRoleCodes(ctx context.Context, roleCodes []string) ([]RolePolicyAttachment, error) {
+	var attachments []RolePolicyAttachment
+	err := d.db.WithContext(ctx).
+		Model(&RolePolicyAttachment{}).
+		Where("role_code IN ?", roleCodes).
+		Find(&attachments).Error
+	return attachments, err
+}
+
 func (d *policyDAO) BindToRole(ctx context.Context, roleCode, polyCode string) error {
 	return d.db.WithContext(ctx).FirstOrCreate(&RolePolicyAttachment{
 		RoleCode: roleCode,
@@ -91,15 +100,6 @@ func (d *policyDAO) GetCodesByRole(ctx context.Context, roleCode string) ([]stri
 		Where("role_code = ?", roleCode).
 		Pluck("poly_code", &codes).Error
 	return codes, err
-}
-
-func (d *policyDAO) GetCodesByRoleCodes(ctx context.Context, roleCodes []string) ([]RolePolicyAttachment, error) {
-	var attachments []RolePolicyAttachment
-	err := d.db.WithContext(ctx).
-		Model(&RolePolicyAttachment{}).
-		Where("role_code IN ?", roleCodes).
-		Find(&attachments).Error
-	return attachments, err
 }
 
 func (d *policyDAO) GetByCodes(ctx context.Context, codes []string) ([]Policy, error) {
