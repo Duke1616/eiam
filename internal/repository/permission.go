@@ -31,6 +31,9 @@ type IPermissionRepository interface {
 	FindBindingsByPerm(ctx context.Context, permId int64) ([]domain.ResourceBinding, error)
 	// FindCodesByResourceURNs 批量反向检索，返回 map[ResourceURN][]PermCode
 	FindCodesByResourceURNs(ctx context.Context, resURNs []string) (map[string][]string, error)
+
+	// SyncResourceBindings 同步资源绑定关系 (Full-Sync 模式)
+	SyncResourceBindings(ctx context.Context, allURNs []string, mappings map[string][]string) error
 }
 
 type PermissionRepository struct {
@@ -126,11 +129,7 @@ func (r *PermissionRepository) BatchBindResources(ctx context.Context, bindings 
 	// 2. 打平数据结构，转化为 DAO 的单次批量录入协议
 	daoBindings := make([]dao.PermissionBinding, 0)
 	for code, urns := range bindings {
-		id, ok := permMap[code]
-		if !ok {
-			continue
-		}
-
+		id := permMap[code]
 		for _, urn := range urns {
 			daoBindings = append(daoBindings, dao.PermissionBinding{
 				PermId:      id,
@@ -177,4 +176,31 @@ func (r *PermissionRepository) FindCodesByResourceURNs(ctx context.Context, resU
 		res[b.ResourceURN] = append(res[b.ResourceURN], b.PermCode)
 	}
 	return res, nil
+}
+
+func (r *PermissionRepository) SyncResourceBindings(ctx context.Context, allURNs []string, mappings map[string][]string) error {
+	// 1. 预加载权限索引，批量获取 PermID
+	all, err := r.ListAllPermissions(ctx)
+	if err != nil {
+		return err
+	}
+	permMap := make(map[string]int64, len(all))
+	for _, p := range all {
+		permMap[p.Code] = p.ID
+	}
+
+	// 2. 打平数据结构
+	daoBindings := make([]dao.PermissionBinding, 0)
+	for code, urns := range mappings {
+		id := permMap[code]
+		for _, urn := range urns {
+			daoBindings = append(daoBindings, dao.PermissionBinding{
+				PermId:      id,
+				PermCode:    code,
+				ResourceURN: urn,
+			})
+		}
+	}
+
+	return r.dao.SyncResourceBindings(ctx, allURNs, daoBindings)
 }

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
@@ -21,6 +22,8 @@ type IResourceRepository interface {
 	ListAllAPIs(ctx context.Context) ([]domain.API, error)
 	// ListAPIsByService 获取指定服务的接口清单
 	ListAPIsByService(ctx context.Context, service string) ([]domain.API, error)
+	// SyncAPIs 高性能同步接口资产 (支持 Full-Sync)
+	SyncAPIs(ctx context.Context, service string, apis []domain.API) error
 
 	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
 	UpsertMenu(ctx context.Context, m *domain.Menu) error
@@ -69,7 +72,8 @@ func (r *ResourceRepository) SyncMenus(ctx context.Context, menus domain.MenuLis
 }
 
 func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.Menu, source domain.MenuList) error {
-	latest, err := r.dao.ListAllMenus(ctx)
+	names := slice.Map(source, func(_ int, m domain.Menu) string { return m.Name })
+	latest, err := r.dao.ListMenusByNames(ctx, names)
 	if err != nil {
 		return err
 	}
@@ -134,6 +138,31 @@ func (r *ResourceRepository) ListAPIsByService(ctx context.Context, service stri
 		return nil, err
 	}
 	return slice.Map(apis, func(_ int, a dao.API) domain.API { return r.toDomainAPI(a) }), nil
+}
+
+func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis []domain.API) error {
+	urns := slice.Map(apis, func(_ int, a domain.API) string {
+		return strings.ToLower(a.Method) + ":" + a.Path
+	})
+
+	daoApis := slice.Map(apis, func(_ int, a domain.API) dao.API {
+		return dao.API{
+			Service: service,
+			Name:    a.Name,
+			Method:  a.Method,
+			Path:    a.Path,
+		}
+	})
+
+	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
+		// 1. 批量同步元数据 (OnConflict Upsert)
+		if err := r.dao.BatchInsertAPI(txCtx, daoApis); err != nil {
+			return err
+		}
+
+		// 2. 清理服务下不再存在的孤儿接口 (Full-Sync)
+		return r.dao.DeleteAPIsByServiceAndURNs(txCtx, service, urns)
+	})
 }
 
 func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) error {

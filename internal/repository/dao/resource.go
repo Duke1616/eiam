@@ -52,6 +52,8 @@ type IResourceDAO interface {
 	FindMenuByName(ctx context.Context, name string) (Menu, error)
 	ListAllMenus(ctx context.Context) ([]Menu, error)
 	ListMenusByParentID(ctx context.Context, parentID int64) ([]Menu, error)
+	// ListMenusByNames 批量获取指定名称的菜单
+	ListMenusByNames(ctx context.Context, names []string) ([]Menu, error)
 
 	UpdateMenuSort(ctx context.Context, id int64, parentID int64, sort int64) error
 	BatchUpdateMenuSort(ctx context.Context, menus []Menu) error
@@ -64,6 +66,8 @@ type IResourceDAO interface {
 	BatchInsertAPI(ctx context.Context, apis []API) error
 	ListAllAPIs(ctx context.Context) ([]API, error)
 	ListAPIsByService(ctx context.Context, service string) ([]API, error)
+	// DeleteAPIsByServiceAndURNs 删除指定服务下不在给定 URN 列表中的所有接口
+	DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error
 
 	// Transaction 开启事务支持
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
@@ -118,6 +122,12 @@ func (d *ResourceDAO) FindMenuByName(ctx context.Context, name string) (Menu, er
 func (d *ResourceDAO) ListAllMenus(ctx context.Context) ([]Menu, error) {
 	var menus []Menu
 	err := d.getDB(ctx).Order("sort ASC").Find(&menus).Error
+	return menus, err
+}
+
+func (d *ResourceDAO) ListMenusByNames(ctx context.Context, names []string) ([]Menu, error) {
+	var menus []Menu
+	err := d.getDB(ctx).Where("name IN ?", names).Order("sort ASC").Find(&menus).Error
 	return menus, err
 }
 
@@ -211,6 +221,17 @@ func (d *ResourceDAO) ListAPIsByService(ctx context.Context, service string) ([]
 	var apis []API
 	err := d.getDB(ctx).Where("service = ?", service).Find(&apis).Error
 	return apis, err
+}
+
+func (d *ResourceDAO) DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error {
+	if len(urns) == 0 {
+		return d.getDB(ctx).Where("service = ?", service).Delete(&API{}).Error
+	}
+
+	// 利用 MySQL 的 LOWER(CONCAT(method, ':', path)) 来匹配 URN 格式
+	return d.getDB(ctx).Where("service = ?", service).
+		Where("LOWER(CONCAT(method, ':', path)) NOT IN ?", urns).
+		Delete(&API{}).Error
 }
 
 func (d *ResourceDAO) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {

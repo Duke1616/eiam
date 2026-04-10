@@ -45,6 +45,9 @@ type IPermissionDAO interface {
 	ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error)
 	// ListBindingsByResURNs 批量反查：查看一组 URN 分别归属哪些能力码
 	ListBindingsByResURNs(ctx context.Context, resURNs []string) ([]PermissionBinding, error)
+
+	// SyncResourceBindings 同步物理资产与功能码的映射关系 (基于 URN 的 Full-Sync)
+	SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error
 }
 
 type PermissionDAO struct {
@@ -128,4 +131,25 @@ func (d *PermissionDAO) ListBindingsByResURNs(ctx context.Context, resURNs []str
 	var res []PermissionBinding
 	err := d.db.WithContext(ctx).Where("resource_urn IN ?", resURNs).Find(&res).Error
 	return res, err
+}
+
+func (d *PermissionDAO) SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. 清理这一批 URNs 的所有旧绑定
+		if len(resURNs) > 0 {
+			if err := tx.Where("resource_urn IN ?", resURNs).Delete(&PermissionBinding{}).Error; err != nil {
+				return err
+			}
+		}
+
+		// 2. 插入新绑定 (基于 OnConflict DoNothing 保证幂等，但此处已清理所以主要是插入)
+		if len(bindings) > 0 {
+			return tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
+				DoNothing: true,
+			}).Create(&bindings).Error
+		}
+
+		return nil
+	})
 }

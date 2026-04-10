@@ -70,83 +70,24 @@ func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capabil
 // SyncSDKDiscovery 实现高性能同步内核逻辑 (SDK 模式)。
 // 流程：底座对齐 -> 资产分析 -> 批量落盘。
 func (i *Initializer) SyncSDKDiscovery(ctx context.Context, req capability.SyncRequest) error {
-	// 1. 底座对齐：预加载全量逻辑权限，并补全上报中缺失的底数 (含物理资产引用的未知 Code)
-	permMap, err := i.alignPermissionBaseline(ctx, req)
+	// 1. 确保权限底数存在
+	if err := i.syncPermissionsBatch(ctx, req.Service, req.Permissions); err != nil {
+		return err
+	}
+
+	// 2. 聚合所有上报资产，并聚合染色关系
+	allAPIs, bindings, err := i.analyzeDiscoveryAssets(ctx, req)
 	if err != nil {
 		return err
 	}
 
-	// 2. 资产识别：在内存中完成物理资产判重，并聚合染色关系
-	toCreate, bindings, err := i.analyzeDiscoveryAssets(ctx, req)
-	if err != nil {
-		return err
-	}
-
-	// 3. 高能同步：执行高性能批量落地与染色
-	return i.persistenceDiscovery(ctx, toCreate, bindings, permMap)
-}
-
-// alignPermissionBaseline 确保权限底座包含所有已知的和被引用的权限码，并返回最新索引 Map
-func (i *Initializer) alignPermissionBaseline(ctx context.Context, req capability.SyncRequest) (map[string]domain.Permission, error) {
-	// 1. 提取全量候选 Code (显式声明的 + 物理资产引用的)
-	allCandidatePerms := i.extractAllCandidatePerms(req)
-
-	// 3. 批量补全缺失权限 (全量 Upsert，保证元数据对齐)
-	err := i.syncPermissionsBatch(ctx, req.Service, allCandidatePerms)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. 再次刷新索引，确保能获取到新录入权限的自增 ID
-	return i.getPermissionIndex(ctx)
-}
-
-// extractAllCandidatePerms 提取所有需要保证存在的权限定义
-// 策略：当物理资产引用了某个 Code，但该 Code 不在显式声明列表中时，为其创建 Skeleton 占位符
-func (i *Initializer) extractAllCandidatePerms(req capability.SyncRequest) []capability.Permission {
-	codeMap := make(map[string]capability.Permission)
-
-	// 1. 扫描物理 API 里的所有主 Code，先初始化为 Skeleton (骨架)
-	for _, api := range req.APIs {
-		code := api.Code
-		if code == "" {
-			continue
-		}
-
-		if _, ok := codeMap[code]; !ok {
-			group := "Auto-discovered"
-			if api.Group != "" {
-				group = api.Group
-			}
-			codeMap[code] = capability.Permission{
-				Code:  code,
-				Name:  api.Name,
-				Group: group,
-			}
-		}
-	}
-
-	// 2. 收集显式声明的逻辑权限，高优先级覆盖 Skeleton 里的元数据 (Name/Desc/Group)
-	for _, p := range req.Permissions {
-		codeMap[p.Code] = p
-	}
-
-	// 3. 转化为切片输出
-	res := make([]capability.Permission, 0, len(codeMap))
-	for _, p := range codeMap {
-		res = append(res, p)
-	}
-	return res
+	// 3. 执行高性能批量落地与染色
+	return i.persistenceDiscovery(ctx, req.Service, allAPIs, bindings)
 }
 
 // analyzeDiscoveryAssets 分析增量 API 资产并聚合逻辑染色映射关系
 func (i *Initializer) analyzeDiscoveryAssets(ctx context.Context, req capability.SyncRequest) ([]domain.API, map[string][]string, error) {
-	apiIndex, err := i.getAPIIndex(ctx, req.Service)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	toCreate := make([]domain.API, 0)
+	allAPIs := make([]domain.API, 0, len(req.APIs))
 	bindings := make(map[string][]string)
 
 	for _, a := range req.APIs {
@@ -161,26 +102,22 @@ func (i *Initializer) analyzeDiscoveryAssets(ctx context.Context, req capability
 			Name:    a.Name,
 		}
 
-		// 判重：仅录入不存在的资产
-		if _, ok := apiIndex[api.URN()]; !ok {
-			toCreate = append(toCreate, api)
-		}
+		allAPIs = append(allAPIs, api)
 
 		// 聚合：主权限码绑定到当前 API 的 URN
-		// 依赖权限码 (Includes) 不参与当前 API 的 URN 绑定，仅用于 Skeleton 发现
 		if a.Code != "" {
 			bindings[a.Code] = append(bindings[a.Code], api.URN())
 		}
 	}
 
-	return toCreate, bindings, nil
+	return allAPIs, bindings, nil
 }
 
 // persistenceDiscovery 执行资产落地与最终染色关系对齐
-func (i *Initializer) persistenceDiscovery(ctx context.Context, toCreate []domain.API, bindings map[string][]string, permMap map[string]domain.Permission) error {
-	// 1. API 资产批量落盘
-	if len(toCreate) > 0 {
-		if err := i.repo.BatchCreateAPI(ctx, toCreate); err != nil {
+func (i *Initializer) persistenceDiscovery(ctx context.Context, service string, toSync []domain.API, bindings map[string][]string) error {
+	// 1. API 资产批量对齐 (Full-Sync)
+	if len(toSync) > 0 {
+		if err := i.repo.SyncAPIs(ctx, service, toSync); err != nil {
 			return fmt.Errorf("API 资产同步落地失败: %w", err)
 		}
 	}
@@ -193,30 +130,6 @@ func (i *Initializer) persistenceDiscovery(ctx context.Context, toCreate []domai
 	}
 
 	return nil
-}
-
-// getPermissionIndex 构建权限码 -> 权限对象的全量索引
-func (i *Initializer) getPermissionIndex(ctx context.Context) (map[string]domain.Permission, error) {
-	all, err := i.permRepo.ListAllPermissions(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return slice.ToMap(all, func(element domain.Permission) string {
-		return element.Code
-	}), nil
-}
-
-// getAPIIndex 构建物理标识 URN -> 接口对象的索引
-func (i *Initializer) getAPIIndex(ctx context.Context, service string) (map[string]struct{}, error) {
-	apis, err := i.repo.ListAPIsByService(ctx, service)
-	if err != nil {
-		return nil, err
-	}
-
-	return slice.ToMapV(apis, func(a domain.API) (string, struct{}) {
-		return a.URN(), struct{}{}
-	}), nil
 }
 
 // syncPermissionsBatch 批量同步权限底数
@@ -245,20 +158,20 @@ func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService s
 }
 
 func (i *Initializer) SyncMenus(ctx context.Context) error {
-	// 1. 系统预热：加载内置菜单元数据
+	// 1. 加载内置菜单元数据
 	menus, err := i.loadBuiltinMenus()
 	if err != nil {
 		return err
 	}
 
-	// 2. 核心预处理：打平结构、血缘自映射
+	// 2. 打平结构、血缘自映射
 	i.sorter.RebalanceHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
 		return m.Children
 	})
 
 	flatList := menus.Flatten()
 
-	// 提取染色映射
+	// 提取映射
 	bindings := make(map[string][]string)
 	for _, m := range flatList {
 		if m.PermissionCode != "" {
@@ -266,17 +179,14 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 		}
 	}
 
-	// 3. 物理落地：执行菜单资产的高速原子化同步
+	// 3.执行菜单资产的高速原子化同步
 	if err = i.repo.SyncMenus(ctx, flatList); err != nil {
 		return err
 	}
 
-	// 4. 染色对齐：一次性执行菜单与权限码的全局绑定
-	if len(bindings) > 0 {
-		return i.permRepo.BatchBindResources(ctx, bindings)
-	}
-
-	return nil
+	// 4. 一次性执行菜单与权限码的全局绑定 (Full-Sync 版)
+	allURNs := slice.Map(flatList, func(_ int, m domain.Menu) string { return m.URN() })
+	return i.permRepo.SyncResourceBindings(ctx, allURNs, bindings)
 }
 
 // loadBuiltinMenus 封装 YAML 加载与内置资源的内存反序列化逻辑
@@ -293,11 +203,4 @@ func iif(cond bool, t, f string) string {
 		return t
 	}
 	return f
-}
-
-func (i *Initializer) rebalanceMenuTree(menus domain.MenuTree) {
-	// 已被 SyncMenus 内部逻辑覆盖，保留作为 Sorter 的语义包装（可选，若想更简洁可彻底移除）
-	i.sorter.RebalanceHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
-		return m.Children
-	})
 }
