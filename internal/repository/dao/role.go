@@ -11,16 +11,16 @@ import (
 
 // Role 角色持久化实体
 type Role struct {
-	Id       int64                            `gorm:"type:bigint;primaryKey;autoIncrement;comment:'角色ID'"`
-	TenantId int64                            `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_idx_tenant_role_code,priority:1;comment:'租户ID，0为系统全局角色';eiam:'shared'"`
-	Name     string                           `gorm:"type:varchar(255);not null;comment:'角色名称'"`
-	Code     string                           `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_tenant_role_code,priority:2;comment:'角色标识码'"`
-	Desc     string                           `gorm:"type:varchar(512);not null;default:'';comment:'角色描述信息'"`
-	Status   bool                             `gorm:"type:tinyint;not null;default:1;comment:'状态: 1-启用, 0-禁用'"`
-	Type     uint8                            `gorm:"type:tinyint;not null;default:2;comment:'角色类型: 1-系统预设, 2-自定义'"`
-	Policies sqlx.JSONColumn[[]domain.Policy] `gorm:"type:json;column:policies;comment:'绑定权限策略列表 (AWS 风格)'"`
-	Ctime    int64                            `gorm:"comment:'创建时间'"`
-	Utime    int64                            `gorm:"comment:'更新时间'"`
+	Id             int64                            `gorm:"type:bigint;primaryKey;autoIncrement;comment:'角色ID'"`
+	TenantId       int64                            `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_idx_tenant_role_code,priority:1;comment:'租户ID，0为系统全局角色';eiam:'shared'"`
+	Name           string                           `gorm:"type:varchar(255);not null;comment:'角色名称'"`
+	Code           string                           `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_tenant_role_code,priority:2;comment:'角色标识码'"`
+	Desc           string                           `gorm:"type:varchar(512);not null;default:'';comment:'角色描述信息'"`
+	Status         bool                             `gorm:"type:tinyint;not null;default:1;comment:'状态: 1-启用, 0-禁用'"`
+	Type           uint8                            `gorm:"type:tinyint;not null;default:2;comment:'角色类型: 1-系统预设, 2-自定义'"`
+	InlinePolicies sqlx.JSONColumn[[]domain.Policy] `gorm:"type:json;column:inline_policies;comment:'内联权限策略列表'"`
+	Ctime          int64                            `gorm:"comment:'创建时间'"`
+	Utime          int64                            `gorm:"comment:'更新时间'"`
 }
 
 // IRoleDAO 角色数据库操作接口
@@ -37,8 +37,8 @@ type IRoleDAO interface {
 	GetByCode(ctx context.Context, code string) (Role, error)
 	// ListByIncludeCodes 根据给定的一组代码批量查询
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]Role, error)
-	// UpdatePolicies 更新角色关联的权限策略列表
-	UpdatePolicies(ctx context.Context, code string, policies []domain.Policy) error
+	// UpdateInlinePolicies 更新角色关联的内联权限策略列表
+	UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error
 }
 
 type RoleDAO struct {
@@ -96,10 +96,10 @@ func (d *RoleDAO) ListByIncludeCodes(ctx context.Context, codes []string) ([]Rol
 	return roles, err
 }
 
-func (d *RoleDAO) UpdatePolicies(ctx context.Context, code string, policies []domain.Policy) error {
+func (d *RoleDAO) UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error {
 	return d.db.WithContext(ctx).Model(&Role{}).
 		Where("code = ?", code).Updates(map[string]interface{}{
-		"policies": sqlx.JSONColumn[[]domain.Policy]{
+		"inline_policies": sqlx.JSONColumn[[]domain.Policy]{
 			Val:   policies,
 			Valid: true,
 		},

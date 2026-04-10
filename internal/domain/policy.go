@@ -20,10 +20,18 @@ const (
 type Policy struct {
 	ID        int64
 	TenantID  int64       // 0 表示系统全局策略
-	Name      string      // 策略名称风格
+	Name      string      // 策略名称
+	Code      string      // 策略唯一标识码
+	Desc      string      // 描述
 	Type      PolicyType  // 系统或用户自定义
 	Version   string      `json:"Version"`
 	Statement []Statement `json:"Statement"`
+}
+
+// RolePolicyRelation 描述角色与策略的绑定关系详情
+type RolePolicyRelation struct {
+	RoleCode string
+	PolyCode string
 }
 
 // Statement 权限语句：定义 Action, Resource 和 Condition

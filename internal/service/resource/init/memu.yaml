@@ -173,7 +173,7 @@
     is_keepalive: false
     platforms: ["order"]
   children:
-  - name: TemplateGovernance
+  - name: ProcessTemplateManager
     permission_code: "order:template:view"
     path: template
     component: /views/process/template/index.vue
@@ -388,7 +388,7 @@
     is_keepalive: false
     platforms: ["alert", "order"]
   children:
-  - name: TemplateGovernance
+  - name: NotifyTemplateManager
     permission_code: "alert:notify:view"
     path: /alert/notify/template
     component: /pages/alert/template/index.vue
@@ -500,7 +500,7 @@
     is_keepalive: false
     platforms: ["system"]
   children:
-  - name: ShiftRotaLifecycle
+  - name: ShiftRotaManager
     permission_code: "iam:rota:view"
     path: /cmdb/rota
     component: /views/rota/index.vue

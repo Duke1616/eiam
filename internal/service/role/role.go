@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"golang.org/x/sync/errgroup"
 )
@@ -19,8 +20,8 @@ type IRoleService interface {
 	List(ctx context.Context, offset, limit int64) ([]domain.Role, int64, error)
 	// Update 更新角色信息
 	Update(ctx context.Context, r domain.Role) (int64, error)
-	// UpdatePolicies 修改角色的权限策略文档
-	UpdatePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error
+	// UpdateInlinePolicies 修改角色的内联权限策略文档
+	UpdateInlinePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error
 	// GetByCode 根据角色代码获取角色
 	GetByCode(ctx context.Context, code string) (domain.Role, error)
 	// ListByIncludeCodes 查找包含当前角色代码的数据 (供鉴权中心调用)
@@ -28,13 +29,15 @@ type IRoleService interface {
 }
 
 type roleService struct {
-	repo repository.IRoleRepository
+	repo      repository.IRoleRepository
+	policySvc policy.IPolicyService
 }
 
-// NewRoleService 创建角色服务实例，移除了对 PermissionService 的依赖，解决循环依赖
-func NewRoleService(repo repository.IRoleRepository) IRoleService {
+// NewRoleService 创建角色服务实例
+func NewRoleService(repo repository.IRoleRepository, policySvc policy.IPolicyService) IRoleService {
 	return &roleService{
-		repo: repo,
+		repo:      repo,
+		policySvc: policySvc,
 	}
 }
 
@@ -78,14 +81,52 @@ func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) 
 	return s.repo.Update(ctx, r)
 }
 
-func (s *roleService) UpdatePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error {
-	return s.repo.UpdatePolicies(ctx, roleCode, policies)
+func (s *roleService) UpdateInlinePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error {
+	return s.repo.UpdateInlinePolicies(ctx, roleCode, policies)
 }
 
 func (s *roleService) GetByCode(ctx context.Context, code string) (domain.Role, error) {
-	return s.repo.GetByCode(ctx, code)
+	var (
+		eg      errgroup.Group
+		role    domain.Role
+		managed []domain.Policy
+	)
+
+	eg.Go(func() error {
+		var err error
+		role, err = s.repo.GetByCode(ctx, code)
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		managed, err = s.policySvc.GetAttachedPolicies(ctx, code)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return domain.Role{}, err
+	}
+
+	role.ManagedPolicies = managed
+	return role, nil
 }
 
 func (s *roleService) ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error) {
-	return s.repo.ListByIncludeCodes(ctx, codes)
+	roles, err := s.repo.ListByIncludeCodes(ctx, codes)
+	if err != nil {
+		return nil, err
+	}
+
+	// 一次性批量补全所有角色的托管策略，避免 N+1
+	managedMap, err := s.policySvc.GetAttachedPoliciesByCodes(ctx, codes)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range roles {
+		roles[i].ManagedPolicies = managedMap[roles[i].Code]
+	}
+
+	return roles, nil
 }

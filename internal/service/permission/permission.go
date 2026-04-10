@@ -196,11 +196,11 @@ func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap ma
 	})
 }
 
-// flattenPolicies 压平角色中的策略文档
 func (s *permissionService) flattenPolicies(roles []domain.Role) []domain.Policy {
 	var policies []domain.Policy
 	for _, r := range roles {
-		policies = append(policies, r.Policies...)
+		policies = append(policies, r.InlinePolicies...)
+		policies = append(policies, r.ManagedPolicies...)
 	}
 	return policies
 }

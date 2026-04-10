@@ -68,6 +68,8 @@ func (s *PermissionSuite) clearAll() {
 	s.db.Exec("DELETE FROM `tenant`")
 	s.db.Exec("DELETE FROM `membership`")
 	s.db.Exec("DELETE FROM `role`")
+	s.db.Exec("DELETE FROM `policy`")
+	s.db.Exec("DELETE FROM `role_policy_attachment`")
 	s.db.Exec("DELETE FROM `api`")
 	s.db.Exec("DELETE FROM `permission`")
 	s.db.Exec("DELETE FROM `permission_binding`")
@@ -80,7 +82,7 @@ func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
 	_, _ = s.roleSvc.Create(ctx, domain.Role{
 		Code: "SUPER_ADMIN",
 		Name: "全量管理员",
-		Policies: []domain.Policy{
+		InlinePolicies: []domain.Policy{
 			{Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}}},
 		},
 	})
@@ -129,7 +131,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 
 				_, _ = s.roleSvc.Create(ctx, domain.Role{
 					Code: "DEVELOPER",
-					Policies: []domain.Policy{
+					InlinePolicies: []domain.Policy{
 						{Statement: []domain.Statement{
 							{Effect: domain.Allow, Action: []string{"iam:user:view"}, Resource: []string{"*"}},
 						}},

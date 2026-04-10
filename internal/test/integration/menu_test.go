@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,7 +93,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 
 				_, err = s.roleSvc.Create(ctx, domain.Role{
 					Code: "ALL_VIEWER",
-					Policies: []domain.Policy{
+					InlinePolicies: []domain.Policy{
 						{Statement: []domain.Statement{
 							{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"*"}},
 						}},
@@ -133,7 +132,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 
 				_, err = s.roleSvc.Create(ctx, domain.Role{
 					Code: "SERVER_VIEWER",
-					Policies: []domain.Policy{
+					InlinePolicies: []domain.Policy{
 						{Statement: []domain.Statement{
 							{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"p1"}},
 						}},
@@ -173,14 +172,15 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 }
 
 func (s *MenuTreeSuite) clearAll() {
-	// 使用带 AllowGlobalUpdate 的 Session，并显式绕过所有条件
-	db := s.db.Session(&gorm.Session{AllowGlobalUpdate: true})
-	tables := []string{"menu", "role", "permission", "permission_binding", "casbin_rule", "tenant", "membership"}
-	for _, table := range tables {
-		_ = db.Exec(fmt.Sprintf("DELETE FROM `%s` WHERE 1=1", table))
-	}
-
-	_ = s.enforcer.LoadPolicy()
+	s.db.Exec("DELETE FROM `tenant`")
+	s.db.Exec("DELETE FROM `membership`")
+	s.db.Exec("DELETE FROM `role`")
+	s.db.Exec("DELETE FROM `policy`")
+	s.db.Exec("DELETE FROM `role_policy_attachment`")
+	s.db.Exec("DELETE FROM `api`")
+	s.db.Exec("DELETE FROM `permission`")
+	s.db.Exec("DELETE FROM `permission_binding`")
+	s.db.Exec("DELETE FROM `casbin_rule`")
 }
 
 func TestMenuTreeSuite(t *testing.T) {

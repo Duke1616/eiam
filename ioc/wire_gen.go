@@ -10,12 +10,13 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user"
 	permission2 "github.com/Duke1616/eiam/internal/web/permission"
-	"github.com/Duke1616/eiam/internal/web/policy"
+	policy2 "github.com/Duke1616/eiam/internal/web/policy"
 	resource2 "github.com/Duke1616/eiam/internal/web/resource"
 	role2 "github.com/Duke1616/eiam/internal/web/role"
 	tenant2 "github.com/Duke1616/eiam/internal/web/tenant"
@@ -42,7 +43,10 @@ func InitApp() (*App, error) {
 	syncedEnforcer := InitCasbin(db)
 	iRoleDAO := dao.NewRoleDAO(db)
 	iRoleRepository := repository.NewRoleRepository(iRoleDAO)
-	iRoleService := role.NewRoleService(iRoleRepository)
+	iPolicyDAO := dao.NewPolicyDAO(db)
+	iPolicyRepository := repository.NewPolicyRepository(iPolicyDAO)
+	iPolicyService := policy.NewPolicyService(iPolicyRepository)
+	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)
 	iResourceService := resource.NewResourceService(iResourceRepository)
@@ -55,7 +59,7 @@ func InitApp() (*App, error) {
 	v2 := InitIdentityProviders(config)
 	iUserService := user.NewUserService(iUserRepository, iTenantService, v2, iPermissionService)
 	handler := user2.NewUserHandler(iUserService, provider)
-	policyHandler := policy.NewHandler(iPermissionService, provider)
+	policyHandler := policy2.NewHandler(iPermissionService, provider)
 	tenantHandler := tenant2.NewHandler(iTenantService, provider)
 	permissionHandler := permission2.NewHandler(iPermissionService)
 	roleHandler := role2.NewHandler(iRoleService, iPermissionService)

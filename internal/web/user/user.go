@@ -6,7 +6,6 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
-	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
@@ -99,15 +98,8 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrUnauthenticated, err
 	}
 
-	rawUid, err := sess.Get(ctx.Request.Context(), "uid").Int64()
-	if err != nil {
-		return ErrSessionInvalid, err
-	}
-
-	tenantID, _ := strconv.ParseInt(ctx.GetString("tenant_id"), 10, 64)
-	newCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
-
-	u, err := h.svc.GetById(newCtx, rawUid)
+	uid := sess.Claims().Uid
+	u, err := h.svc.GetById(ctx, uid)
 	if err != nil {
 		return ErrUserNotFound, err
 	}
@@ -153,10 +145,7 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 		return ErrUnauthenticated, err
 	}
 
-	uid, err := sess.Get(ctx.Request.Context(), "uid").Int64()
-	if err != nil {
-		return ErrSessionInvalid, err
-	}
+	uid := sess.Claims().Uid
 
 	err = h.svc.UpdatePassword(ctx.Request.Context(), uid, req.OldPassword, req.NewPassword)
 	if err != nil {

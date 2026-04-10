@@ -104,7 +104,7 @@ func (s *HandlerAuthTestSuite) ensureAdminRole(ctx context.Context) {
 	_, _ = s.roleSvc.Create(ctx, domain.Role{
 		Code: "SUPER_ADMIN",
 		Name: "全局管理员",
-		Policies: []domain.Policy{
+		InlinePolicies: []domain.Policy{
 			{Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}}},
 		},
 	})
@@ -112,15 +112,15 @@ func (s *HandlerAuthTestSuite) ensureAdminRole(ctx context.Context) {
 }
 
 func (s *HandlerAuthTestSuite) clearAll() {
-	s.db.Exec("DELETE FROM `casbin_rule` WHERE 1=1")
-	s.db.Exec("DELETE FROM `permission` WHERE 1=1")
-	s.db.Exec("DELETE FROM `permission_binding` WHERE 1=1")
-	s.db.Exec("DELETE FROM `role` WHERE 1=1")
-	s.db.Exec("DELETE FROM `api` WHERE 1=1")
-	s.db.Exec("DELETE FROM `tenant` WHERE 1=1")
-	s.db.Exec("DELETE FROM `membership` WHERE 1=1")
-
-	_ = s.enforcer.LoadPolicy()
+	s.db.Exec("DELETE FROM `tenant`")
+	s.db.Exec("DELETE FROM `membership`")
+	s.db.Exec("DELETE FROM `role`")
+	s.db.Exec("DELETE FROM `policy`")
+	s.db.Exec("DELETE FROM `role_policy_attachment`")
+	s.db.Exec("DELETE FROM `api`")
+	s.db.Exec("DELETE FROM `permission`")
+	s.db.Exec("DELETE FROM `permission_binding`")
+	s.db.Exec("DELETE FROM `casbin_rule`")
 }
 
 func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
@@ -151,7 +151,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 
 				_, _ = s.roleSvc.Create(ctx, domain.Role{
 					Code: "OTHER_ROLE",
-					Policies: []domain.Policy{
+					InlinePolicies: []domain.Policy{
 						{Statement: []domain.Statement{
 							{Effect: domain.Allow, Action: []string{"other:resource"}, Resource: []string{"*"}},
 						}},
@@ -172,7 +172,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 
 				_, _ = s.roleSvc.Create(ctx, domain.Role{
 					Code: "IAM_ADMIN",
-					Policies: []domain.Policy{
+					InlinePolicies: []domain.Policy{
 						{Statement: []domain.Statement{
 							{Effect: domain.Allow, Action: []string{"iam:user:add"}, Resource: []string{"*"}},
 						}},

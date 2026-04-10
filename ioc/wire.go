@@ -7,7 +7,8 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/resource"
-	"github.com/Duke1616/eiam/internal/service/role"
+	policysvc "github.com/Duke1616/eiam/internal/service/policy"
+	role "github.com/Duke1616/eiam/internal/service/role"
 	tenantsvc "github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
@@ -44,6 +45,7 @@ func InitApp() (*App, error) {
 		dao.NewRoleDAO,
 		dao.NewPermissionDAO,
 		dao.NewResourceDAO,
+		dao.NewPolicyDAO,
 
 		// Repositories
 		repository.NewUserRepository,
@@ -51,6 +53,7 @@ func InitApp() (*App, error) {
 		repository.NewRoleRepository,
 		repository.NewPermissionRepository,
 		repository.NewResourceRepository,
+		repository.NewPolicyRepository,
 
 		// Services
 		usersvc.NewUserService,
@@ -59,6 +62,7 @@ func InitApp() (*App, error) {
 		resource.NewResourceService,
 		resource.NewResourceInitializer,
 		permission.NewPermissionService,
+		policysvc.NewPolicyService,
 
 		// Handlers
 		user.NewUserHandler,

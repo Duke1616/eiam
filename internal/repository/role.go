@@ -23,8 +23,8 @@ type IRoleRepository interface {
 	GetByCode(ctx context.Context, code string) (domain.Role, error)
 	// ListByIncludeCodes 按列表获取
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
-	// UpdatePolicies 更新角色的权限策略列表 (AWS 风格)
-	UpdatePolicies(ctx context.Context, code string, policies []domain.Policy) error
+	// UpdateInlinePolicies 更新角色的权限策略列表
+	UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error
 }
 
 type RoleRepository struct {
@@ -86,20 +86,20 @@ func (r *RoleRepository) ListByIncludeCodes(ctx context.Context, codes []string)
 	return res, nil
 }
 
-func (r *RoleRepository) UpdatePolicies(ctx context.Context, code string, policies []domain.Policy) error {
-	return r.dao.UpdatePolicies(ctx, code, policies)
+func (r *RoleRepository) UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error {
+	return r.dao.UpdateInlinePolicies(ctx, code, policies)
 }
 
 func (r *RoleRepository) toDomain(role dao.Role) domain.Role {
 	return domain.Role{
-		ID:       role.Id,
-		TenantID: role.TenantId,
-		Code:     role.Code,
-		Name:     role.Name,
-		Desc:     role.Desc,
-		Status:   role.Status,
-		Type:     role.Type,
-		Policies: role.Policies.Val,
+		ID:             role.Id,
+		TenantID:       role.TenantId,
+		Code:           role.Code,
+		Name:           role.Name,
+		Desc:           role.Desc,
+		Status:         role.Status,
+		Type:           role.Type,
+		InlinePolicies: role.InlinePolicies.Val,
 	}
 }
 
@@ -112,9 +112,9 @@ func (r *RoleRepository) toEntity(role domain.Role) dao.Role {
 		Desc:     role.Desc,
 		Status:   role.Status,
 		Type:     role.Type,
-		Policies: sqlx.JSONColumn[[]domain.Policy]{
-			Val:   role.Policies,
-			Valid: len(role.Policies) > 0,
+		InlinePolicies: sqlx.JSONColumn[[]domain.Policy]{
+			Val:   role.InlinePolicies,
+			Valid: len(role.InlinePolicies) > 0,
 		},
 	}
 }

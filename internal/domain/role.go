@@ -15,8 +15,11 @@ type Role struct {
 	Status   bool   // 状态
 	Type     uint8  // 角色类型: 1-系统预设, 2-租户自定义
 
-	// Policies 权限策略文档：该角色“能干什么”
-	Policies []Policy
+	// InlinePolicies 内联权限策略：该角色特有的权限声明
+	InlinePolicies []Policy
+
+	// ManagedPolicies 托管策略：引用全局定义的独立策略实体
+	ManagedPolicies []Policy
 
 	// AssumeRolePolicy 信任策略文档：定义“谁能扮演该角色”
 	AssumeRolePolicy Policy
