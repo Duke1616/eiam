@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -47,7 +48,8 @@ func NewSDKWithURL(baseURL string) *SDK {
 }
 
 type checkLoginResp struct {
-	Uid int64 `json:"uid"`
+	Uid      int64 `json:"uid"`
+	TenantID int64 `json:"tenant_id"`
 }
 
 type checkPolicyReq struct {
@@ -76,7 +78,16 @@ func (s *SDK) CheckLogin() gin.HandlerFunc {
 			return
 		}
 
-		ctx.Set("uid", res.Data.Uid)
+		uid, tid := res.Data.Uid, res.Data.TenantID
+		// 1. 注入 Gin 上下文 (Web层使用)
+		ctx.Set("uid", uid)
+		ctx.Set("tenant_id", tid)
+
+		// 2. 注入标准 Context (确保下游全链路可见)
+		newCtx := ctxutil.WithUserID(ctx.Request.Context(), uid)
+		newCtx = ctxutil.WithTenantID(newCtx, tid)
+		ctx.Request = ctx.Request.WithContext(newCtx)
+
 		ctx.Next()
 	}
 }

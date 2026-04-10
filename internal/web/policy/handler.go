@@ -39,10 +39,13 @@ func (h *Handler) CheckLogin(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrUnauthenticated, err
 	}
 
+	// 提取租户 ID 并返回给 SDK
+	claims := sess.Claims()
 	return ginx.Result{
 		Code: 0,
-		Data: map[string]int64{
-			"uid": sess.Claims().Uid,
+		Data: map[string]any{
+			"uid":       claims.Uid,
+			"tenant_id": claims.Data["tenant_id"],
 		},
 	}, nil
 }

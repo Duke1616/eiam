@@ -60,7 +60,7 @@ func InitGinMiddlewares(sp session.Provider) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		corsHdl(),
 		accessLogger(),
-		pkgmiddleware.ExtractTenantID(sp),
+		pkgmiddleware.BuildContext(sp),
 	}
 }
 

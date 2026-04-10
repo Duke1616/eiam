@@ -1,9 +1,5 @@
 package user
 
-import (
-	"github.com/Duke1616/eiam/internal/domain"
-)
-
 // SignupRequest 注册请求
 type SignupRequest struct {
 	Username        string `json:"username"`
@@ -14,19 +10,6 @@ type SignupRequest struct {
 	Nickname string `json:"nickname"`
 	Avatar   string `json:"avatar"`
 	JobTitle string `json:"job_title"`
-}
-
-func (req SignupRequest) ToDomain() domain.User {
-	return domain.User{
-		Username: req.Username,
-		Password: req.Password,
-		Email:    req.Email,
-		Profile: domain.UserProfile{
-			Nickname: req.Nickname,
-			Avatar:   req.Avatar,
-			JobTitle: req.JobTitle,
-		},
-	}
 }
 
 // LoginLdapRequest LDAP 登录请求
@@ -41,9 +24,8 @@ type LoginSystemRequest struct {
 	Password string `json:"password"`
 }
 
-
-// UserVO 用户展示对象
-type UserVO struct {
+// User 用户展示对象
+type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
@@ -51,57 +33,35 @@ type UserVO struct {
 	Avatar   string `json:"avatar"`
 	JobTitle string `json:"job_title"`
 
-	Identities []IdentityVO `json:"identities"`
+	Identities []Identity `json:"identities"`
 }
 
-type IdentityVO struct {
-	Provider   string            `json:"provider"`
-	LdapInfo   domain.LdapInfo   `json:"ldap_info,omitempty"`
-	WechatInfo domain.WechatInfo `json:"wechat_info,omitempty"`
-	FeishuInfo domain.FeishuInfo `json:"feishu_info,omitempty"`
+type Identity struct {
+	Provider   string     `json:"provider"`
+	LdapInfo   LdapInfo   `json:"ldap_info,omitempty"`
+	WechatInfo WechatInfo `json:"wechat_info,omitempty"`
+	FeishuInfo FeishuInfo `json:"feishu_info,omitempty"`
 }
 
-func ToUserVO(u domain.User) UserVO {
-	identities := make([]IdentityVO, 0, len(u.Identities))
-	for _, id := range u.Identities {
-		identities = append(identities, IdentityVO{
-			Provider:   id.Provider,
-			LdapInfo:   id.LdapInfo,
-			WechatInfo: id.WechatInfo,
-			FeishuInfo: id.FeishuInfo,
-		})
-	}
-
-	return UserVO{
-		ID:         u.ID,
-		Username:   u.Username,
-		Email:      u.Email,
-		Nickname:   u.Profile.Nickname,
-		Avatar:     u.Profile.Avatar,
-		JobTitle:   u.Profile.JobTitle,
-		Identities: identities,
-	}
+type LdapInfo struct {
+	DN string `json:"dn"`
 }
 
-// TenantVO 空间展示对象
-type TenantVO struct {
+type WechatInfo struct {
+	UserID string `json:"user_id"`
+}
+
+type FeishuInfo struct {
+	OpenID string `json:"open_id"`
+	UserID string `json:"user_id"`
+}
+
+// Tenant 空间展示对象
+type Tenant struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	Code   string `json:"code"`
 	Domain string `json:"domain"`
-}
-
-func ToTenantVOs(ts []domain.Tenant) []TenantVO {
-	res := make([]TenantVO, 0, len(ts))
-	for _, t := range ts {
-		res = append(res, TenantVO{
-			ID:     t.ID,
-			Name:   t.Name,
-			Code:   t.Code,
-			Domain: t.Domain,
-		})
-	}
-	return res
 }
 
 type UpdateUserReq struct {
@@ -114,11 +74,17 @@ type UpdateUserReq struct {
 }
 
 type RetrieveUsers struct {
-	Total int64    `json:"total"`
-	Users []UserVO `json:"users"`
+	Total int64  `json:"total"`
+	Users []User `json:"users"`
 }
 
 type RetrieveUser struct {
-	User    UserVO     `json:"user"`
-	Tenants []TenantVO `json:"tenants"`
+	User    User     `json:"user"`
+	Tenants []Tenant `json:"tenants"`
+}
+
+type UpdatePasswordRequest struct {
+	OldPassword     string `json:"old_password"`
+	NewPassword     string `json:"new_password"`
+	ConfirmPassword string `json:"confirm_password"`
 }

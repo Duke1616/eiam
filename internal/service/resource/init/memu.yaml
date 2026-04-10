@@ -1,4 +1,5 @@
 - name: PlatformDashboard
+  permission_code: "cmdb:platform_dashboard:view"
   path: /
   component: Layouts
   redirect: /cmdb/dashboard
@@ -10,6 +11,7 @@
     platforms: ["cmdb"]
   children:
   - name: GlobalSearchDiscovery
+    permission_code: "cmdb:dashboard:view"
     path: /cmdb/dashboard/search
     component: /views/search/tabs-info.vue
     meta:
@@ -19,6 +21,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: GlobalSearchCenter
+    permission_code: "cmdb:dashboard:view"
     path: /cmdb/dashboard
     component: /views/search/search.vue
     meta:
@@ -28,6 +31,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
 - name: ModelGovernance
+  permission_code: "cmdb:model:view"
   path: /cmdb/model
   component: Layouts
   redirect: /cmdb/model/index
@@ -39,6 +43,7 @@
     platforms: ["cmdb"]
   children:
   - name: ModelInventory
+    permission_code: "cmdb:model:view"
     path: index
     component: /views/model/index.vue
     meta:
@@ -48,6 +53,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: ModelDetail
+    permission_code: "cmdb:info:view"
     path: info
     component: /views/model/info/index.vue
     meta:
@@ -57,6 +63,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: RelationshipTopology
+    permission_code: "cmdb:relation:view"
     path: relation
     component: /views/model/relation-graph/index.vue
     meta:
@@ -66,6 +73,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: RelationshipDefinition
+    permission_code: "cmdb:relation-type:view"
     path: relation-type
     component: /views/model/relation-type/index.vue
     meta:
@@ -75,6 +83,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
 - name: AssetGovernance
+  permission_code: "cmdb:resource:view"
   path: /cmdb/resource
   component: Layouts
   redirect: /cmdb/resource/index
@@ -86,6 +95,7 @@
     platforms: ["cmdb"]
   children:
   - name: AssetRegistry
+    permission_code: "cmdb:asset:view"
     path: index
     component: /views/resource/warehouse/index.vue
     meta:
@@ -95,6 +105,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: AssetList
+    permission_code: "cmdb:list:view"
     path: list
     component: /views/resource/warehouse/list/list.vue
     meta:
@@ -104,6 +115,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: AssetDetail
+    permission_code: "cmdb:info:view"
     path: info
     component: /views/resource/warehouse/info/info.vue
     meta:
@@ -113,6 +125,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
 - name: OrderServiceCenter
+  permission_code: "order:order:view"
   path: /cmdb/order
   component: Layouts
   redirect: /cmdb/order/index
@@ -124,6 +137,7 @@
     platforms: ["order"]
   children:
   - name: OrderSubmission
+    permission_code: "order:order_submission:view"
     path: start
     component: /views/order/start/index.vue
     meta:
@@ -133,6 +147,7 @@
       is_keepalive: false
       platforms: ["order"]
   - name: OrderList
+    permission_code: "order:list:view"
     path: list
     component: /views/order/index.vue
     meta:
@@ -142,6 +157,7 @@
       is_keepalive: false
       platforms: ["order"]
   - name: History
+    permission_code: "order:history:view"
     path: history
     component: /views/task/history/index.vue
     meta:
@@ -151,6 +167,7 @@
       is_keepalive: false
       platforms: ["order"]
 - name: WorkflowEngine
+  permission_code: "order:workflow_engine:view"
   path: /cmdb/process
   component: Layouts
   redirect: /cmdb/process/index
@@ -162,6 +179,7 @@
     platforms: ["order"]
   children:
   - name: TemplateGovernance
+    permission_code: "order:template:view"
     path: template
     component: /views/process/template/index.vue
     meta:
@@ -171,6 +189,7 @@
       is_keepalive: true
       platforms: ["order"]
   - name: WorkflowGovernance
+    permission_code: "order:workflow:view"
     path: workflow
     component: /views/process/manager/index.vue
     meta:
@@ -180,6 +199,7 @@
       is_keepalive: false
       platforms: ["order"]
 - name: JobControlCenter
+  permission_code: "order:job_control:view"
   path: /cmdb/task
   component: Layouts
   redirect: /cmdb/task/codebook
@@ -191,6 +211,7 @@
     platforms: ["order", "automation"]
   children:
   - name: JobGovernance
+    permission_code: "automation:job:view"
     path: /task/manager
     component: /views/task/manager/index.vue
     meta:
@@ -200,6 +221,7 @@
       is_keepalive: false
       platforms: ["automation"]
   - name: JobTemplateRegistry
+    permission_code: "order:codebook:view"
     path: codebook
     component: /views/task/codebook/index.vue
     meta:
@@ -209,6 +231,7 @@
       is_keepalive: false
       platforms: ["order", "automation"]
   - name: JobExecutorPool
+    permission_code: "automation:executor:view"
     path: /task/executor
     component: /views/task/worker/index.vue
     meta:
@@ -218,6 +241,7 @@
       is_keepalive: false
       platforms: ["automation", "order"]
   - name: JobRunnerInsight
+    permission_code: "automation:job_runner_insight:view"
     path: runner
     component: /views/task/runner/index.vue
     meta:
@@ -227,6 +251,7 @@
       is_keepalive: false
       platforms: ["automation"]
 - name: AlertWorkbench
+  permission_code: "alert:workbench:view"
   path: /alert/workbench
   component: Layouts
   redirect: /alert/workbench/workspace
@@ -238,6 +263,7 @@
     platforms: ["alert"]
   children:
   - name: AlertWorkspace
+    permission_code: "alert:workspace:view"
     path: /alert/workspace
     component: /pages/alert/workspace/index.vue
     meta:
@@ -247,6 +273,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertWorkspaceDetail
+    permission_code: "alert:workspace:view"
     path: /alert/workspace/:id
     component: /pages/alert/workspace/detail.vue
     meta:
@@ -256,6 +283,7 @@
       is_keepalive: false
       platforms: ["alert"]
 - name: TimeSeriesInsight
+  permission_code: "alert:metric:view"
   path: /alert/time_series
   component: Layouts
   redirect: /alert/time_series/query
@@ -267,6 +295,7 @@
     platforms: ["alert"]
   children:
   - name: TimeSeriesInstantQuery
+    permission_code: "alert:metric:view"
     path: /alert/time_series/query
     component: /pages/alert/query/index.vue
     meta:
@@ -276,6 +305,7 @@
       is_keepalive: false
       platforms: ["alert"]
 - name: AlertManager
+  permission_code: "alert:alert_manager:view"
   path: /alert/manager
   component: Layouts
   redirect: /alert/manager/current
@@ -287,6 +317,7 @@
     platforms: ["alert"]
   children:
   - name: DataSourceRegistry
+    permission_code: "alert:datasource:view"
     path: /alert/manager/datasource
     component: /pages/alert/datasource/index.vue
     meta:
@@ -296,6 +327,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertRuleDefinition
+    permission_code: "alert:rule:view"
     path: /alert/manager/rule
     component: /pages/alert/rule/index.vue
     meta:
@@ -305,6 +337,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertRuleCreation
+    permission_code: "alert:rule:view"
     path: /alert/manager/rule/create
     component: /pages/alert/rule/create.vue
     meta:
@@ -314,6 +347,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertRuleAdjustment
+    permission_code: "alert:rule:view"
     path: /alert/manager/rule/edit/:id
     component: /pages/alert/rule/edit.vue
     meta:
@@ -323,6 +357,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: ActiveAlertMonitor
+    permission_code: "alert:current:view"
     path: /alert/manager/current
     component: /pages/alert/current/index.vue
     meta:
@@ -332,6 +367,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertHistoryArchive
+    permission_code: "alert:history:view"
     path: /alert/manager/history
     component: /pages/alert/history/index.vue
     meta:
@@ -341,6 +377,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertRoutingLogic
+    permission_code: "alert:routing:view"
     path: /alert/manager/routing
     component: /pages/alert/routing/index.vue
     meta:
@@ -350,6 +387,7 @@
       is_keepalive: false
       platforms: ["alert"]
 - name: NotificationService
+  permission_code: "alert:notify:view"
   path: /alert/notify
   component: Layouts
   redirect: /alert/notify/template
@@ -361,6 +399,7 @@
     platforms: ["alert", "order"]
   children:
   - name: TemplateGovernance
+    permission_code: "alert:notify:view"
     path: /alert/notify/template
     component: /pages/alert/template/index.vue
     meta:
@@ -370,6 +409,7 @@
       is_keepalive: false
       platforms: ["alert", "order"]
   - name: AlertNotifyTemplateCreate
+    permission_code: "order:notify:view"
     path: /alert/notify/template/create
     component: /pages/alert/template/detail.vue
     meta:
@@ -379,6 +419,7 @@
       is_keepalive: false
       platforms: ["order", "alert"]
   - name: AlertNotifyTemplateEditId
+    permission_code: "order:notify:view"
     path: /alert/notify/template/edit/:id
     component: /pages/alert/template/detail.vue
     meta:
@@ -388,6 +429,7 @@
       is_keepalive: false
       platforms: ["order", "alert"]
   - name: NotificationTemplateGroup
+    permission_code: "alert:notify:view"
     path: /alert/notify/template-set
     component: /pages/alert/template_set/index.vue
     meta:
@@ -397,6 +439,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: NotificationTemplateItem
+    permission_code: "alert:notify:view"
     path: /alert/notify/template-set/items/:id
     component: /pages/alert/template_set/items.vue
     meta:
@@ -406,6 +449,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertEscalationPipeline
+    permission_code: "order:notify:view"
     path: /alert/notify/escalation
     component: 1
     redirect: /pages/alert/escalation/index.vue
@@ -417,6 +461,7 @@
       platforms: ["order", "alert"]
     children:
     - name: EscalationPolicy
+      permission_code: "alert:notify:view"
       path: /alert/notify/escalation/config
       component: /pages/alert/escalation/index.vue
       meta:
@@ -426,6 +471,7 @@
         is_keepalive: false
         platforms: ["alert", "order"]
     - name: EscalationStepTemplate
+      permission_code: "order:notify:view"
       path: /alert/notify/escalation/templates
       component: /pages/alert/escalation/templates.vue
       meta:
@@ -435,6 +481,7 @@
         is_keepalive: false
         platforms: ["order", "alert"]
     - name: EscalationPolicyCreation
+      permission_code: "order:notify:view"
       path: /alert/notify/escalation/config/create
       component: /pages/alert/escalation/create.vue
       meta:
@@ -444,6 +491,7 @@
         is_keepalive: false
         platforms: ["order", "alert"]
     - name: EscalationStepGovernance
+      permission_code: "order:notify:view"
       path: /alert/notify/escalation/steps/:id
       component: /pages/alert/escalation/steps.vue
       meta:
@@ -453,6 +501,7 @@
         is_keepalive: false
         platforms: ["order", "alert"]
 - name: ShiftRotaLifecycle
+  permission_code: "iam:rota:view"
   path: /cmdb/rota
   component: Layouts
   redirect: /cmdb/rota
@@ -464,6 +513,7 @@
     platforms: ["system"]
   children:
   - name: ShiftRotaLifecycle
+    permission_code: "iam:rota:view"
     path: /cmdb/rota
     component: /views/rota/index.vue
     meta:
@@ -473,6 +523,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: ShiftRotaDetail
+    permission_code: "iam:rota:view"
     path: /cmdb/rota/detail
     component: /views/rota/detail.vue
     meta:
@@ -482,6 +533,7 @@
       is_keepalive: false
       platforms: ["system"]
 - name: SystemGovernance
+  permission_code: "iam:system:view"
   path: /cmdb/system
   component: Layouts
   redirect: /cmdb/system/menu
@@ -493,8 +545,8 @@
     platforms: ["system"]
   children:
   - name: RoleGovernance
+    permission_code: "iam:role:view"
     path: role
-    permission_code: iam:role:view
     component: /views/system/role/index.vue
     meta:
       title: 角色管理
@@ -503,8 +555,8 @@
       is_keepalive: false
       platforms: ["system"]
   - name: MenuGovernance
-    path: menu
     permission_code: "iam:menu:view"
+    path: menu
     component: /views/system/menu/index.vue
     meta:
       title: 菜单管理
@@ -513,6 +565,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: RolePermissionMatrix
+    permission_code: "iam:role:view"
     path: /system/role/permission-matrix/:roleCode
     component: /views/system/role/matrix.vue
     meta:
@@ -522,8 +575,8 @@
       is_keepalive: false
       platforms: ["system"]
   - name: UserGovernance
-    path: user
     permission_code: "iam:user:view"
+    path: user
     component: /views/system/user/index.vue
     meta:
       title: 用户管理
@@ -532,6 +585,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: TeamGovernance
+    permission_code: "iam:team:view"
     path: /alert/system/team
     component: /pages/alert/team/index.vue
     meta:
@@ -541,8 +595,8 @@
       is_keepalive: false
       platforms: ["system", "alert"]
   - name: DepartmentGovernance
-    path: department
     permission_code: "iam:department:view"
+    path: department
     component: /views/system/department/index.vue
     meta:
       title: 部门管理
@@ -551,8 +605,8 @@
       is_keepalive: false
       platforms: ["system"]
   - name: APIInventory
-    path: api
     permission_code: "iam:api:view"
+    path: api
     component: /views/system/api/index.vue
     meta:
       title: 接口管理

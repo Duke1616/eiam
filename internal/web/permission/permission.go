@@ -29,12 +29,8 @@ func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
 	if err != nil || sess == nil {
 		return ErrAuthMenuFailed, err
 	}
-	uid, err := sess.Get(ctx.Request.Context(), "uid").Int64()
-	if err != nil {
-		return ErrAuthMenuFailed, err
-	}
 
-	menus, err := h.svc.GetAuthorizedMenus(ctx.Request.Context(), uid)
+	menus, err := h.svc.GetAuthorizedMenus(ctx.Request.Context(), sess.Claims().Uid)
 	if err != nil {
 		return ErrAuthMenuFailed, err
 	}

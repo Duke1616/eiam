@@ -79,7 +79,6 @@ func (s *HandlerAuthTestSuite) SetupSuite() {
 	server := gin.New()
 	server.Use(func(ctx *gin.Context) {
 		newCtx := ctxutil.WithTenantID(ctx.Request.Context(), s.testTid)
-		newCtx = ctxutil.WithUserID(newCtx, s.testUid)
 		ctx.Request = ctx.Request.WithContext(newCtx)
 		ctx.Set("_session", session.NewMemorySession(session.Claims{Uid: s.testUid}))
 	})

@@ -14,7 +14,7 @@ type IUserRepository interface {
 	Create(ctx context.Context, u domain.User) (int64, error)
 	FindById(ctx context.Context, id int64) (domain.User, error)
 	FindByUsername(ctx context.Context, username string) (domain.User, error)
-	
+
 	Update(ctx context.Context, u domain.User) (int64, error)
 	FindUserByIdentity(ctx context.Context, provider, identityKey string) (domain.User, error)
 	SaveIdentity(ctx context.Context, ui domain.UserIdentity) error
@@ -24,8 +24,8 @@ type IUserRepository interface {
 }
 
 type userRepository struct {
-	dao   dao.IUserDAO
-	tdao  dao.ITenantDAO 
+	dao  dao.IUserDAO
+	tdao dao.ITenantDAO
 }
 
 func NewUserRepository(d dao.IUserDAO, td dao.ITenantDAO) IUserRepository {
@@ -65,7 +65,7 @@ func (repo *userRepository) fullHydration(ctx context.Context, u dao.User) (doma
 	eg.Go(func() error {
 		membership, err := repo.tdao.GetMembershipByUserId(ctx, u.ID)
 		if err != nil {
-			return nil 
+			return nil
 		}
 		up, _ = repo.dao.FindProfileByMembershipId(ctx, membership.ID)
 		return nil
@@ -142,7 +142,9 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 	return domain.User{
 		ID:       u.ID,
 		Username: u.Username,
+		Password: u.Password,
 		Email:    u.Email,
+		Status:   domain.Status(u.Status),
 		Ctime:    u.Ctime,
 		Utime:    u.Utime,
 		Profile: domain.UserProfile{
@@ -161,5 +163,8 @@ func (repo *userRepository) toEntity(u domain.User) dao.User {
 		Username: u.Username,
 		Password: u.Password,
 		Email:    u.Email,
+		Status:   int(u.Status),
+		Ctime:    u.Ctime,
+		Utime:    u.Utime,
 	}
 }

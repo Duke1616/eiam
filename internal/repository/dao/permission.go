@@ -111,7 +111,7 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 
 	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
-		DoNothing: true,
+		DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
 	}).Create(&bindings).Error
 }
 
@@ -146,7 +146,7 @@ func (d *PermissionDAO) SyncResourceBindings(ctx context.Context, resURNs []stri
 		if len(bindings) > 0 {
 			return tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
-				DoNothing: true,
+				DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
 			}).Create(&bindings).Error
 		}
 

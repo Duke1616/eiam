@@ -19,10 +19,49 @@ ON DUPLICATE KEY UPDATE `name`     = VALUES(`name`),
 INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`)
 VALUES ('g', 'ADMIN', 'SUPER_ADMIN', '0')
 ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`);
+
+-- 初始化超级管理员账户：admin / 12345678
+INSERT INTO `user` (`id`, `username`, `password`, `email`, `status`, `ctime`, `utime`)
+VALUES (1, 'admin', '$2a$10$6ocvB6VX93BKFT4HruyWEOFy1ePGbXbd37uBvtnZ7CHovY9N3WotK', 'admin@example.com', 1,
+        (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `password` = VALUES(`password`), `utime` = VALUES(`utime`);
+
+-- 授予 admin 用户 SUPER_ADMIN 角色 (使用 ID: 1)
+INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`)
+VALUES ('g', '1', 'SUPER_ADMIN', '0')
+ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`);
+
+-- 初始化 admin 用户的个人租户空间
+INSERT INTO `tenant` (`id`, `name`, `code`, `domain`, `status`, `ctime`, `utime`)
+VALUES (1, '系统管理员的个人空间', 'admin-personal', 'localhost', 1,
+        (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `code` = VALUES(`code`), `utime` = VALUES(`utime`);
+
+
+-- 初始化 admin 用户的租户成员关联（Membership）
+INSERT INTO `membership` (`id`, `tenant_id`, `user_id`, `ctime`)
+VALUES (1, 1, 1, (UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `ctime` = VALUES(`ctime`);
+
+-- 初始化 admin 用户的个人名片（UserProfile）
+-- 注意：UserProfile 里的 membership_id 应该指向刚创建的关联
+INSERT INTO `user_profile` (`id`, `membership_id`, `nickname`, `avatar`, `job_title`)
+VALUES (1, 1, '系统管理员', '', 'CEO')
+ON DUPLICATE KEY UPDATE `nickname` = VALUES(`nickname`);
+
+
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
 DELETE FROM `role` WHERE `tenant_id` = 0 AND `code` IN ('SUPER_ADMIN', 'ADMIN');
 DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'ADMIN' AND `v1` = 'SUPER_ADMIN' AND `v2` = '0';
+DELETE FROM `user` WHERE `username` = 'admin';
+DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = '1' AND `v1` = 'SUPER_ADMIN' AND `v2` = '0';
+DELETE FROM `tenant` WHERE `code` = 'admin-personal';
+
+DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` = 1;
+DELETE FROM `user_profile` WHERE `membership_id` = 1;
+
+
 -- +goose StatementEnd

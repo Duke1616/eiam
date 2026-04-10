@@ -42,6 +42,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/logout", h.Capability("退出登录", "logout").
 		Handle(ginx.W(h.Logout)),
 	)
+
+	g.POST("/password/update", ginx.B[UpdatePasswordRequest](h.UpdatePassword))
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -77,7 +79,8 @@ func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginSystemRequest) (ginx.R
 
 // handleLoginResult 统一处理登录后的路由决策
 func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult) (ginx.Result, error) {
-	if err := h.issueSession(ctx, result.User.ID, result.User.Username, result.TenantID); err != nil {
+	if err := h.issueSession(ctx, result.User.ID, result.User.Username,
+		strconv.FormatInt(result.TenantID, 10)); err != nil {
 		return ErrInternalServer, err
 	}
 
@@ -126,15 +129,39 @@ func (h *Handler) Logout(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 // issueSession 统一颁发（或刷新）JWT，tenantID=0 代表临时凭证，等待选择
-func (h *Handler) issueSession(ctx *ginx.Context, uid int64, username string, tenantID int64) error {
-	jwtData := map[string]string{
-		"tenant_id": strconv.FormatInt(tenantID, 10),
-	}
-
+func (h *Handler) issueSession(ctx *ginx.Context, uid int64, username string, tenantID string) error {
 	_, err := session.NewSessionBuilder(ctx, uid).
-		SetJwtData(jwtData).
-		SetSessData(map[string]any{"username": username}).
+		SetJwtData(map[string]string{
+			"tenant_id": tenantID,
+			"username":  username,
+		}).
+		SetSessData(map[string]any{
+			"username":  username,
+			"tenant_id": tenantID,
+		}).
 		Build()
 
 	return err
+}
+func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (ginx.Result, error) {
+	if req.NewPassword != req.ConfirmPassword {
+		return ErrPasswordMismatch, nil
+	}
+
+	sess, err := session.Get(ctx)
+	if err != nil || sess == nil {
+		return ErrUnauthenticated, err
+	}
+
+	uid, err := sess.Get(ctx.Request.Context(), "uid").Int64()
+	if err != nil {
+		return ErrSessionInvalid, err
+	}
+
+	err = h.svc.UpdatePassword(ctx.Request.Context(), uid, req.OldPassword, req.NewPassword)
+	if err != nil {
+		return ErrUnauthorized, err
+	}
+
+	return ginx.Result{Msg: "密码修改成功"}, nil
 }

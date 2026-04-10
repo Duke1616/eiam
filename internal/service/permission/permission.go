@@ -2,6 +2,7 @@ package permission
 
 import (
 	"context"
+	"sort"
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/authz"
@@ -177,8 +178,8 @@ func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap ma
 
 // getEffectiveRoles 获取用户在当前上下文中所有有效的 Role 对象 (含系统角色)
 func (s *permissionService) getEffectiveRoles(ctx context.Context, userId int64) ([]domain.Role, error) {
-	sub := strconv.FormatInt(userId, 10)
-	tid := strconv.FormatInt(ctxutil.GetTenantID(ctx), 10)
+	sub := ctxutil.GetUserID(ctx).String()
+	tid := ctxutil.GetTenantID(ctx).String()
 
 	// 1. Casbin 链路解析 (O(1) 内存图搜索)
 	roleCodes, err := s.enforcer.GetImplicitRolesForUser(sub, tid)
@@ -222,6 +223,21 @@ func (s *permissionService) buildMenuTree(nodes []domain.Menu) []domain.Menu {
 		}
 	}
 
+	// 对所有节点的子菜单进行排序 (In-place)
+	for _, m := range nodeMap {
+		if len(m.Children) > 1 {
+			sort.Slice(m.Children, func(i, j int) bool {
+				return m.Children[i].Sort < m.Children[j].Sort
+			})
+		}
+	}
+
+	// 对根菜单进行排序
+	sort.Slice(roots, func(i, j int) bool {
+		return roots[i].Sort < roots[j].Sort
+	})
+
+	// 重新关联根节点的 Children 指针 (因为之前 roots append 的是副本)
 	for i := range roots {
 		if node, exists := nodeMap[roots[i].ID]; exists {
 			roots[i].Children = node.Children
@@ -252,8 +268,7 @@ func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, 
 	}
 
 	sub := strconv.FormatInt(userId, 10)
-	tenantId := ctxutil.GetTenantID(ctx)
-	return s.enforcer.AddGroupingPolicy(sub, roleCode, strconv.FormatInt(tenantId, 10))
+	return s.enforcer.AddGroupingPolicy(sub, roleCode, ctxutil.GetTenantID(ctx))
 }
 
 // AssignRoleInheritance 设置角色继承关系 (增加两端一致性校验)
@@ -266,9 +281,7 @@ func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole
 		return false, err
 	}
 
-	tenantId := ctxutil.GetTenantID(ctx)
-	tid := strconv.FormatInt(tenantId, 10)
-
+	tid := ctxutil.GetTenantID(ctx).String()
 	ancestors, err := s.enforcer.GetImplicitRolesForUser(parentRole, tid)
 	if err != nil {
 		return false, err

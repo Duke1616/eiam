@@ -2,43 +2,61 @@ package ctxutil
 
 import (
 	"context"
+	"strconv"
 )
 
-type contextKey string
-
+// 定义常用的 Key 常量
 const (
-	tenantIDKey contextKey = "tenant_id"
-	userIDKey   contextKey = "user_id"
+	TenantIDKey = "tenant_id"
+	UserIDKey   = "user_id"
 )
 
-// WithTenantID 将租户 ID 注入 context
-func WithTenantID(ctx context.Context, tenantID int64) context.Context {
-	return context.WithValue(ctx, tenantIDKey, tenantID)
+// ContextID 对 int64 的包装，提供便捷的转换方法
+type ContextID int64
+
+func (id ContextID) String() string {
+	return strconv.FormatInt(int64(id), 10)
 }
 
-// GetTenantID 从 context 中安全提取租户 ID
-func GetTenantID(ctx context.Context) int64 {
+func (id ContextID) Int64() int64 {
+	return int64(id)
+}
+
+// Get [通用泛型提取]
+func Get[T any](ctx context.Context, key string) T {
 	if ctx == nil {
-		return 0
+		var zero T
+		return zero
 	}
-	if id, ok := ctx.Value(tenantIDKey).(int64); ok {
-		return id
+	val := ctx.Value(key)
+	if res, ok := val.(T); ok {
+		return res
 	}
-	return 0
+	var zero T
+	return zero
 }
 
-// WithUserID 将用户 ID 注入 context
-func WithUserID(ctx context.Context, userID int64) context.Context {
-	return context.WithValue(ctx, userIDKey, userID)
+// With [通用泛型注入]
+func With[T any](ctx context.Context, key string, val T) context.Context {
+	return context.WithValue(ctx, key, val)
 }
 
-// GetUserID 从 context 中获取当前操作的用户 ID
-func GetUserID(ctx context.Context) int64 {
-	if ctx == nil {
-		return 0
-	}
-	if id, ok := ctx.Value(userIDKey).(int64); ok {
-		return id
-	}
-	return 0
+// GetTenantID 快捷获取租户 ID
+func GetTenantID(ctx context.Context) ContextID {
+	return ContextID(Get[int64](ctx, TenantIDKey))
+}
+
+// GetUserID 快捷获取用户 ID
+func GetUserID(ctx context.Context) ContextID {
+	return ContextID(Get[int64](ctx, UserIDKey))
+}
+
+// WithTenantID 注入租户 ID
+func WithTenantID(ctx context.Context, tid int64) context.Context {
+	return With(ctx, TenantIDKey, tid)
+}
+
+// WithUserID 注入用户 ID
+func WithUserID(ctx context.Context, uid int64) context.Context {
+	return With(ctx, UserIDKey, uid)
 }

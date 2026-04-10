@@ -40,7 +40,7 @@ func NewRoleService(repo repository.IRoleRepository) IRoleService {
 
 func (s *roleService) Create(ctx context.Context, r domain.Role) (int64, error) {
 	if r.TenantID == 0 {
-		r.TenantID = ctxutil.GetTenantID(ctx)
+		r.TenantID = ctxutil.GetTenantID(ctx).Int64()
 	}
 	return s.repo.Create(ctx, r)
 }
@@ -73,7 +73,7 @@ func (s *roleService) List(ctx context.Context, offset, limit int64) ([]domain.R
 
 func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) {
 	if r.TenantID == 0 {
-		r.TenantID = ctxutil.GetTenantID(ctx)
+		r.TenantID = ctxutil.GetTenantID(ctx).Int64()
 	}
 	return s.repo.Update(ctx, r)
 }

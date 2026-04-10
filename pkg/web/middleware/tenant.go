@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ExtractTenantID 租户上下文解析中间件
-func ExtractTenantID(sp session.Provider) gin.HandlerFunc {
+// BuildContext 租户与用户信息上下文解析注入中间件
+func BuildContext(sp session.Provider) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		// 容错处理：不因 Session 脏数据（如 Malformed Token）阻塞流程
 		sess, err := sp.Get(&gctx.Context{Context: ctx})
@@ -20,19 +20,18 @@ func ExtractTenantID(sp session.Provider) gin.HandlerFunc {
 			return
 		}
 
-		// 从 Session 中提取写入的租户 ID
-		// NOTE: 假设通过存储为 string 的方式
-		tidVal := sess.Get(ctx.Request.Context(), "tenant_id")
-		tidStr, err := tidVal.String()
-		if err == nil && tidStr != "" {
-			tid, _ := strconv.ParseInt(tidStr, 10, 64)
-			
-			// 注入到标准 Go Context 中，以备后续 Service/DAO 提取
-			newCtx := ctxutil.WithTenantID(ctx.Request.Context(), tid)
-			newCtx = ctxutil.WithUserID(newCtx, sess.Claims().Uid)
-			
-			ctx.Request = ctx.Request.WithContext(newCtx)
-		}
+		// 提取租户 ID
+		tid, _ := strconv.ParseInt(sess.Claims().Data["tenant_id"], 10, 64)
+		uid := sess.Claims().Uid
+
+		// 1. 注入 Gin 上下文 (Web层使用)
+		ctx.Set("uid", uid)
+		ctx.Set("tenant_id", tid)
+
+		// 2. 注入标准 Context (确保下游 Service/DAO 可见)
+		newCtx := ctxutil.WithUserID(ctx.Request.Context(), uid)
+		newCtx = ctxutil.WithTenantID(newCtx, tid)
+		ctx.Request = ctx.Request.WithContext(newCtx)
 
 		ctx.Next()
 	}

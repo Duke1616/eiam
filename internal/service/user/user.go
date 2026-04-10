@@ -31,6 +31,7 @@ type IUserService interface {
 
 	List(ctx context.Context, offset, limit int64) ([]domain.User, int64, error)
 	Update(ctx context.Context, u domain.User) (int64, error)
+	UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error
 }
 
 type userService struct {
@@ -189,6 +190,11 @@ func (s *userService) bindGlobalIdentity(ctx context.Context, uid int64, id doma
 }
 
 func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) {
+	_, err := s.repo.FindByUsername(ctx, u.Username)
+	if err == nil {
+		return 0, ErrUserExist
+	}
+
 	if u.Password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 		if err != nil {
@@ -197,6 +203,28 @@ func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) 
 		u.Password = string(hash)
 	}
 	return s.repo.Create(ctx, u)
+}
+
+func (s *userService) UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error {
+	u, err := s.repo.FindById(ctx, uid)
+	if err != nil {
+		return err
+	}
+
+	// 校验旧密码
+	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(oldPassword)); err != nil {
+		return ErrInvalidUser
+	}
+
+	// 加密新密码
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	u.Password = string(hash)
+	_, err = s.repo.Update(ctx, u)
+	return err
 }
 
 func (s *userService) GetById(ctx context.Context, id int64) (domain.User, error) {

@@ -43,7 +43,7 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 		return
 	}
 
-	tid := ctxutil.GetTenantID(db.Statement.Context)
+	tid := ctxutil.GetTenantID(db.Statement.Context).Int64()
 	if tid == 0 {
 		return
 	}
