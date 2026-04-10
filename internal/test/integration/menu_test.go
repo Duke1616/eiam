@@ -161,6 +161,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试中心", "test-center", s.testUid)
 			require.NoError(s.T(), err)
 			ctx := ctxutil.WithTenantID(context.Background(), tid)
+			ctx = ctxutil.WithUserID(ctx, s.testUid)
 
 			tc.before(ctx)
 			menus, err := s.permSvc.GetAuthorizedMenus(ctx, s.testUid)

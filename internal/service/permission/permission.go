@@ -178,7 +178,13 @@ func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap ma
 
 // getEffectiveRoles 获取用户在当前上下文中所有有效的 Role 对象 (含系统角色)
 func (s *permissionService) getEffectiveRoles(ctx context.Context, userId int64) ([]domain.Role, error) {
-	sub := ctxutil.GetUserID(ctx).String()
+	// 优先从上下文获取 (声明式标识)
+	uid := ctxutil.GetUserID(ctx).Int64()
+	if uid == 0 {
+		uid = userId
+	}
+
+	sub := strconv.FormatInt(uid, 10)
 	tid := ctxutil.GetTenantID(ctx).String()
 
 	// 1. Casbin 链路解析 (O(1) 内存图搜索)
@@ -268,7 +274,8 @@ func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, 
 	}
 
 	sub := strconv.FormatInt(userId, 10)
-	return s.enforcer.AddGroupingPolicy(sub, roleCode, ctxutil.GetTenantID(ctx))
+	tid := ctxutil.GetTenantID(ctx).String()
+	return s.enforcer.AddGroupingPolicy(sub, roleCode, tid)
 }
 
 // AssignRoleInheritance 设置角色继承关系 (增加两端一致性校验)
