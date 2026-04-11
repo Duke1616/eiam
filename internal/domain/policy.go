@@ -36,8 +36,15 @@ type RolePolicyRelation struct {
 
 // Statement 权限语句：定义 Action, Resource 和 Condition
 type Statement struct {
-	Effect    Effect         `json:"Effect"`
-	Action    []string       `json:"Action"`
-	Resource  []string       `json:"Resource"` // 这里应填入 URN 字符串
-	Condition map[string]any `json:"Condition,omitempty"`
+	Effect    Effect      `json:"Effect"`
+	Action    []string    `json:"Action"`
+	Resource  []string    `json:"Resource"` // 这里应填入 URN 字符串
+	Condition []Condition `json:"Condition,omitempty"`
+}
+
+// Condition 策略触发条件：基于 Operator 的结构化判定
+type Condition struct {
+	Operator string `json:"Operator"` // 匹配操作符：StringEquals, NumericGreater 等
+	Key      string `json:"Key"`      // 匹配关键字：iam:UserId, sdk:ClientIp 等
+	Value    any    `json:"Value"`    // 匹配目标值：可以是单个值或数组
 }

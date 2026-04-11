@@ -36,6 +36,12 @@ type IPolicyDAO interface {
 	Insert(ctx context.Context, p Policy) (int64, error)
 	// GetByCode 根据策略标识码获取策略详情
 	GetByCode(ctx context.Context, code string) (Policy, error)
+	// List 分页获取策略
+	List(ctx context.Context, offset, limit int64) ([]Policy, error)
+	// Count 统计策略总数
+	Count(ctx context.Context) (int64, error)
+	// Update 更新策略详情
+	Update(ctx context.Context, p Policy) error
 	// BindToRole 建立角色与托管策略的关联关系 (幂等)
 	BindToRole(ctx context.Context, roleCode, polyCode string) error
 	// UnbindFromRole 解除角色与托管策略的关联关系
@@ -68,6 +74,31 @@ func (d *policyDAO) GetByCode(ctx context.Context, code string) (Policy, error) 
 	var p Policy
 	err := d.db.WithContext(ctx).Where("code = ?", code).First(&p).Error
 	return p, err
+}
+
+func (d *policyDAO) List(ctx context.Context, offset, limit int64) ([]Policy, error) {
+	var ps []Policy
+	err := d.db.WithContext(ctx).Model(&Policy{}).
+		Offset(int(offset)).Limit(int(limit)).Find(&ps).Error
+	return ps, err
+}
+
+func (d *policyDAO) Count(ctx context.Context) (int64, error) {
+	var total int64
+	err := d.db.WithContext(ctx).Model(&Policy{}).Count(&total).Error
+	return total, err
+}
+
+func (d *policyDAO) Update(ctx context.Context, p Policy) error {
+	return d.db.WithContext(ctx).Model(&Policy{}).
+		Where("code = ?", p.Code).
+		Select("name", "desc", "document", "utime").
+		Updates(Policy{
+			Name:     p.Name,
+			Desc:     p.Desc,
+			Document: p.Document,
+			Utime:    time.Now().UnixMilli(),
+		}).Error
 }
 
 func (d *policyDAO) GetCodesByRoleCodes(ctx context.Context, roleCodes []string) ([]RolePolicyAttachment, error) {

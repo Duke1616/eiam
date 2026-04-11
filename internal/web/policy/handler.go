@@ -1,95 +1,149 @@
 package policy
 
 import (
-	"fmt"
-
-	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/domain"
+	policysvc "github.com/Duke1616/eiam/internal/service/policy"
+	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
-	"github.com/ecodeclub/ginx/gctx"
-	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	permSvc permission.IPermissionService
-	sess    session.Provider
+	capability.IRegistry
+	svc policysvc.IPolicyService
 }
 
-func NewHandler(permSvc permission.IPermissionService, sess session.Provider) *Handler {
+func NewHandler(svc policysvc.IPolicyService) *Handler {
 	return &Handler{
-		permSvc: permSvc,
-		sess:    sess,
+		IRegistry: capability.NewRegistry("iam", "policy", "策略管理"),
+		svc:       svc,
 	}
 }
 
 func (h *Handler) PublicRoutes(server *gin.Engine) {
-	g := server.Group("/api/policy")
-	// 鉴权接口本身需要公开，因为 SDK 内部会带上 Token 并在逻辑内自行校验
-	g.POST("/check_login", ginx.W(h.CheckLogin))
-	g.POST("/check_policy", ginx.B[CheckPolicyReq](h.CheckPolicy))
+	// 策略管理暂无公开接口
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
+	g := server.Group("/api/policy")
+
+	g.POST("/create", h.Capability("创建策略", "add").
+		Handle(ginx.B[CreatePolicyReq](h.CreatePolicy)),
+	)
+	g.POST("/update", h.Capability("修改策略", "edit").
+		Handle(ginx.B[UpdatePolicyReq](h.UpdatePolicy)),
+	)
+	g.POST("/list", h.Capability("策略列表", "view").
+		Handle(ginx.B[ListPolicyReq](h.ListPolicies)),
+	)
+
+	g.POST("/attach", h.Capability("绑定策略", "attach").
+		Handle(ginx.B[AttachPolicyReq](h.AttachPolicy)),
+	)
+	g.POST("/detach", h.Capability("解绑策略", "detach").
+		Handle(ginx.B[AttachPolicyReq](h.DetachPolicy)),
+	)
 }
 
-// CheckLogin 实现 SDK 的登录状态校验
-func (h *Handler) CheckLogin(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
+func (h *Handler) CreatePolicy(ctx *ginx.Context, req CreatePolicyReq) (ginx.Result, error) {
+	_, err := h.svc.CreatePolicy(ctx.Request.Context(), domain.Policy{
+		Name: req.Name,
+		Code: req.Code,
+		Desc: req.Desc,
+		Type: domain.PolicyType(req.Type),
+		Statement: slice.Map(req.Statement, func(idx int, s Statement) domain.Statement {
+			return h.toStatementDomain(s)
+		}),
+	})
 	if err != nil {
-		return ErrUnauthenticated, err
+		return ginx.Result{Msg: "创建策略失败"}, err
+	}
+	return ginx.Result{Msg: "创建成功"}, nil
+}
+
+func (h *Handler) UpdatePolicy(ctx *ginx.Context, req UpdatePolicyReq) (ginx.Result, error) {
+	err := h.svc.UpdatePolicy(ctx.Request.Context(), domain.Policy{
+		Name: req.Name,
+		Code: req.Code,
+		Desc: req.Desc,
+		Statement: slice.Map(req.Statement, func(idx int, s Statement) domain.Statement {
+			return h.toStatementDomain(s)
+		}),
+	})
+	if err != nil {
+		return ginx.Result{Msg: "更新策略失败"}, err
+	}
+	return ginx.Result{Msg: "更新成功"}, nil
+}
+
+func (h *Handler) ListPolicies(ctx *ginx.Context, req ListPolicyReq) (ginx.Result, error) {
+	ps, total, err := h.svc.ListPolicies(ctx.Request.Context(), req.Offset, req.Limit)
+	if err != nil {
+		return ginx.Result{Msg: "查询策略列表失败"}, err
 	}
 
-	// 提取租户 ID 并返回给 SDK
-	claims := sess.Claims()
 	return ginx.Result{
-		Code: 0,
-		Data: map[string]any{
-			"uid":       claims.Uid,
-			"tenant_id": claims.Data["tenant_id"],
+		Data: ListPolicyRes{
+			Total: total,
+			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+				return h.toVO(src)
+			}),
 		},
 	}, nil
 }
 
-// CheckPolicy 实现 SDK 的全链路权限判定决策
-func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Result, error) {
-	// 1. 获取当前用户和租户上下文
-	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
+func (h *Handler) AttachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
+	err := h.svc.AttachPolicyToRole(ctx.Request.Context(), req.RoleCode, req.PolyCode)
 	if err != nil {
-		return ErrUnauthenticated, err
+		return ginx.Result{Msg: "绑定策略失败"}, err
 	}
-
-	// 2. 调用全链路 CheckAPI 逻辑 (物理 Path -> 能力码 -> 逻辑权限判定)
-	allowed, err := h.permSvc.CheckAPI(ctx.Context, sess.Claims().Uid, req.Service, req.Method, req.Path)
-	if err != nil {
-		return ginx.Result{
-			Code: 0,
-			Data: AuthorizeResult{
-				Allowed: false,
-				Reason:  fmt.Sprintf("鉴权逻辑校验出错: %v", err),
-			},
-		}, nil
-	}
-
-	// 3. 如果物理 API 校验通过，还需要针对具体的 Resource 维度进行逻辑判定 (OPA 处理)
-	// 如果 req.Resource != "*"，我们需要额外加一道特定资源的 OPA 判定
-	// 此处目前保留简化实现，物理 API 通过即通过
-
-	return ginx.Result{
-		Code: 0,
-		Data: AuthorizeResult{
-			Allowed: allowed,
-		},
-	}, nil
+	return ginx.Result{Msg: "绑定成功"}, nil
 }
 
-type CheckPolicyReq struct {
-	Service  string `json:"service"`
-	Path     string `json:"path"`
-	Method   string `json:"method"`
-	Resource string `json:"resource"`
+func (h *Handler) DetachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
+	err := h.svc.DetachFromRole(ctx.Request.Context(), req.RoleCode, req.PolyCode)
+	if err != nil {
+		return ginx.Result{Msg: "解绑策略失败"}, err
+	}
+	return ginx.Result{Msg: "解绑成功"}, nil
 }
 
-type AuthorizeResult struct {
-	Allowed bool   `json:"allowed"`
-	Reason  string `json:"reason"`
+func (h *Handler) toVO(p domain.Policy) Policy {
+	return Policy{
+		ID:   p.ID,
+		Name: p.Name,
+		Code: p.Code,
+		Desc: p.Desc,
+		Type: uint8(p.Type),
+		Statement: slice.Map(p.Statement, func(idx int, s domain.Statement) Statement {
+			return Statement{
+				Effect:   string(s.Effect),
+				Action:   s.Action,
+				Resource: s.Resource,
+				Condition: slice.Map(s.Condition, func(idx int, c domain.Condition) Condition {
+					return Condition{
+						Operator: c.Operator,
+						Key:      c.Key,
+						Value:    c.Value,
+					}
+				}),
+			}
+		}),
+	}
+}
+
+func (h *Handler) toStatementDomain(s Statement) domain.Statement {
+	return domain.Statement{
+		Effect:   domain.Effect(s.Effect),
+		Action:   s.Action,
+		Resource: s.Resource,
+		Condition: slice.Map(s.Condition, func(idx int, c Condition) domain.Condition {
+			return domain.Condition{
+				Operator: c.Operator,
+				Key:      c.Key,
+				Value:    c.Value,
+			}
+		}),
+	}
 }

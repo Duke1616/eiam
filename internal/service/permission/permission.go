@@ -3,6 +3,7 @@ package permission
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/Duke1616/eiam/internal/authz"
 	"github.com/Duke1616/eiam/internal/domain"
@@ -35,6 +36,8 @@ type IPermissionService interface {
 	CreatePermission(ctx context.Context, p domain.Permission) (int64, error)
 	// GetByCode 获取能力项元数据
 	GetByCode(ctx context.Context, code string) (domain.Permission, error)
+	// GetPermissionManifest 获取归一化的权限资产清单
+	GetPermissionManifest(ctx context.Context) (domain.PermissionManifest, error)
 	// BindResourcesToPermission 定义该功能码涵盖哪些物理资源 URN
 	BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error
 
@@ -235,6 +238,47 @@ func (s *permissionService) CreatePermission(ctx context.Context, p domain.Permi
 
 func (s *permissionService) GetByCode(ctx context.Context, code string) (domain.Permission, error) {
 	return s.permRepo.GetByCode(ctx, code)
+}
+
+func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.PermissionManifest, error) {
+	// 1. 调用 Repository 获取打平后的全量原始数据 (ID, Code, Name, Service, Group 等)
+	perms, err := s.permRepo.ListAllPermissions(ctx)
+	if err != nil {
+		return domain.PermissionManifest{}, err
+	}
+
+	// 2. 构建归一化索引与拓扑
+	// 使用 Map 聚合 Service -> Group -> ActionCodes 拓扑
+	topology := make(map[string]map[string][]string)
+	for _, p := range perms {
+		if _, ok := topology[p.Service]; !ok {
+			topology[p.Service] = make(map[string][]string)
+		}
+		topology[p.Service][p.Group] = append(topology[p.Service][p.Group], p.Code)
+	}
+
+	// 3. 组装领域 Manifest 对象
+	services := make([]domain.ServiceNode, 0, len(topology))
+	for svcCode, groups := range topology {
+		svcNode := domain.ServiceNode{
+			Code:   svcCode,
+			Name:   strings.ToUpper(svcCode), // 后续可扩展为从资源字典获取更友好的显示名
+			Groups: make([]domain.GroupNode, 0, len(groups)),
+		}
+
+		for groupName, actionCodes := range groups {
+			svcNode.Groups = append(svcNode.Groups, domain.GroupNode{
+				Name:    groupName,
+				Actions: actionCodes,
+			})
+		}
+		services = append(services, svcNode)
+	}
+
+	return domain.PermissionManifest{
+		Permissions: perms,
+		Services:    services,
+	}, nil
 }
 
 func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error {

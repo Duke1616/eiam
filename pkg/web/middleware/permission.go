@@ -74,7 +74,7 @@ type apiResult[T any] struct {
 func (s *SDK) CheckLogin() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var res apiResult[checkLoginResp]
-		if err := s.callAPI(ctx, "/api/policy/check_login", nil, &res); err != nil {
+		if err := s.callAPI(ctx, "/api/permission/check_login", nil, &res); err != nil {
 			return
 		}
 
@@ -113,7 +113,7 @@ func (s *SDK) CheckPolicy(resource string) gin.HandlerFunc {
 
 		// 3. 发起远程判定
 		var res apiResult[authorizeResult]
-		if err := s.callAPI(ctx, "/api/policy/check_policy", checkPolicyReq{
+		if err := s.callAPI(ctx, "/api/permission/check_policy", checkPolicyReq{
 			Service:  info.Service,
 			Path:     ctx.FullPath(),
 			Method:   ctx.Request.Method,

@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"github.com/ecodeclub/ekit/slice"
+	"golang.org/x/sync/errgroup"
 )
 
 // IPolicyRepository 策略仓储接口：封装策略实体的持久化与关联逻辑
@@ -15,6 +16,10 @@ type IPolicyRepository interface {
 	CreatePolicy(ctx context.Context, p domain.Policy) (int64, error)
 	// GetPolicyByCode 按标识码检索策略实体
 	GetPolicyByCode(ctx context.Context, code string) (domain.Policy, error)
+	// ListPolicies 分页获取策略列表
+	ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error)
+	// UpdatePolicy 更新权限策略
+	UpdatePolicy(ctx context.Context, p domain.Policy) error
 	// AttachPolicyToRole 将策略挂载到角色上
 	AttachPolicyToRole(ctx context.Context, roleCode, polyCode string) error
 	// DetachPolicyFromRole 从角色上移除已挂载的策略
@@ -40,6 +45,37 @@ func (r *policyRepository) CreatePolicy(ctx context.Context, p domain.Policy) (i
 func (r *policyRepository) GetPolicyByCode(ctx context.Context, code string) (domain.Policy, error) {
 	p, err := r.dao.GetByCode(ctx, code)
 	return r.toDomain(p), err
+}
+
+func (r *policyRepository) ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error) {
+	var (
+		ps    []dao.Policy
+		total int64
+	)
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var err error
+		ps, err = r.dao.List(ctx, offset, limit)
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		total, err = r.dao.Count(ctx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, 0, err
+	}
+
+	return slice.Map(ps, func(idx int, src dao.Policy) domain.Policy {
+		return r.toDomain(src)
+	}), total, nil
+}
+
+func (r *policyRepository) UpdatePolicy(ctx context.Context, p domain.Policy) error {
+	return r.dao.Update(ctx, r.toDAO(p))
 }
 
 func (r *policyRepository) AttachPolicyToRole(ctx context.Context, roleCode, polyCode string) error {

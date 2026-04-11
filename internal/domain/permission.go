@@ -29,6 +29,34 @@ type Permission struct {
 	Utime int64 `json:"utime"`
 }
 
+// PermissionTree 领域级别的权限树
+type PermissionTree struct {
+	Service string
+	Groups  []PermissionGroup
+}
+
+type PermissionGroup struct {
+	Name    string
+	Actions []Permission
+}
+
+// PermissionManifest 权限清单 (领域对象)
+type PermissionManifest struct {
+	Permissions []Permission
+	Services    []ServiceNode
+}
+
+type ServiceNode struct {
+	Code   string
+	Name   string
+	Groups []GroupNode
+}
+
+type GroupNode struct {
+	Name    string
+	Actions []string // 存储动作 Code
+}
+
 // ResourceBinding 物理资源绑定关系 (抽取租户 ID 为独立字段)
 type ResourceBinding struct {
 	TenantId    int64  `json:"tenant_id"`    // 租户标识，全局资产固定为 0

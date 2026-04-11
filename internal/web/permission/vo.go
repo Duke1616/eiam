@@ -1,8 +1,28 @@
 package permission
 
-type CreatePermissionRequest struct {
-	Code string `json:"code" binding:"required"`
-	Desc string `json:"desc"`
+type Permission struct {
+	ID      int64  `json:"id"`
+	Service string `json:"service"`
+	Group   string `json:"group"`
+	Code    string `json:"code"`
+	Name    string `json:"name"`
+}
+
+// Manifest 权限清单，用于前端归一化管理逻辑能力项
+type Manifest struct {
+	Actions  []Permission             `json:"actions"`
+	Services []ServicePermissionEntry `json:"services"`
+}
+
+type ServicePermissionEntry struct {
+	Code    string  `json:"code"`
+	Name    string  `json:"name"`
+	Entries []Entry `json:"entries"`
+}
+
+type Entry struct {
+	Name    string   `json:"name"`
+	Actions []string `json:"actions"`
 }
 
 type BindResourcesRequest struct {
@@ -14,6 +34,23 @@ type BindResourcesRequest struct {
 type AssignRoleRequest struct {
 	UserID   int64  `json:"user_id" binding:"required"`
 	RoleCode string `json:"role_code" binding:"required"`
+}
+
+type AttachPolicyReq struct {
+	RoleCode string `json:"role_code"`
+	PolyCode string `json:"poly_code"`
+}
+
+type CheckPolicyReq struct {
+	Service  string `json:"service"`
+	Path     string `json:"path"`
+	Method   string `json:"method"`
+	Resource string `json:"resource"`
+}
+
+type AuthorizeResult struct {
+	Allowed bool   `json:"allowed"`
+	Reason  string `json:"reason"`
 }
 
 type Menu struct {

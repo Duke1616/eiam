@@ -541,6 +541,26 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
+  - name: PolicyManager
+    permission_code: "iam:policy:view"
+    path: /iam/policy
+    component: /pages/iam/policy/index.vue
+    meta:
+      title: 策略管理
+      icon: menu
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: PolicyCreation
+    permission_code: "iam:policy:view"
+    path: /iam/policy/create
+    component: /pages/iam/policy/create.vue
+    meta:
+      title: 创建策略
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
   - name: MenuGovernance
     permission_code: "iam:menu:view"
     path: menu
