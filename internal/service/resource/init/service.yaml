@@ -1,0 +1,15 @@
+- code: iam
+  name: 身份权限
+  description: 负责全平台的身份认证、权限决策、租户管理及基础资产定义
+- code: cmdb
+  name: 配置管理
+  description: 负责所有基础设施资源的元数据维护
+- code: ticket
+  name: 工单管理
+  description: 负责各类业务流程审批与工单流转
+- code: task
+  name: 任务调度
+  description: 负责自动化调度与异步任务执行
+- code: monitor
+  name: 监控告警
+  description: 负责全链路指标监控与告警推送

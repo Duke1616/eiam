@@ -6,8 +6,8 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
-	"github.com/Duke1616/eiam/internal/service/resource"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
+	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	mainioc "github.com/Duke1616/eiam/ioc"
@@ -27,6 +27,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		dao.NewResourceDAO,
 		dao.NewPermissionDAO,
 		dao.NewPolicyDAO,
+		dao.NewServiceDAO,
 
 		// Repositories
 		repository.NewTenantRepository,
@@ -34,6 +35,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		repository.NewResourceRepository,
 		repository.NewPermissionRepository,
 		repository.NewPolicyRepository,
+		repository.NewServiceRepository,
 
 		// Services
 		role.NewRoleService,

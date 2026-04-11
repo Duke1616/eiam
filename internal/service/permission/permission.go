@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/Duke1616/eiam/internal/authz"
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
@@ -15,6 +17,7 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/ecodeclub/ekit/set"
 	"github.com/ecodeclub/ekit/slice"
+	"github.com/samber/lo"
 )
 
 // IPermissionService 权限逻辑中心
@@ -241,43 +244,60 @@ func (s *permissionService) GetByCode(ctx context.Context, code string) (domain.
 }
 
 func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.PermissionManifest, error) {
-	// 1. 调用 Repository 获取打平后的全量原始数据 (ID, Code, Name, Service, Group 等)
-	perms, err := s.permRepo.ListAllPermissions(ctx)
-	if err != nil {
+	var (
+		perms    []domain.Permission
+		svcMetas []domain.Service
+		eg       errgroup.Group
+	)
+
+	// 1. 并行抓取权限底数与服务元数据
+	eg.Go(func() error {
+		var err error
+		perms, err = s.permRepo.ListAllPermissions(ctx)
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		svcMetas, err = s.resourceSvc.ListServices(ctx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
 		return domain.PermissionManifest{}, err
 	}
 
-	// 2. 构建归一化索引与拓扑
-	// 使用 Map 聚合 Service -> Group -> ActionCodes 拓扑
-	topology := make(map[string]map[string][]string)
-	for _, p := range perms {
-		if _, ok := topology[p.Service]; !ok {
-			topology[p.Service] = make(map[string][]string)
-		}
-		topology[p.Service][p.Group] = append(topology[p.Service][p.Group], p.Code)
-	}
+	// 2. 构建基础索引
+	svcMap := slice.ToMap(svcMetas, func(s domain.Service) string { return s.Code })
 
-	// 3. 组装领域 Manifest 对象
-	services := make([]domain.ServiceNode, 0, len(topology))
-	for svcCode, groups := range topology {
-		svcNode := domain.ServiceNode{
-			Code:   svcCode,
-			Name:   strings.ToUpper(svcCode), // 后续可扩展为从资源字典获取更友好的显示名
-			Groups: make([]domain.GroupNode, 0, len(groups)),
+	// 3. 链式逻辑变换：按 Service -> Group 维度进行二级聚合
+	svcGroups := lo.GroupBy(perms, func(p domain.Permission) string { return p.Service })
+
+	serviceNodes := lo.MapToSlice(svcGroups, func(svcCode string, permsInSvc []domain.Permission) domain.ServiceNode {
+		// 二级聚合：按 Group 维度
+		gGroups := lo.GroupBy(permsInSvc, func(p domain.Permission) string { return p.Group })
+
+		// 补全服务显示名称
+		svcName := strings.ToUpper(svcCode)
+		if meta, ok := svcMap[svcCode]; ok && meta.Name != "" {
+			svcName = meta.Name
 		}
 
-		for groupName, actionCodes := range groups {
-			svcNode.Groups = append(svcNode.Groups, domain.GroupNode{
-				Name:    groupName,
-				Actions: actionCodes,
-			})
+		return domain.ServiceNode{
+			Code: svcCode,
+			Name: svcName,
+			Groups: lo.MapToSlice(gGroups, func(gName string, gPerms []domain.Permission) domain.GroupNode {
+				return domain.GroupNode{
+					Name:    gName,
+					Actions: lo.Map(gPerms, func(p domain.Permission, _ int) string { return p.Code }),
+				}
+			}),
 		}
-		services = append(services, svcNode)
-	}
+	})
 
 	return domain.PermissionManifest{
 		Permissions: perms,
-		Services:    services,
+		Services:    serviceNodes,
 	}, nil
 }
 

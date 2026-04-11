@@ -19,6 +19,9 @@ import (
 //go:embed init/memu.yaml
 var menuYaml []byte
 
+//go:embed init/service.yaml
+var serviceYaml []byte
+
 // IInitializer 负责中心化权限决策中心（EIAM）的资产同步接口。
 // 支持“本地自发现”与“远端 SDK 协议上报”两种归一化的对等发现逻辑。
 type IInitializer interface {
@@ -30,22 +33,26 @@ type IInitializer interface {
 
 	// SyncMenus 根据本地 YAML 定义，增量对齐 EIAM 自身维护的菜单物理资产
 	SyncMenus(ctx context.Context) error
+	// SyncServices 根据本地 YAML 定义，全量对齐服务目录
+	SyncServices(ctx context.Context) error
 }
 
 // Initializer 资产同步引擎实现。
 type Initializer struct {
-	repo     repository.IResourceRepository
-	permRepo repository.IPermissionRepository
-	service  string // 当前服务的唯一标识，用于 URN 生成的前缀上下文
+	repo        repository.IResourceRepository
+	permRepo    repository.IPermissionRepository
+	resourceSvc IResourceService
+	service     string // 当前服务的唯一标识，用于 URN 生成的前缀上下文
 
 	sorter *utils.Sorter[*domain.Menu, *domain.Menu]
 }
 
-func NewResourceInitializer(repo repository.IResourceRepository, permRepo repository.IPermissionRepository, service string) IInitializer {
+func NewResourceInitializer(repo repository.IResourceRepository, permRepo repository.IPermissionRepository, resourceSvc IResourceService, service string) IInitializer {
 	return &Initializer{
-		repo:     repo,
-		permRepo: permRepo,
-		service:  iif(service != "", service, "eiam"),
+		repo:        repo,
+		permRepo:    permRepo,
+		resourceSvc: resourceSvc,
+		service:     iif(service != "", service, "eiam"),
 		sorter: utils.NewSorter(func(m *domain.Menu, idx int) *domain.Menu {
 			m.Sort = int64((idx + 1) * utils.DefaultIndexGap)
 			return m
@@ -150,16 +157,27 @@ func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService s
 		}
 	})
 
-	// 2. 批量落盘 (Upsert)
+	// 2. 批量落盘权限底数 (Upsert)
 	if len(toCreate) > 0 {
 		return i.permRepo.BatchCreatePermission(ctx, toCreate)
 	}
 	return nil
 }
 
+func (i *Initializer) SyncServices(ctx context.Context) error {
+	// 1. 加载内置服务目录元数据 (泛型加载)
+	services, err := loadYAML[[]domain.Service](serviceYaml)
+	if err != nil {
+		return err
+	}
+
+	// 2. 执行批量对齐
+	return i.resourceSvc.BatchRegisterServices(ctx, services)
+}
+
 func (i *Initializer) SyncMenus(ctx context.Context) error {
-	// 1. 加载内置菜单元数据
-	menus, err := i.loadBuiltinMenus()
+	// 1. 加载内置菜单元数据 (泛型加载)
+	menus, err := loadYAML[domain.MenuTree](menuYaml)
 	if err != nil {
 		return err
 	}
@@ -189,13 +207,13 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 	return i.permRepo.SyncResourceBindings(ctx, allURNs, bindings)
 }
 
-// loadBuiltinMenus 封装 YAML 加载与内置资源的内存反序列化逻辑
-func (i *Initializer) loadBuiltinMenus() (domain.MenuTree, error) {
-	var menus []*domain.Menu
-	if err := yaml.Unmarshal(menuYaml, &menus); err != nil {
-		return nil, err
+// loadYAML 泛型 YAML 反序列化工具函数
+func loadYAML[T any](data []byte) (T, error) {
+	var res T
+	if err := yaml.Unmarshal(data, &res); err != nil {
+		return res, err
 	}
-	return menus, nil
+	return res, nil
 }
 
 func iif(cond bool, t, f string) string {

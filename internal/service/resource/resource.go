@@ -26,14 +26,26 @@ type IResourceService interface {
 	ListAllMenus(ctx context.Context) ([]domain.Menu, error)
 	// ReorderMenu 菜单重排序：将 id 移动至 targetPid 下的 targetPosition 位置 (0-based)
 	ReorderMenu(ctx context.Context, id, targetPid, targetPosition int64) error
+
+	// --- 3. 服务目录管理 (Service Catalog) ---
+	// BatchRegisterServices 批量注册或更新服务元数据
+	BatchRegisterServices(ctx context.Context, services []domain.Service) error
+	// ListServices 获取所有已登记的服务
+	ListServices(ctx context.Context) ([]domain.Service, error)
+	// GetServiceByCode 获取特定服务详情
+	GetServiceByCode(ctx context.Context, code string) (domain.Service, error)
 }
 
 type resourceService struct {
-	repo repository.IResourceRepository
+	repo    repository.IResourceRepository
+	svcRepo repository.IServiceRepository
 }
 
-func NewResourceService(repo repository.IResourceRepository) IResourceService {
-	return &resourceService{repo: repo}
+func NewResourceService(repo repository.IResourceRepository, svcRepo repository.IServiceRepository) IResourceService {
+	return &resourceService{
+		repo:    repo,
+		svcRepo: svcRepo,
+	}
 }
 
 func (s *resourceService) CreateAPI(ctx context.Context, a domain.API) (int64, error) {
@@ -84,4 +96,16 @@ func (s *resourceService) ReorderMenu(ctx context.Context, id, targetPid, target
 
 	// 快速路径：原子级别更新父节点归属与排序分值
 	return s.repo.UpdateMenuSort(ctx, id, targetPid, plan.NewSortKey)
+}
+
+func (s *resourceService) BatchRegisterServices(ctx context.Context, services []domain.Service) error {
+	return s.svcRepo.BatchSave(ctx, services)
+}
+
+func (s *resourceService) ListServices(ctx context.Context) ([]domain.Service, error) {
+	return s.svcRepo.ListAll(ctx)
+}
+
+func (s *resourceService) GetServiceByCode(ctx context.Context, code string) (domain.Service, error) {
+	return s.svcRepo.GetByCode(ctx, code)
 }

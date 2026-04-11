@@ -19,6 +19,7 @@ func InitTables(db *gorm.DB) error {
 		&RolePolicyAttachment{},
 		&Menu{},
 		&API{},
+		&Service{},
 		&gormAdapter.CasbinRule{},
 	)
 }

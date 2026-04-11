@@ -66,7 +66,8 @@ func startServer() {
 	// 这里底层复用了 SDK 的 Collector 逻辑
 	_ = app.Init.SyncDiscoveryAPIs(ctx, app.Providers, app.Web.Engine)
 
-	_ = app.Init.SyncMenus(ctx) // 2. 同步菜单物理资产
+	_ = app.Init.SyncServices(ctx) // 2. 同步服务元数据资产
+	_ = app.Init.SyncMenus(ctx)    // 3. 同步菜单物理资产
 
 	// 创建 ego 应用实例
 	egoApp := ego.New(ego.WithDisableBanner(true))
