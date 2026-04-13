@@ -28,6 +28,8 @@ type IPolicyRepository interface {
 	GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error)
 	// GetAttachedPoliciesByCodes 批量获取多个角色当前挂载的所有托管策略实体
 	GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error)
+	// ListByCodes 根据一组策略标识码获取策略详情列表
+	ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error)
 }
 
 type policyRepository struct {
@@ -140,6 +142,13 @@ func (r *policyRepository) GetAttachedPoliciesByCodes(ctx context.Context, roleC
 	}
 
 	return roleToPolicies, nil
+}
+
+func (r *policyRepository) ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error) {
+	ps, err := r.dao.GetByCodes(ctx, codes)
+	return slice.Map(ps, func(idx int, p dao.Policy) domain.Policy {
+		return r.toDomain(p)
+	}), err
 }
 func (r *policyRepository) toDomain(p dao.Policy) domain.Policy {
 	return domain.Policy{

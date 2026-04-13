@@ -100,15 +100,18 @@ func (s *HandlerAuthTestSuite) TearDownTest() {
 }
 
 func (s *HandlerAuthTestSuite) ensureAdminRole(ctx context.Context) {
-	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "ADMIN", Name: "租户管理员"})
+	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "admin", Name: "租户管理员"})
 	_, _ = s.roleSvc.Create(ctx, domain.Role{
-		Code: "SUPER_ADMIN",
+		Code: "super_admin",
 		Name: "全局管理员",
 		InlinePolicies: []domain.Policy{
-			{Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}}},
+			{
+				Code:      "root_allow_all",
+				Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}},
+			},
 		},
 	})
-	_, _ = s.permSvc.AssignRoleInheritance(ctx, "ADMIN", "SUPER_ADMIN")
+	_, _ = s.permSvc.AssignRoleInheritance(ctx, "admin", "super_admin")
 }
 
 func (s *HandlerAuthTestSuite) clearAll() {

@@ -1,5 +1,10 @@
 package domain
 
+import (
+	"strconv"
+	"strings"
+)
+
 // ResourceType 资源类型标识
 type ResourceType string
 
@@ -11,6 +16,50 @@ const (
 	ResourceTypeMenu ResourceType = "menu"
 	ResourceTypeAPI  ResourceType = "api"
 )
+
+const (
+	PrefixUser   = "user:"
+	PrefixRole   = "role:"
+	PrefixPolicy = "policy:"
+)
+
+const (
+	SubjectTypeUser   = "user"
+	SubjectTypeRole   = "role"
+	SubjectTypePolicy = "policy"
+)
+
+func UserSubject(id int64) string {
+	return PrefixUser + strconv.FormatInt(id, 10)
+}
+
+func RoleSubject(code string) string {
+	return PrefixRole + code
+}
+
+func PolicySubject(code string) string {
+	return PrefixPolicy + code
+}
+
+// Subject 权限主体解析结果
+type Subject struct {
+	Type string // user, role, policy
+	ID   string
+}
+
+// ParseSubject 统一解析马甲标识
+func ParseSubject(s string) Subject {
+	if strings.HasPrefix(s, PrefixUser) {
+		return Subject{Type: SubjectTypeUser, ID: strings.TrimPrefix(s, PrefixUser)}
+	}
+	if strings.HasPrefix(s, PrefixRole) {
+		return Subject{Type: SubjectTypeRole, ID: strings.TrimPrefix(s, PrefixRole)}
+	}
+	if strings.HasPrefix(s, PrefixPolicy) {
+		return Subject{Type: SubjectTypePolicy, ID: strings.TrimPrefix(s, PrefixPolicy)}
+	}
+	return Subject{Type: "unknown", ID: s}
+}
 
 // Permission 权限项定义 (逻辑能力包)
 // 这是一个全局概念，用于将多个物理资源 (API/Menu) 聚合为一个逻辑能力标识 (Code)

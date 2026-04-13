@@ -67,7 +67,7 @@ func (s *MenuTreeSuite) TearDownTest() {
 }
 
 func (s *MenuTreeSuite) ensureAdminRole(ctx context.Context) {
-	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "ADMIN", Name: "系统管理员"})
+	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "admin", Name: "系统管理员"})
 }
 
 func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
@@ -92,15 +92,16 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 				require.NoError(s.T(), err)
 
 				_, err = s.roleSvc.Create(ctx, domain.Role{
-					Code: "ALL_VIEWER",
+					Code: "all_viewer",
 					InlinePolicies: []domain.Policy{
-						{Statement: []domain.Statement{
-							{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"*"}},
-						}},
+						{
+							Code:      "all_allow",
+							Statement: []domain.Statement{{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"*"}}},
+						},
 					},
 				})
 				require.NoError(s.T(), err)
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "ALL_VIEWER")
+				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "all_viewer")
 				require.NoError(s.T(), err)
 			},
 			verify: func(t *testing.T, menus domain.MenuTree) {
@@ -131,15 +132,18 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 				_ = s.permSvc.BindResourcesToPermission(ctx, p2, "p2", []string{"eiam:iam:menu:/asset/db"})
 
 				_, err = s.roleSvc.Create(ctx, domain.Role{
-					Code: "SERVER_VIEWER",
+					Code: "server_viewer",
 					InlinePolicies: []domain.Policy{
-						{Statement: []domain.Statement{
-							{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"p1"}},
-						}},
+						{
+							Code:      "p1_allow",
+							Statement: []domain.Statement{
+								{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"p1"}},
+							},
+						},
 					},
 				})
 				require.NoError(s.T(), err)
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "SERVER_VIEWER")
+				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "server_viewer")
 				require.NoError(s.T(), err)
 			},
 			verify: func(t *testing.T, menus domain.MenuTree) {

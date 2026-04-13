@@ -76,24 +76,27 @@ func (s *PermissionSuite) clearAll() {
 	s.db.Exec("DELETE FROM `casbin_rule`")
 }
 
-// ensureAdminRole 确保环境中存在基础的 ADMIN 角色记录，以支持 CreateTenant 等业务链条
+// ensureAdminRole 确保环境中存在基础的 admin 角色记录，以支持 CreateTenant 等业务链条
 func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
 	// 1. 创建全局超级管理员 (赋予全量 Allow)
 	_, _ = s.roleSvc.Create(ctx, domain.Role{
-		Code: "SUPER_ADMIN",
+		Code: "super_admin",
 		Name: "全量管理员",
 		InlinePolicies: []domain.Policy{
-			{Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}}},
+			{
+				Code:      "root_allow_all",
+				Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}},
+			},
 		},
 	})
 	// 2. 创建租户管理员 (通过继承获得能力)
 	_, _ = s.roleSvc.Create(ctx, domain.Role{
-		Code: "ADMIN",
+		Code: "admin",
 		Name: "租户管理员",
 	})
 
-	// 3. 建立 Casbin 层面的继承关系 (ADMIN 继承 SUPER_ADMIN)
-	_, _ = s.permSvc.AssignRoleInheritance(ctx, "ADMIN", "SUPER_ADMIN")
+	// 3. 建立 Casbin 层面的继承关系 (admin 继承 super_admin)
+	_, _ = s.permSvc.AssignRoleInheritance(ctx, "admin", "super_admin")
 }
 
 func (s *PermissionSuite) TestCheckAPI() {
@@ -113,7 +116,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:view", []string{api.URN()})
 
 				// 分配角色 (由于 CreateTenant 时系统已自动分配过一次，此处主要确保 Casbin 策略完整)
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 12345, "ADMIN")
+				_, _ = s.permSvc.AssignRoleToUser(ctx, 12345, "admin")
 			},
 			run: func(ctx context.Context, tid int64) {
 				ok, err := s.permSvc.CheckAPI(ctx, 12345, serviceName, "GET", "/api/v1/users")
@@ -165,7 +168,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 		{
 			name: "场景4: Fail-closed 拦截未注册资产",
 			before: func(ctx context.Context, tid int64) {
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "SUPER_ADMIN")
+				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "super_admin")
 			},
 			run: func(ctx context.Context, tid int64) {
 				ok, err := s.permSvc.CheckAPI(ctx, 8888, serviceName, "POST", "/unknown")

@@ -67,17 +67,20 @@ func (s *PolicyTestSuite) clearAll() {
 // ensureAdminRole 确保系统中存在基础角色，支持租户创建等后续业务
 func (s *PolicyTestSuite) ensureAdminRole(ctx context.Context) {
 	_, _ = s.roleSvc.Create(ctx, domain.Role{
-		Code: "SUPER_ADMIN",
+		Code: "super_admin",
 		Name: "全量管理员",
 		InlinePolicies: []domain.Policy{
-			{Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}}},
+			{
+				Code:      "root_allow_all",
+				Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}},
+			},
 		},
 	})
 	_, _ = s.roleSvc.Create(ctx, domain.Role{
-		Code: "ADMIN",
+		Code: "admin",
 		Name: "租户管理员",
 	})
-	_, _ = s.permSvc.AssignRoleInheritance(ctx, "ADMIN", "SUPER_ADMIN")
+	_, _ = s.permSvc.AssignRoleInheritance(ctx, "admin", "super_admin")
 }
 
 func (s *PolicyTestSuite) TestManagedPolicyAuthorization() {
@@ -104,8 +107,8 @@ func (s *PolicyTestSuite) TestManagedPolicyAuthorization() {
 	s.Require().NoError(err)
 
 	// 2. 创建角色
-	role1 := "FINANCE_STAFF"
-	role2 := "FINANCE_MANAGER"
+	role1 := "finance_staff"
+	role2 := "finance_manager"
 	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: role1, Name: "财务专员"})
 	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: role2, Name: "财务主管"})
 
@@ -115,9 +118,12 @@ func (s *PolicyTestSuite) TestManagedPolicyAuthorization() {
 
 	// 4. 给主管增加额外的内联策略
 	_ = s.roleSvc.UpdateInlinePolicies(ctx, role2, []domain.Policy{
-		{Statement: []domain.Statement{
-			{Effect: domain.Allow, Action: []string{"finance:billing:delete"}, Resource: []string{"*"}},
-		}},
+		{
+			Code: "billing_delete_policy",
+			Statement: []domain.Statement{
+				{Effect: domain.Allow, Action: []string{"finance:billing:delete"}, Resource: []string{"*"}},
+			},
+		},
 	})
 
 	testcases := []struct {

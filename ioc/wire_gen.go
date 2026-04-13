@@ -55,7 +55,7 @@ func InitApp() (*App, error) {
 	iPermissionDAO := dao.NewPermissionDAO(db)
 	iPermissionRepository := repository.NewPermissionRepository(iPermissionDAO)
 	iAuthorizer := InitOPA()
-	iPermissionService := permission.NewPermissionService(syncedEnforcer, iRoleService, iResourceService, iPermissionRepository, iAuthorizer)
+	iPermissionService := permission.NewPermissionService(syncedEnforcer, iRoleService, iPolicyService, iResourceService, iPermissionRepository, iAuthorizer)
 	iTenantService := tenant.NewTenantService(iTenantRepository, iPermissionService, iRoleService)
 	config := InitLdapConfig()
 	v2 := InitIdentityProviders(config)

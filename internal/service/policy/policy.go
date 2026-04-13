@@ -24,6 +24,8 @@ type IPolicyService interface {
 	GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error)
 	// GetAttachedPoliciesByCodes 批量获取角色关联的托管策略
 	GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error)
+	// ListByCodes 根据一组策略标识码获取策略详情
+	ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error)
 }
 
 type policyService struct {
@@ -63,5 +65,15 @@ func (s *policyService) GetAttachedPolicies(ctx context.Context, roleCode string
 }
 
 func (s *policyService) GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error) {
+	if len(roleCodes) == 0 {
+		return make(map[string][]domain.Policy), nil
+	}
 	return s.repo.GetAttachedPoliciesByCodes(ctx, roleCodes)
+}
+
+func (s *policyService) ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error) {
+	if len(codes) == 0 {
+		return []domain.Policy{}, nil
+	}
+	return s.repo.ListByCodes(ctx, codes)
 }
