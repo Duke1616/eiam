@@ -15,7 +15,7 @@ import (
 //go:generate mockgen -source=./tenant.go -package=tenantmocks -destination=./mocks/tenant.mock.go -typed ITenantService
 type ITenantService interface {
 	// CreateTenant 创建一个租户空间
-	CreateTenant(ctx context.Context, name, code string, ownerId int64) (int64, error)
+	CreateTenant(ctx context.Context, name, code, username string, userID int64) (int64, error)
 	// InitPersonalTenant 为新用户初始化个人空间 (注册即拥有)
 	InitPersonalTenant(ctx context.Context, userId int64, username string) (int64, error)
 	// GetTenantsByUserId 查看用户属于哪些空间 (用于登录后选定或切换)
@@ -39,7 +39,7 @@ func NewTenantService(r repository.ITenantRepository, permSvc permission.IPermis
 }
 
 // CreateTenant 创建租户的核心流程
-func (s *tenantService) CreateTenant(ctx context.Context, name, code string, ownerId int64) (int64, error) {
+func (s *tenantService) CreateTenant(ctx context.Context, name, code, username string, userID int64) (int64, error) {
 	// 1. 保存租户基本信息
 	tenantID, err := s.repo.Create(ctx, domain.Tenant{
 		Name:   name,
@@ -52,14 +52,14 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code string, own
 
 	// 3. 将创建者加入该租户 (建立纯净契约关系)
 	// 注意：此处 AddMembership 仅代表“入驻”，不承载授权信息
-	err = s.repo.AddMembership(ctx, ownerId, tenantID)
+	err = s.repo.AddMembership(ctx, userID, tenantID)
 	if err != nil {
 		return 0, err
 	}
 
-	// 4. 直接通过 Casbin 在本租户域下，给所有者分配系统预设的全局 ADMIN 角色，而无需真正给该租户创建角色物理条目
+	// 5. 直接通过 Casbin 在本租户域下，给所有者分配系统预设的全局 ADMIN 角色
 	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
-	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, ownerId, "ADMIN")
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, username, "admin")
 
 	return tenantID, err
 }
@@ -83,7 +83,7 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 
 	// 初始化个人空间最高角色，挂载预设角色
 	ctxWithTenant := ctxutil.WithTenantID(ctx, tenantID)
-	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, userId, "ADMIN")
+	_, err = s.permSvc.AssignRoleToUser(ctxWithTenant, username, "admin")
 
 	return tenantID, err
 }

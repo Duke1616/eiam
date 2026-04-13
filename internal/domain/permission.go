@@ -1,8 +1,8 @@
 package domain
 
 import (
-	"strconv"
 	"strings"
+	"time"
 )
 
 // ResourceType 资源类型标识
@@ -29,8 +29,8 @@ const (
 	SubjectTypePolicy = "policy"
 )
 
-func UserSubject(id int64) string {
-	return PrefixUser + strconv.FormatInt(id, 10)
+func UserSubject(username string) string {
+	return PrefixUser + username
 }
 
 func RoleSubject(code string) string {
@@ -116,4 +116,23 @@ type ResourceBinding struct {
 // 用于实现模块化资产自声明 (Solution B: Handler-Based Self-Registration)
 type PermissionProvider interface {
 	ProvidePermissions() []Permission
+}
+
+// Authorization 授权信息详情（用于列表展示）
+type Authorization struct {
+	ID          int64     `json:"id"`
+	Subject     Subject   `json:"subject"`      // 授权主体 (user:xxx 或 role:xxx)
+	Target      Subject   `json:"target"`       // 权限目标 (policy:xxx 或 role:xxx)
+	SubjectName string    `json:"subject_name"` // 主体展示虚名（如：张三）
+	TargetName  string    `json:"target_name"`  // 目标展示虚名（如：管理员策略）
+	Note        string    `json:"note"`         // 备注
+	Scope       string    `json:"scope"`        // 资源范围
+	Ctime       time.Time `json:"ctime"`        // 授权时间
+}
+
+type AuthorizationQuery struct {
+	PageSize int64
+	PageNum  int64
+	Subject  string // 筛选主体
+	Target   string // 筛选目标
 }

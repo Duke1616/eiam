@@ -32,6 +32,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 	// 元数据管理：查询权限资产清单
 	g.GET("/manifest", ginx.W(h.GetPermissionManifest))
+
+	// 授权治理：查询全量授权关系列表
+	g.GET("/authorizations", ginx.B[AuthorizationQueryReq](h.ListAuthorizations))
 }
 
 func (h *Handler) GetPermissionManifest(ctx *ginx.Context) (ginx.Result, error) {
@@ -106,8 +109,13 @@ func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Resul
 		return ErrUnauthenticated, err
 	}
 
+	username, ok := sess.Claims().Data["username"]
+	if !ok {
+		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
+	}
+
 	// 2. 调用全链路 CheckAPI 逻辑 (物理 Path -> 能力码 -> 逻辑权限判定)
-	allowed, err := h.svc.CheckAPI(ctx.Context, sess.Claims().Uid, req.Service, req.Method, req.Path)
+	allowed, err := h.svc.CheckAPI(ctx.Context, username, req.Service, req.Method, req.Path)
 	if err != nil {
 		return ginx.Result{
 			Code: 0,
@@ -136,7 +144,12 @@ func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrAuthMenuFailed, err
 	}
 
-	menus, err := h.svc.GetAuthorizedMenus(ctx.Request.Context(), sess.Claims().Uid)
+	username, ok := sess.Claims().Data["username"]
+	if !ok {
+		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
+	}
+
+	menus, err := h.svc.GetAuthorizedMenus(ctx.Request.Context(), username)
 	if err != nil {
 		return ErrAuthMenuFailed, err
 	}
@@ -145,6 +158,7 @@ func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 func (h *Handler) toMenuVOs(menus domain.MenuTree) []Menu {
+	// ... (代码逻辑保持不变)
 	return slice.Map(menus, func(idx int, m *domain.Menu) Menu {
 		return Menu{
 			ID:        m.ID,
@@ -164,4 +178,44 @@ func (h *Handler) toMenuVOs(menus domain.MenuTree) []Menu {
 			Children: h.toMenuVOs(m.Children),
 		}
 	})
+}
+
+func (h *Handler) ListAuthorizations(ctx *ginx.Context, req AuthorizationQueryReq) (ginx.Result, error) {
+	// 1. 设置默认分页
+	if req.PageSize <= 0 {
+		req.PageSize = 20
+	}
+	if req.PageNum <= 0 {
+		req.PageNum = 1
+	}
+
+	// 2. 调用 Service 获取聚合数据
+	auths, total, err := h.svc.ListAuthorizations(ctx.Context, domain.AuthorizationQuery{
+		PageSize: req.PageSize,
+		PageNum:  req.PageNum,
+		Subject:  req.Subject,
+		Target:   req.Target,
+	})
+	if err != nil {
+		return ginx.Result{Msg: "获取授权列表失败"}, err
+	}
+
+	// 3. 映射为 Web VO
+	return ginx.Result{
+		Data: AuthorizationResp{
+			Total: total,
+			Authorizations: slice.Map(auths, func(idx int, src domain.Authorization) Authorization {
+				return Authorization{
+					ID:          src.ID,
+					Subject:     src.Subject.ID,
+					Target:      src.Target.ID,
+					SubjectName: src.SubjectName,
+					TargetName:  src.TargetName,
+					Note:        src.Note,
+					Scope:       src.Scope,
+					Ctime:       src.Ctime.UnixMilli(),
+				}
+			}),
+		},
+	}, nil
 }

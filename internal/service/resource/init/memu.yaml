@@ -520,6 +520,47 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["system"]
+- name: PermissionGovernance
+  path: /iam
+  component: Layouts
+  redirect: /iam/authorization
+  meta:
+    title: 权限管理
+    icon: permission
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["system"]
+  children:
+  - name: AuthorizationManager
+    permission_code: "iam:authorization:view"
+    path: /iam/authorization
+    component: /pages/iam/authorization/index.vue
+    meta:
+      title: 授权功能
+      icon: authorize
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: PolicyManager
+    permission_code: "iam:policy:view"
+    path: /iam/policy
+    component: /pages/iam/policy/index.vue
+    meta:
+      title: 策略管理
+      icon: policy
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: PolicyCreation
+    permission_code: "iam:policy:view"
+    path: /iam/policy/create
+    component: /pages/iam/policy/create.vue
+    meta:
+      title: 创建策略
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
 - name: SystemGovernance
   path: /cmdb/system
   component: Layouts
@@ -539,26 +580,6 @@
       title: 角色管理
       icon: role
       is_hidden: false
-      is_keepalive: false
-      platforms: ["system"]
-  - name: PolicyManager
-    permission_code: "iam:policy:view"
-    path: /iam/policy
-    component: /pages/iam/policy/index.vue
-    meta:
-      title: 策略管理
-      icon: menu
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["system"]
-  - name: PolicyCreation
-    permission_code: "iam:policy:view"
-    path: /iam/policy/create
-    component: /pages/iam/policy/create.vue
-    meta:
-      title: 创建策略
-      icon: 
-      is_hidden: true
       is_keepalive: false
       platforms: ["system"]
   - name: MenuGovernance

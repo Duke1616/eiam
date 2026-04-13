@@ -1,6 +1,7 @@
 package tenant
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/service/tenant"
@@ -32,7 +33,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/tenant")
 	// 租户空间创建
 	g.POST("/create", h.Capability("创建租户空间", "add").
-		Handle(ginx.B[CreateTenantReq](h.CreateTenant)),
+		Handle(ginx.BS[CreateTenantReq](h.CreateTenant)),
 	)
 	// 获取我所属的所有租户列表 (用于下拉框展示)
 	g.GET("/list", h.Capability("查询我的租户列表", "view_mine").
@@ -45,14 +46,13 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 }
 
 // CreateTenant 允许用户主动创建一个属于自己的企业/工作空间
-func (h *Handler) CreateTenant(ctx *ginx.Context, req CreateTenantReq) (ginx.Result, error) {
-	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
-	if err != nil {
-		return ErrUnauthorized, err
+func (h *Handler) CreateTenant(ctx *ginx.Context, req CreateTenantReq, sess session.Session) (ginx.Result, error) {
+	username, ok := sess.Claims().Data["username"]
+	if !ok {
+		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
 	}
 
-	uid := sess.Claims().Uid
-	tenantId, err := h.svc.CreateTenant(ctx.Request.Context(), req.Name, req.Code, uid)
+	tenantId, err := h.svc.CreateTenant(ctx.Request.Context(), req.Name, req.Code, username, sess.Claims().Uid)
 	if err != nil {
 		return ErrTenantCreate, err
 	}

@@ -26,9 +26,9 @@ VALUES (1, 'admin', '$2a$10$6ocvB6VX93BKFT4HruyWEOFy1ePGbXbd37uBvtnZ7CHovY9N3Wot
         (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `password` = VALUES(`password`), `utime` = VALUES(`utime`);
 
--- 授予 admin 用户 super_admin 角色 (使用 ID: 1)
+-- 授予 admin 用户 super_admin 角色 (使用 username: admin)
 INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`)
-VALUES ('g', 'user:1', 'role:super_admin', '0')
+VALUES ('g', 'user:admin', 'role:super_admin', '0')
 ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`);
 
 -- 初始化 admin 用户的个人租户空间
@@ -56,7 +56,7 @@ ON DUPLICATE KEY UPDATE `nickname` = VALUES(`nickname`);
 DELETE FROM `role` WHERE `tenant_id` = 0 AND `code` IN ('super_admin', 'admin');
 DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'role:admin' AND `v1` = 'role:super_admin' AND `v2` = '0';
 DELETE FROM `user` WHERE `username` = 'admin';
-DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'user:1' AND `v1` = 'role:super_admin' AND `v2` = '0';
+DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'user:admin' AND `v1` = 'role:super_admin' AND `v2` = '0';
 DELETE FROM `tenant` WHERE `code` = 'admin-personal';
 
 DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` = 1;

@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -90,7 +91,7 @@ func (s *PolicyTestSuite) TestManagedPolicyAuthorization() {
 
 	ctx := context.Background()
 	s.ensureAdminRole(ctx)
-	tid, err := s.tenantSvc.CreateTenant(ctx, "策略测试租户", "policy-test", 1001)
+	tid, err := s.tenantSvc.CreateTenant(ctx, "策略测试租户", "policy-test", "admin_tester", 1001)
 	s.Require().NoError(err)
 	ctx = ctxutil.WithTenantID(ctx, tid)
 
@@ -171,10 +172,10 @@ func (s *PolicyTestSuite) TestManagedPolicyAuthorization() {
 	for _, tc := range testcases {
 		s.Run(tc.name, func() {
 			// 在 Casbin 中分配角色
-			_, _ = s.permSvc.AssignRoleToUser(ctx, tc.userId, tc.role)
+			_, _ = s.permSvc.AssignRoleToUser(ctx, fmt.Sprintf("user_%d", tc.userId), tc.role)
 
 			// 执行鉴权判定
-			allowed, err := s.permSvc.CheckPermission(ctx, tc.userId, tc.action, tc.resource)
+			allowed, err := s.permSvc.CheckPermission(ctx, fmt.Sprintf("user_%d", tc.userId), tc.action, tc.resource)
 			s.Require().NoError(err)
 			s.Equal(tc.want, allowed)
 		})

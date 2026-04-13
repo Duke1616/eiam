@@ -22,7 +22,11 @@ func CheckPermission(svc permission.IPermissionService) gin.HandlerFunc {
 			return
 		}
 
-		uid := sess.Claims().Uid
+		username, ok := sess.Claims().Data["username"]
+		if !ok {
+			ctx.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
 
 		// 2. 识别当前请求对应的逻辑元数据
 		// 通过 Gin 的 HandlerFunc 指针反查在路由注册时通过 h.Capability 注入的信息
@@ -37,7 +41,7 @@ func CheckPermission(svc permission.IPermissionService) gin.HandlerFunc {
 
 		// 3. 调用权限服务执行判定
 		// 执行逻辑：物理资产发现 -> 逻辑权限匹配 -> OPA 策略演算
-		ok, err = svc.CheckAPI(ctx.Request.Context(), uid, info.Service, ctx.Request.Method, ctx.FullPath())
+		ok, err = svc.CheckAPI(ctx.Request.Context(), username, info.Service, ctx.Request.Method, ctx.FullPath())
 		if err != nil {
 			ctx.AbortWithStatus(http.StatusInternalServerError)
 			return

@@ -27,11 +27,11 @@ type IPermissionService interface {
 	// --- 1. 鉴权决策 (Runtime) ---
 
 	// CheckAPI 针对物理接口访问进行判定
-	CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error)
+	CheckAPI(ctx context.Context, username string, serviceName, method, path string) (bool, error)
 	// CheckPermission 用户是否拥有在该租户下对具体 URN 的特定 Action 权限
-	CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error)
+	CheckPermission(ctx context.Context, username string, action, resourceURN string) (bool, error)
 	// GetAuthorizedMenus 过滤用户拥有的前端菜单
-	GetAuthorizedMenus(ctx context.Context, userId int64) (domain.MenuTree, error)
+	GetAuthorizedMenus(ctx context.Context, username string) (domain.MenuTree, error)
 
 	// --- 2. 能力中心 (Admin) ---
 
@@ -47,18 +47,20 @@ type IPermissionService interface {
 	// --- 3. 关系管理 (Relation) ---
 
 	// AssignRoleToUser 绑定用户与角色
-	AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error)
+	AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error)
 	// AssignRoleInheritance 设置角色继承关系，让 childRole 自动拥有 parentRole 的所有能力
 	AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error)
 	// GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
-	GetRolesForUser(ctx context.Context, userId int64) ([]string, error)
+	GetRolesForUser(ctx context.Context, username string) ([]string, error)
 
 	// AssignPolicyToUser 直接给用户绑定特定的策略
-	AssignPolicyToUser(ctx context.Context, userId int64, policyCode string) (bool, error)
+	AssignPolicyToUser(ctx context.Context, username string, policyCode string) (bool, error)
 	// AssignPolicyToRole 给角色挂载特定的策略
 	AssignPolicyToRole(ctx context.Context, roleCode, policyCode string) (bool, error)
 	// GetImplicitSubjectsForUser 解析用户的有效身份图谱 (递归获取所有相关的 Role 和 Policy ID)
-	GetImplicitSubjectsForUser(ctx context.Context, userId int64) ([]string, error)
+	GetImplicitSubjectsForUser(ctx context.Context, username string) ([]string, error)
+	// ListAuthorizations 获取授权关系列表 (聚合显示)
+	ListAuthorizations(ctx context.Context, query domain.AuthorizationQuery) ([]domain.Authorization, int64, error)
 }
 
 type permissionService struct {
@@ -91,7 +93,7 @@ func NewPermissionService(
 }
 
 // CheckAPI 针对物理接口访问进行判定
-func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceName, method, path string) (bool, error) {
+func (s *permissionService) CheckAPI(ctx context.Context, username string, serviceName, method, path string) (bool, error) {
 	// 1. 物理层拦截
 	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
 	if err != nil || api.ID == 0 {
@@ -104,8 +106,8 @@ func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceN
 		return false, nil
 	}
 
-	// 3. 策略预加载 (优化点：减少重复查询)
-	policies, err := s.getEffectivePolicies(ctx, userId)
+	// 3.策略预加载 (优化点：减少重复查询)
+	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
 		return false, err
 	}
@@ -119,8 +121,8 @@ func (s *permissionService) CheckAPI(ctx context.Context, userId int64, serviceN
 }
 
 // CheckPermission 针对特定 URN 的直接 Action 匹配
-func (s *permissionService) CheckPermission(ctx context.Context, userId int64, action, resourceURN string) (bool, error) {
-	policies, err := s.getEffectivePolicies(ctx, userId)
+func (s *permissionService) CheckPermission(ctx context.Context, username string, action, resourceURN string) (bool, error) {
+	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
 		return false, err
 	}
@@ -133,7 +135,7 @@ func (s *permissionService) CheckPermission(ctx context.Context, userId int64, a
 }
 
 // GetAuthorizedMenus 过滤授权菜单并构建层级树
-func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64) (domain.MenuTree, error) {
+func (s *permissionService) GetAuthorizedMenus(ctx context.Context, username string) (domain.MenuTree, error) {
 	// 1. 拉取元数据全集体
 	allMenus, err := s.resourceSvc.ListAllMenus(ctx)
 	if err != nil || len(allMenus) == 0 {
@@ -147,7 +149,7 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, userId int64
 		return nil, err
 	}
 
-	policies, err := s.getEffectivePolicies(ctx, userId)
+	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
 		return nil, err
 	}
@@ -216,9 +218,9 @@ func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap ma
 }
 
 // getEffectivePolicies 获取用户在当前上下文中所有有效的 Policy 对象 (含直接绑定、角色继承、系统角色收益)
-func (s *permissionService) getEffectivePolicies(ctx context.Context, userId int64) ([]domain.Policy, error) {
+func (s *permissionService) getEffectivePolicies(ctx context.Context, username string) ([]domain.Policy, error) {
 	// 1. 获取所有隐含身份
-	subjects, err := s.GetImplicitSubjectsForUser(ctx, userId)
+	subjects, err := s.GetImplicitSubjectsForUser(ctx, username)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +363,7 @@ func (s *permissionService) BindResourcesToPermission(ctx context.Context, permI
 	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
 }
 
-func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, roleCode string) (bool, error) {
+func (s *permissionService) AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error) {
 	// 前置校验角色是否存在且合法
 	_, err := s.roleSvc.GetByCode(ctx, roleCode)
 	if err != nil {
@@ -370,7 +372,7 @@ func (s *permissionService) AssignRoleToUser(ctx context.Context, userId int64, 
 
 	tid := ctxutil.GetTenantID(ctx).String()
 	return s.enforcer.AddGroupingPolicy(
-		domain.UserSubject(userId),
+		domain.UserSubject(username),
 		domain.RoleSubject(roleCode),
 		tid,
 	)
@@ -404,8 +406,8 @@ func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole
 	return s.enforcer.AddGroupingPolicy(childSub, parentSub, tid)
 }
 
-func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) ([]string, error) {
-	subjects, err := s.GetImplicitSubjectsForUser(ctx, userId)
+func (s *permissionService) GetRolesForUser(ctx context.Context, username string) ([]string, error) {
+	subjects, err := s.GetImplicitSubjectsForUser(ctx, username)
 	if err != nil {
 		return nil, err
 	}
@@ -420,10 +422,10 @@ func (s *permissionService) GetRolesForUser(ctx context.Context, userId int64) (
 	}), nil
 }
 
-func (s *permissionService) AssignPolicyToUser(ctx context.Context, userId int64, policyCode string) (bool, error) {
+func (s *permissionService) AssignPolicyToUser(ctx context.Context, username string, policyCode string) (bool, error) {
 	tid := ctxutil.GetTenantID(ctx).String()
 	return s.enforcer.AddGroupingPolicy(
-		domain.UserSubject(userId),
+		domain.UserSubject(username),
 		domain.PolicySubject(policyCode),
 		tid,
 	)
@@ -438,7 +440,55 @@ func (s *permissionService) AssignPolicyToRole(ctx context.Context, roleCode, po
 	)
 }
 
-func (s *permissionService) GetImplicitSubjectsForUser(ctx context.Context, userId int64) ([]string, error) {
+func (s *permissionService) GetImplicitSubjectsForUser(ctx context.Context, username string) ([]string, error) {
 	tid := ctxutil.GetTenantID(ctx).String()
-	return s.enforcer.GetImplicitRolesForUser(domain.UserSubject(userId), tid)
+	return s.enforcer.GetImplicitRolesForUser(domain.UserSubject(username), tid)
+}
+
+func (s *permissionService) ListAuthorizations(ctx context.Context, query domain.AuthorizationQuery) ([]domain.Authorization, int64, error) {
+	tid := ctxutil.GetTenantID(ctx).String()
+	// 1. 从 Casbin 中获取所有分组策略 (g 记录)
+	// Casbin 的接口通常不支持这类业务化的复杂分页查询，我们通常通过 Repository 直接查 casbin_rule 表实现分页
+	rules, total, err := s.permRepo.ListCasbinRules(ctx, tid, query.PageNum, query.PageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 2. 解析关系并收集主体 ID 以便批量聚合详情
+	var (
+		authorizations []domain.Authorization
+		userIds        []string
+		roleCodes      []string
+		policyCodes    []string
+	)
+
+	for _, rule := range rules {
+		auth := domain.Authorization{
+			ID:      rule.ID,
+			Subject: domain.ParseSubject(rule.V0),
+			Target:  domain.ParseSubject(rule.V1),
+		}
+
+		// 收集用于后续聚合的数据
+		switch auth.Subject.Type {
+		case domain.SubjectTypeUser:
+			userIds = append(userIds, auth.Subject.ID)
+		case domain.SubjectTypeRole:
+			roleCodes = append(roleCodes, auth.Subject.ID)
+		}
+
+		switch auth.Target.Type {
+		case domain.SubjectTypeRole:
+			roleCodes = append(roleCodes, auth.Target.ID)
+		case domain.SubjectTypePolicy:
+			policyCodes = append(policyCodes, auth.Target.ID)
+		}
+
+		authorizations = append(authorizations, auth)
+	}
+
+	// 3. 批量拉取虚名 (这里可以进一步优化为并发拉取)
+	// TODO: 实现用户中心、角色中心、策略中心的批量查询并回填 SubjectName/TargetName
+
+	return authorizations, total, nil
 }

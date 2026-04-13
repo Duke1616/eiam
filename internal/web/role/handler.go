@@ -1,6 +1,8 @@
 package role
 
 import (
+	"fmt"
+
 	"github.com/Duke1616/eiam/internal/domain"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
 	rolesvc "github.com/Duke1616/eiam/internal/service/role"
@@ -106,8 +108,13 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 	return ginx.Result{Data: h.toVo(r)}, nil
 }
 
-func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess session.Session) (ginx.Result, error) {
-	ok, err := h.permSvc.AssignRoleToUser(ctx.Request.Context(), sess.Claims().Uid, req.RoleCode)
+func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess session.Session) (ginx.Result, error) { // 1. 获取当前用户和租户上下文
+	username, ok := sess.Claims().Data["username"]
+	if !ok {
+		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
+	}
+
+	ok, err := h.permSvc.AssignRoleToUser(ctx.Request.Context(), username, req.RoleCode)
 	if err != nil || !ok {
 		return ErrRoleAssignFailed, err
 	}
@@ -115,7 +122,12 @@ func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess sess
 }
 
 func (h *Handler) GetMyRoles(ctx *ginx.Context, req any, sess session.Session) (ginx.Result, error) {
-	roles, err := h.permSvc.GetRolesForUser(ctx.Request.Context(), sess.Claims().Uid)
+	username, ok := sess.Claims().Data["username"]
+	if !ok {
+		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
+	}
+
+	roles, err := h.permSvc.GetRolesForUser(ctx.Request.Context(), username)
 	if err != nil {
 		return ErrGetMyRolesFailed, err
 	}

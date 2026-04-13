@@ -81,7 +81,13 @@ func (s *HandlerAuthTestSuite) SetupSuite() {
 		newCtx := ctxutil.WithTenantID(ctx.Request.Context(), s.testTid)
 		newCtx = ctxutil.WithUserID(newCtx, s.testUid)
 		ctx.Request = ctx.Request.WithContext(newCtx)
-		ctx.Set("_session", session.NewMemorySession(session.Claims{Uid: s.testUid}))
+		claims := session.Claims{
+			Uid: s.testUid,
+			Data: map[string]string{
+				"username": fmt.Sprintf("user_%d", s.testUid),
+			},
+		}
+		ctx.Set("_session", session.NewMemorySession(claims))
 	})
 	server.Use(middleware.CheckPermission(s.permSvc))
 
@@ -160,7 +166,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 						}},
 					},
 				})
-				_, _ = s.permSvc.AssignRoleToUser(ctx, s.testUid, "OTHER_ROLE")
+				_, _ = s.permSvc.AssignRoleToUser(ctx, fmt.Sprintf("user_%d", s.testUid), "OTHER_ROLE")
 			},
 			wantCode: http.StatusForbidden,
 		},
@@ -181,7 +187,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 						}},
 					},
 				})
-				_, _ = s.permSvc.AssignRoleToUser(ctx, s.testUid, "IAM_ADMIN")
+				_, _ = s.permSvc.AssignRoleToUser(ctx, fmt.Sprintf("user_%d", s.testUid), "IAM_ADMIN")
 			},
 			wantCode: http.StatusOK,
 		},
@@ -193,7 +199,7 @@ func (s *HandlerAuthTestSuite) TestAPIAuthorization() {
 			defer s.clearAll()
 
 			s.ensureAdminRole(context.Background())
-			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试用例", "test888", 9999)
+			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试用例", "test888", "creator_user", 9999)
 			require.NoError(s.T(), err)
 			s.testTid = tid
 			ctx := ctxutil.WithTenantID(context.Background(), tid)

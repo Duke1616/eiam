@@ -30,6 +30,22 @@ type PermissionBinding struct {
 	ResourceURN string `gorm:"type:varchar(256);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'资源唯一标识'"`
 }
 
+// CasbinRule Casbin 存储规则模型
+type CasbinRule struct {
+	ID    int64  `gorm:"primaryKey;autoIncrement"`
+	Ptype string `gorm:"size:100;index"`
+	V0    string `gorm:"size:100;index"`
+	V1    string `gorm:"size:100;index"`
+	V2    string `gorm:"size:100;index"` // 域 (Tenant ID)
+	V3    string `gorm:"size:100;index"`
+	V4    string `gorm:"size:100;index"`
+	V5    string `gorm:"size:100;index"`
+}
+
+func (CasbinRule) TableName() string {
+	return "casbin_rule"
+}
+
 type IPermissionDAO interface {
 	Insert(ctx context.Context, p Permission) (int64, error)
 	BatchInsert(ctx context.Context, perms []Permission) error
@@ -48,6 +64,8 @@ type IPermissionDAO interface {
 
 	// SyncResourceBindings 同步物理资产与功能码的映射关系 (基于 URN 的 Full-Sync)
 	SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error
+	// ListCasbinRules 查询 Casbin 关系规则 (带分页)
+	ListCasbinRules(ctx context.Context, tid string, pageNum, pageSize int64) ([]CasbinRule, int64, error)
 }
 
 type PermissionDAO struct {
@@ -134,22 +152,39 @@ func (d *PermissionDAO) ListBindingsByResURNs(ctx context.Context, resURNs []str
 }
 
 func (d *PermissionDAO) SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error {
+	// ... (代码逻辑保持不变)
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 1. 清理这一批 URNs 的所有旧绑定
 		if len(resURNs) > 0 {
 			if err := tx.Where("resource_urn IN ?", resURNs).Delete(&PermissionBinding{}).Error; err != nil {
 				return err
 			}
 		}
-
-		// 2. 插入新绑定 (基于 OnConflict DoNothing 保证幂等，但此处已清理所以主要是插入)
 		if len(bindings) > 0 {
 			return tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 				DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
 			}).Create(&bindings).Error
 		}
-
 		return nil
 	})
+}
+
+func (d *PermissionDAO) ListCasbinRules(ctx context.Context, tid string, pageNum, pageSize int64) ([]CasbinRule, int64, error) {
+	var (
+		res   []CasbinRule
+		total int64
+	)
+
+	// 只查询 g 类型的记录（即主体与角色/策略的继承关系）
+	db := d.db.WithContext(ctx).Model(&CasbinRule{}).
+		Where("ptype = 'g'").
+		Where("v2 = ? OR v2 = '0'", tid) // 匹配当前租户 + 全局公共关系
+
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (pageNum - 1) * pageSize
+	err := db.Limit(int(pageSize)).Offset(int(offset)).Order("id DESC").Find(&res).Error
+	return res, total, err
 }

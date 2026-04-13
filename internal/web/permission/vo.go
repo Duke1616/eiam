@@ -72,3 +72,26 @@ type Meta struct {
 	IsAffix     bool     `json:"is_affix"`
 	Platforms   []string `json:"platforms"`
 }
+
+type AuthorizationQueryReq struct {
+	PageSize int64  `json:"page_size"`
+	PageNum  int64  `json:"page_num"`
+	Subject  string `json:"subject"`
+	Target   string `json:"target"`
+}
+
+type AuthorizationResp struct {
+	Total          int64           `json:"total"`
+	Authorizations []Authorization `json:"authorizations"`
+}
+
+type Authorization struct {
+	ID          int64  `json:"id"`
+	Subject     string `json:"subject"`
+	Target      string `json:"target"`
+	SubjectName string `json:"subject_name"`
+	TargetName  string `json:"target_name"`
+	Note        string `json:"note"`
+	Scope       string `json:"scope"`
+	Ctime       int64  `json:"ctime"`
+}

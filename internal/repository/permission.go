@@ -34,6 +34,8 @@ type IPermissionRepository interface {
 
 	// SyncResourceBindings 同步资源绑定关系 (Full-Sync 模式)
 	SyncResourceBindings(ctx context.Context, allURNs []string, mappings map[string][]string) error
+	// ListCasbinRules 直接查询 casbin_rule 表 (用于业务化列表展现)
+	ListCasbinRules(ctx context.Context, tid string, pageNum, pageSize int64) ([]dao.CasbinRule, int64, error)
 }
 
 type PermissionRepository struct {
@@ -203,4 +205,8 @@ func (r *PermissionRepository) SyncResourceBindings(ctx context.Context, allURNs
 	}
 
 	return r.dao.SyncResourceBindings(ctx, allURNs, daoBindings)
+}
+
+func (r *PermissionRepository) ListCasbinRules(ctx context.Context, tid string, pageNum, pageSize int64) ([]dao.CasbinRule, int64, error) {
+	return r.dao.ListCasbinRules(ctx, tid, pageNum, pageSize)
 }

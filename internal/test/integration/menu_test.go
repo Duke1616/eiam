@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -101,7 +102,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 					},
 				})
 				require.NoError(s.T(), err)
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "all_viewer")
+				_, err = s.permSvc.AssignRoleToUser(ctx, fmt.Sprintf("user_%d", s.testUid), "all_viewer")
 				require.NoError(s.T(), err)
 			},
 			verify: func(t *testing.T, menus domain.MenuTree) {
@@ -135,7 +136,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 					Code: "server_viewer",
 					InlinePolicies: []domain.Policy{
 						{
-							Code:      "p1_allow",
+							Code: "p1_allow",
 							Statement: []domain.Statement{
 								{Effect: domain.Allow, Resource: []string{"*"}, Action: []string{"p1"}},
 							},
@@ -143,7 +144,7 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 					},
 				})
 				require.NoError(s.T(), err)
-				_, err = s.permSvc.AssignRoleToUser(ctx, s.testUid, "server_viewer")
+				_, err = s.permSvc.AssignRoleToUser(ctx, fmt.Sprintf("user_%d", s.testUid), "server_viewer")
 				require.NoError(s.T(), err)
 			},
 			verify: func(t *testing.T, menus domain.MenuTree) {
@@ -161,13 +162,13 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 
 			s.ensureAdminRole(context.Background())
 
-			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试中心", "test-center", s.testUid)
+			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试中心", "test-center", fmt.Sprintf("user_%d", s.testUid), s.testUid)
 			require.NoError(s.T(), err)
 			ctx := ctxutil.WithTenantID(context.Background(), tid)
 			ctx = ctxutil.WithUserID(ctx, s.testUid)
 
 			tc.before(ctx)
-			menus, err := s.permSvc.GetAuthorizedMenus(ctx, s.testUid)
+			menus, err := s.permSvc.GetAuthorizedMenus(ctx, fmt.Sprintf("user_%d", s.testUid))
 			require.NoError(s.T(), err)
 
 			tc.verify(s.T(), menus)

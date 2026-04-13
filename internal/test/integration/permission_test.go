@@ -116,10 +116,10 @@ func (s *PermissionSuite) TestCheckAPI() {
 				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:view", []string{api.URN()})
 
 				// 分配角色 (由于 CreateTenant 时系统已自动分配过一次，此处主要确保 Casbin 策略完整)
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 12345, "admin")
+				_, _ = s.permSvc.AssignRoleToUser(ctx, "admin_user", "admin")
 			},
 			run: func(ctx context.Context, tid int64) {
-				ok, err := s.permSvc.CheckAPI(ctx, 12345, serviceName, "GET", "/api/v1/users")
+				ok, err := s.permSvc.CheckAPI(ctx, "admin_user", serviceName, "GET", "/api/v1/users")
 				assert.NoError(s.T(), err)
 				assert.True(s.T(), ok)
 			},
@@ -140,10 +140,10 @@ func (s *PermissionSuite) TestCheckAPI() {
 						}},
 					},
 				})
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 2222, "DEVELOPER")
+				_, _ = s.permSvc.AssignRoleToUser(ctx, "dev_user", "DEVELOPER")
 			},
 			run: func(ctx context.Context, tid int64) {
-				ok, err := s.permSvc.CheckAPI(ctx, 2222, serviceName, "GET", "/api/v1/users")
+				ok, err := s.permSvc.CheckAPI(ctx, "dev_user", serviceName, "GET", "/api/v1/users")
 				assert.NoError(s.T(), err)
 				assert.True(s.T(), ok)
 			},
@@ -154,13 +154,13 @@ func (s *PermissionSuite) TestCheckAPI() {
 				api := domain.API{Service: serviceName, Method: "GET", Path: "/api/v1/users"}
 				_, _ = s.resourceSvc.CreateAPI(ctx, api)
 
-				otherTid, _ := s.tenantSvc.CreateTenant(context.Background(), "黑客空间", "hacker", 999)
+				otherTid, _ := s.tenantSvc.CreateTenant(context.Background(), "黑客空间", "hacker", "hacker_user", 999)
 				otherCtx := ctxutil.WithTenantID(context.Background(), otherTid)
 				_, _ = s.roleSvc.Create(otherCtx, domain.Role{Code: "DEV_HACKER"})
-				_, _ = s.permSvc.AssignRoleToUser(otherCtx, 999, "DEV_HACKER")
+				_, _ = s.permSvc.AssignRoleToUser(otherCtx, "hacker_user", "DEV_HACKER")
 			},
 			run: func(ctx context.Context, tid int64) {
-				ok, err := s.permSvc.CheckAPI(ctx, 999, serviceName, "GET", "/api/v1/users")
+				ok, err := s.permSvc.CheckAPI(ctx, "hacker_user", serviceName, "GET", "/api/v1/users")
 				assert.NoError(s.T(), err)
 				assert.False(s.T(), ok)
 			},
@@ -168,10 +168,10 @@ func (s *PermissionSuite) TestCheckAPI() {
 		{
 			name: "场景4: Fail-closed 拦截未注册资产",
 			before: func(ctx context.Context, tid int64) {
-				_, _ = s.permSvc.AssignRoleToUser(ctx, 8888, "super_admin")
+				_, _ = s.permSvc.AssignRoleToUser(ctx, "super_user", "super_admin")
 			},
 			run: func(ctx context.Context, tid int64) {
-				ok, err := s.permSvc.CheckAPI(ctx, 8888, serviceName, "POST", "/unknown")
+				ok, err := s.permSvc.CheckAPI(ctx, "super_user", serviceName, "POST", "/unknown")
 				assert.NoError(s.T(), err)
 				assert.False(s.T(), ok)
 			},
@@ -184,7 +184,7 @@ func (s *PermissionSuite) TestCheckAPI() {
 			// 在调用 CreateTenant 之前，必须确保物理层存在 ADMIN/SUPER_ADMIN 角色条目
 			s.ensureAdminRole(context.Background())
 
-			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试用例", "test", 8888)
+			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试用例", "test", "super_user", 8888)
 			require.NoError(s.T(), err)
 			ctx := ctxutil.WithTenantID(context.Background(), tid)
 
@@ -202,7 +202,7 @@ func (s *PermissionSuite) TestRoleCycleDetection() {
 	s.clearAll()
 	s.ensureAdminRole(context.Background())
 
-	tid, err := s.tenantSvc.CreateTenant(context.Background(), "循环测试", "cycle", 1)
+	tid, err := s.tenantSvc.CreateTenant(context.Background(), "循环测试", "cycle", "admin", 1)
 	require.NoError(s.T(), err)
 	ctx := ctxutil.WithTenantID(context.Background(), tid)
 

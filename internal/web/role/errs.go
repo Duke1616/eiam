@@ -1,6 +1,9 @@
 package role
 
-import "github.com/ecodeclub/ginx"
+import (
+	"github.com/Duke1616/eiam/internal/web/user"
+	"github.com/ecodeclub/ginx"
+)
 
 var (
 	// ErrRoleCreateFailed 创建逻辑错误
@@ -12,4 +15,6 @@ var (
 
 	// ErrRoleNotFound 资源类错误
 	ErrRoleNotFound = ginx.Result{Code: 4030501, Msg: "该角色标识不存在"}
+
+	ErrUnauthenticated = user.ErrUnauthenticated
 )
