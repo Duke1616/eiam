@@ -1,7 +1,15 @@
 package domain
 
+import (
+	"database/sql/driver"
+)
+
 // PolicyType 策略类型：系统(托管) 或 用户(自定义)
-type PolicyType int
+type PolicyType uint8
+
+func (p PolicyType) Value() (driver.Value, error) {
+	return int64(p), nil
+}
 
 const (
 	SystemPolicy PolicyType = 1

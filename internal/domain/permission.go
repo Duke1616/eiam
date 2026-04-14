@@ -3,6 +3,8 @@ package domain
 import (
 	"strings"
 	"time"
+
+	"github.com/samber/lo"
 )
 
 // ResourceType 资源类型标识
@@ -130,9 +132,58 @@ type Authorization struct {
 	Ctime       time.Time `json:"ctime"`        // 授权时间
 }
 
+// EntityMetadata 实体元数据（用于辅助展示）
+type EntityMetadata struct {
+	Name string
+	Type uint8
+	Desc string
+}
+
+// FormatGovernance 根据元数据格式化治理展示信息
+func (a *Authorization) FormatGovernance(v0Meta, v1Meta EntityMetadata) {
+	// 1. 处理主体名称：如果是角色展示 Code，否则回填名称或 ID
+	if a.Subject.Type == SubjectTypeRole {
+		a.SubjectName = a.Subject.ID
+	} else {
+		a.SubjectName = lo.Ternary(v0Meta.Name != "", v0Meta.Name, a.Subject.ID)
+	}
+
+	// 2. 处理目标名称：如果是角色展示 Code，否则回填名称或 ID
+	if a.Target.Type == SubjectTypeRole {
+		a.TargetName = a.Target.ID
+	} else {
+		a.TargetName = lo.Ternary(v1Meta.Name != "", v1Meta.Name, a.Target.ID)
+	}
+
+	// 3. 计算资源范围 Scope (如：系统策略、自定义角色)
+	if v1Meta.Type > 0 {
+		prefix := lo.Ternary(v1Meta.Type == 1, "系统", "自定义")
+		kind := lo.Ternary(a.Target.Type == SubjectTypeRole, "角色", "策略")
+		a.Scope = prefix + kind
+	}
+
+	// 4. 处理备注提示（示例逻辑）
+	if a.Target.Type == SubjectTypeRole && a.Subject.Type == SubjectTypeUser {
+		a.Note = "直接授权"
+	}
+}
+
+type AuthorizationSubType string
+type AuthorizationObjType string
+
+const (
+	AuthSubUser AuthorizationSubType = "user"
+	AuthSubRole AuthorizationSubType = "role"
+
+	AuthObjRole         AuthorizationObjType = "role"
+	AuthObjSystemPolicy AuthorizationObjType = "system_policy"
+	AuthObjCustomPolicy AuthorizationObjType = "custom_policy"
+)
+
 type AuthorizationQuery struct {
-	PageSize int64
-	PageNum  int64
-	Subject  string // 筛选主体
-	Target   string // 筛选目标
+	Offset  int64
+	Limit   int64
+	Keyword string               // 模糊搜索关键字
+	SubType AuthorizationSubType // 筛选主体类型 (用户/角色)
+	ObjType AuthorizationObjType // 筛选目标类型 (角色/系统策略/自定义策略)
 }

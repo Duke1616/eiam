@@ -52,6 +52,8 @@ type IPolicyDAO interface {
 	GetCodesByRoleCodes(ctx context.Context, roleCodes []string) ([]RolePolicyAttachment, error)
 	// GetByCodes 批量获取策略详情
 	GetByCodes(ctx context.Context, codes []string) ([]Policy, error)
+	// GetByTypes 按类型批量获取策略详情
+	GetByTypes(ctx context.Context, types []domain.PolicyType) ([]Policy, error)
 }
 
 type policyDAO struct {
@@ -137,6 +139,14 @@ func (d *policyDAO) GetByCodes(ctx context.Context, codes []string) ([]Policy, e
 	var policies []Policy
 	err := d.db.WithContext(ctx).
 		Where("code IN ?", codes).
+		Find(&policies).Error
+	return policies, err
+}
+
+func (d *policyDAO) GetByTypes(ctx context.Context, types []domain.PolicyType) ([]Policy, error) {
+	var policies []Policy
+	err := d.db.WithContext(ctx).
+		Where("type IN ?", types).
 		Find(&policies).Error
 	return policies, err
 }

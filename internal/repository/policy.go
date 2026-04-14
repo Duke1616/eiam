@@ -30,6 +30,8 @@ type IPolicyRepository interface {
 	GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error)
 	// ListByCodes 根据一组策略标识码获取策略详情列表
 	ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error)
+	// ListByTypes 按类型筛选策略详情列表
+	ListByTypes(ctx context.Context, types []domain.PolicyType) ([]domain.Policy, error)
 }
 
 type policyRepository struct {
@@ -150,6 +152,14 @@ func (r *policyRepository) ListByCodes(ctx context.Context, codes []string) ([]d
 		return r.toDomain(p)
 	}), err
 }
+
+func (r *policyRepository) ListByTypes(ctx context.Context, types []domain.PolicyType) ([]domain.Policy, error) {
+	ps, err := r.dao.GetByTypes(ctx, types)
+	return slice.Map(ps, func(idx int, p dao.Policy) domain.Policy {
+		return r.toDomain(p)
+	}), err
+}
+
 func (r *policyRepository) toDomain(p dao.Policy) domain.Policy {
 	return domain.Policy{
 		ID:        p.Id,

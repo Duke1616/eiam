@@ -74,10 +74,11 @@ type Meta struct {
 }
 
 type AuthorizationQueryReq struct {
-	PageSize int64  `json:"page_size"`
-	PageNum  int64  `json:"page_num"`
-	Subject  string `json:"subject"`
-	Target   string `json:"target"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
+	SubType string `json:"sub_type"` // user, role
+	ObjType string `json:"obj_type"` // role, policy
 }
 
 type AuthorizationResp struct {
@@ -89,6 +90,8 @@ type Authorization struct {
 	ID          int64  `json:"id"`
 	Subject     string `json:"subject"`
 	Target      string `json:"target"`
+	SubType     string `json:"sub_type"`
+	ObjType     string `json:"obj_type"`
 	SubjectName string `json:"subject_name"`
 	TargetName  string `json:"target_name"`
 	Note        string `json:"note"`

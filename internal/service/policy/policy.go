@@ -26,6 +26,8 @@ type IPolicyService interface {
 	GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error)
 	// ListByCodes 根据一组策略标识码获取策略详情
 	ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error)
+	// ListByTypes 获取指定类型的策略列表
+	ListByTypes(ctx context.Context, types []domain.PolicyType) ([]domain.Policy, error)
 }
 
 type policyService struct {
@@ -76,4 +78,11 @@ func (s *policyService) ListByCodes(ctx context.Context, codes []string) ([]doma
 		return []domain.Policy{}, nil
 	}
 	return s.repo.ListByCodes(ctx, codes)
+}
+
+func (s *policyService) ListByTypes(ctx context.Context, types []domain.PolicyType) ([]domain.Policy, error) {
+	if len(types) == 0 {
+		return []domain.Policy{}, nil
+	}
+	return s.repo.ListByTypes(ctx, types)
 }

@@ -3,7 +3,10 @@ package permission
 import (
 	"context"
 	"strings"
+	"sync"
 
+	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/ecodeclub/ekit/set"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Duke1616/eiam/internal/authz"
@@ -15,7 +18,6 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/casbin/casbin/v2"
-	"github.com/ecodeclub/ekit/set"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/samber/lo"
 )
@@ -446,49 +448,140 @@ func (s *permissionService) GetImplicitSubjectsForUser(ctx context.Context, user
 }
 
 func (s *permissionService) ListAuthorizations(ctx context.Context, query domain.AuthorizationQuery) ([]domain.Authorization, int64, error) {
-	tid := ctxutil.GetTenantID(ctx).String()
-	// 1. 从 Casbin 中获取所有分组策略 (g 记录)
-	// Casbin 的接口通常不支持这类业务化的复杂分页查询，我们通常通过 Repository 直接查 casbin_rule 表实现分页
-	rules, total, err := s.permRepo.ListCasbinRules(ctx, tid, query.PageNum, query.PageSize)
+	var (
+		v0Prefix, v1Prefix string
+		v1s                []string
+	)
+
+	// 1. 映射主体筛选前缀
+	switch query.SubType {
+	case domain.AuthSubUser:
+		v0Prefix = domain.PrefixUser
+	case domain.AuthSubRole:
+		v0Prefix = domain.PrefixRole
+	}
+
+	// 2. 映射目标筛选逻辑
+	switch query.ObjType {
+	case domain.AuthObjRole:
+		v1Prefix = domain.PrefixRole
+	case domain.AuthObjSystemPolicy, domain.AuthObjCustomPolicy:
+		pType := lo.Ternary(query.ObjType == domain.AuthObjSystemPolicy, domain.SystemPolicy, domain.CustomPolicy)
+		ps, err := s.policySvc.ListByTypes(ctx, []domain.PolicyType{pType})
+		if err != nil {
+			return nil, 0, err
+		}
+		v1s = slice.Map(ps, func(idx int, src domain.Policy) string {
+			return domain.PolicySubject(src.Code)
+		})
+		// 如果选择了策略筛选但没搜到任何策略，直接返回空，避免全量扫描
+		if len(v1s) == 0 {
+			return []domain.Authorization{}, 0, nil
+		}
+	}
+
+	// 3. 分页拉取原子规则记录
+	rules, total, err := s.permRepo.ListCasbinRules(ctx, query.Offset, query.Limit, v0Prefix, v1Prefix, query.Keyword, v1s)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// 2. 解析关系并收集主体 ID 以便批量聚合详情
-	var (
-		authorizations []domain.Authorization
-		userIds        []string
-		roleCodes      []string
-		policyCodes    []string
-	)
+	// 4. 核心流水线：转换 -> 回填
+	authorizations := s.toAuthorizations(rules)
+	if err = s.hydrateMetadata(ctx, rules, authorizations); err != nil {
+		return nil, 0, err
+	}
 
-	for _, rule := range rules {
-		auth := domain.Authorization{
+	return authorizations, total, nil
+}
+
+// toAuthorizations 将规则原始模型转换为初步领域对象
+func (s *permissionService) toAuthorizations(rules []dao.CasbinRule) []domain.Authorization {
+	return slice.Map(rules, func(i int, rule dao.CasbinRule) domain.Authorization {
+		return domain.Authorization{
 			ID:      rule.ID,
 			Subject: domain.ParseSubject(rule.V0),
 			Target:  domain.ParseSubject(rule.V1),
 		}
+	})
+}
 
-		// 收集用于后续聚合的数据
-		switch auth.Subject.Type {
-		case domain.SubjectTypeUser:
-			userIds = append(userIds, auth.Subject.ID)
-		case domain.SubjectTypeRole:
-			roleCodes = append(roleCodes, auth.Subject.ID)
-		}
-
-		switch auth.Target.Type {
-		case domain.SubjectTypeRole:
-			roleCodes = append(roleCodes, auth.Target.ID)
-		case domain.SubjectTypePolicy:
-			policyCodes = append(policyCodes, auth.Target.ID)
-		}
-
-		authorizations = append(authorizations, auth)
+func (s *permissionService) hydrateMetadata(ctx context.Context, rules []dao.CasbinRule, auths []domain.Authorization) error {
+	// 1. 收集所有 URN (如 user:xxx, role:xxx, policy:xxx)
+	urns := make([]string, 0, len(rules)*2)
+	for _, r := range rules {
+		urns = append(urns, r.V0, r.V1)
 	}
 
-	// 3. 批量拉取虚名 (这里可以进一步优化为并发拉取)
-	// TODO: 实现用户中心、角色中心、策略中心的批量查询并回填 SubjectName/TargetName
+	// 2. 并行拉取并构建元数据图谱 (使用 lo.Uniq 去重)
+	metaMap, err := s.fetchMetadataMap(ctx, lo.Uniq(urns))
+	if err != nil {
+		return err
+	}
 
-	return authorizations, total, nil
+	// 3. 原子化回填：将 ID 翻译为展示名和备注
+	for i := range auths {
+		auth := &auths[i]
+		v0Meta := metaMap[rules[i].V0]
+		v1Meta := metaMap[rules[i].V1]
+
+		// 调用领域层治理逻辑
+		auth.FormatGovernance(v0Meta, v1Meta)
+	}
+	return nil
+}
+
+func (s *permissionService) fetchMetadataMap(ctx context.Context, urns []string) (map[string]domain.EntityMetadata, error) {
+	var (
+		eg          errgroup.Group
+		roleCodes   []string
+		policyCodes []string
+		mu          sync.Mutex // 保护映射表并发写入
+		metaMap     = make(map[string]domain.EntityMetadata)
+	)
+
+	// 分类
+	for _, urn := range urns {
+		if strings.HasPrefix(urn, domain.PrefixRole) {
+			roleCodes = append(roleCodes, strings.TrimPrefix(urn, domain.PrefixRole))
+		}
+		if strings.HasPrefix(urn, domain.PrefixPolicy) {
+			policyCodes = append(policyCodes, strings.TrimPrefix(urn, domain.PrefixPolicy))
+		}
+	}
+
+	// 并行回填
+	eg.Go(func() error {
+		rs, err := s.roleSvc.ListByIncludeCodes(ctx, lo.Uniq(roleCodes))
+		if err != nil {
+			return err
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		for _, r := range rs {
+			metaMap[domain.RoleSubject(r.Code)] = domain.EntityMetadata{Name: r.Name, Desc: "角色继承关系", Type: r.Type}
+		}
+		return nil
+	})
+
+	eg.Go(func() error {
+		ps, err := s.policySvc.ListByCodes(ctx, lo.Uniq(policyCodes))
+		if err != nil {
+			return err
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		for _, p := range ps {
+			metaMap[domain.PolicySubject(p.Code)] = domain.EntityMetadata{Name: p.Name, Desc: p.Desc, Type: uint8(p.Type)}
+		}
+		return nil
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	return metaMap, nil
 }

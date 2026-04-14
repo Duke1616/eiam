@@ -113,6 +113,10 @@ func (s *roleService) GetByCode(ctx context.Context, code string) (domain.Role, 
 }
 
 func (s *roleService) ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error) {
+	if len(codes) == 0 {
+		return []domain.Role{}, nil
+	}
+
 	roles, err := s.repo.ListByIncludeCodes(ctx, codes)
 	if err != nil {
 		return nil, err
