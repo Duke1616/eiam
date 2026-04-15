@@ -26,11 +26,18 @@ type Policy struct {
 // PolicyAssignment 策略分配关联表 (支持用户和角色统一授权)
 type PolicyAssignment struct {
 	Id       int64  `gorm:"primaryKey;autoIncrement"`
-	TenantId int64  `gorm:"type:bigint;not null;index:idx_subject_policy;comment:'租户ID'"`
-	SubType  string `gorm:"type:varchar(20);not null;index:idx_subject_policy;comment:'主体类型: user, role'"`
-	SubCode  string `gorm:"type:varchar(255);not null;index:idx_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
-	PolyCode string `gorm:"type:varchar(255);not null;index:idx_subject_policy;comment:'策略代码'"`
+	TenantId int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID'"`
+	SubType  string `gorm:"type:varchar(20);not null;uniqueIndex:uniq_subject_policy;comment:'主体类型: user, role'"`
+	SubCode  string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
+	PolyCode string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'策略代码'"`
 	Ctime    int64
+}
+
+// BatchBindResult 批量绑定结果元数据
+type BatchBindResult struct {
+	Total    int64 // 预期处理总数
+	Inserted int64 // 实际新插入的数量
+	Ignored  int64 // 因冲突被忽略的数量
 }
 
 // IPolicyDAO 权限策略数据库操作接口
@@ -64,7 +71,7 @@ type IPolicyDAO interface {
 	// ListAssignments 分页获取策略分配关系
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error)
 	// BatchBind 批量绑定策略到多个主体
-	BatchBind(ctx context.Context, assignments []PolicyAssignment) (int64, error)
+	BatchBind(ctx context.Context, assignments []PolicyAssignment) (BatchBindResult, error)
 }
 
 type policyDAO struct {
@@ -228,9 +235,9 @@ func (d *policyDAO) ListAssignments(ctx context.Context, offset, limit int64, su
 	return assignments, total, err
 }
 
-func (d *policyDAO) BatchBind(ctx context.Context, assignments []PolicyAssignment) (int64, error) {
+func (d *policyDAO) BatchBind(ctx context.Context, assignments []PolicyAssignment) (BatchBindResult, error) {
 	if len(assignments) == 0 {
-		return 0, nil
+		return BatchBindResult{}, nil
 	}
 
 	now := time.Now().UnixMilli()
@@ -243,5 +250,9 @@ func (d *policyDAO) BatchBind(ctx context.Context, assignments []PolicyAssignmen
 		DoNothing: true,
 	}).CreateInBatches(assignments, 100)
 
-	return result.RowsAffected, result.Error
+	return BatchBindResult{
+		Total:    int64(len(assignments)),
+		Inserted: result.RowsAffected,
+		Ignored:  int64(len(assignments)) - result.RowsAffected,
+	}, result.Error
 }

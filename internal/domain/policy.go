@@ -56,3 +56,10 @@ type Condition struct {
 	Key      string `json:"Key"`      // 匹配关键字：iam:UserId, sdk:ClientIp 等
 	Value    any    `json:"Value"`    // 匹配目标值：可以是单个值或数组
 }
+
+// BatchResult 批量操作返回结果统计
+type BatchResult struct {
+	Total    int64 // 预期处理总数
+	Inserted int64 // 实际新插入的数量
+	Ignored  int64 // 因冲突被忽略的数量
+}

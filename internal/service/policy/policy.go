@@ -40,8 +40,8 @@ type IPolicyService interface {
 	// ListByTypes 获取指定类型的策略列表
 	ListByTypes(ctx context.Context, types []domain.PolicyType) ([]domain.Policy, error)
 	// BatchAttachPolicies 批量绑定策略到多个主体
-	// 返回成功绑定的总数量
-	BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
+	// 返回成功绑定的详细结果统计
+	BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
 }
 
 type policyService struct {
@@ -112,9 +112,9 @@ func (s *policyService) ListAssignments(ctx context.Context, offset, limit int64
 	return s.repo.ListAssignments(ctx, offset, limit, subType, keyword)
 }
 
-func (s *policyService) BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error) {
+func (s *policyService) BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error) {
 	if len(subjects) == 0 || len(policyCodes) == 0 {
-		return 0, nil
+		return domain.BatchResult{}, nil
 	}
 
 	return s.repo.BatchAttach(ctx, subjects, policyCodes)

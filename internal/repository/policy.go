@@ -37,7 +37,7 @@ type IPolicyRepository interface {
 	// ListAssignments 分页获取策略分配关系
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error)
 	// BatchAttach 批量绑定策略到多个主体
-	BatchAttach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
+	BatchAttach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
 }
 
 type policyRepository struct {
@@ -224,24 +224,25 @@ func (r *policyRepository) ListAssignments(ctx context.Context, offset, limit in
 
 const buildBatchSize = 1000
 
-func (r *policyRepository) BatchAttach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error) {
+func (r *policyRepository) BatchAttach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error) {
 	if len(subjects) == 0 || len(policyCodes) == 0 {
-		return 0, nil
+		return domain.BatchResult{}, nil
 	}
 
-	var total int64
-
+	var res domain.BatchResult
 	assignments := make([]dao.PolicyAssignment, 0, buildBatchSize)
 
 	flush := func() error {
 		if len(assignments) == 0 {
 			return nil
 		}
-		n, err := r.dao.BatchBind(ctx, assignments)
+		daoRes, err := r.dao.BatchBind(ctx, assignments)
 		if err != nil {
 			return err
 		}
-		total += n
+		res.Total += daoRes.Total
+		res.Inserted += daoRes.Inserted
+		res.Ignored += daoRes.Ignored
 		assignments = assignments[:0]
 		return nil
 	}
@@ -256,15 +257,15 @@ func (r *policyRepository) BatchAttach(ctx context.Context, subjects []domain.Su
 
 			if len(assignments) >= buildBatchSize {
 				if err := flush(); err != nil {
-					return total, err
+					return res, err
 				}
 			}
 		}
 	}
 
 	if err := flush(); err != nil {
-		return total, err
+		return res, err
 	}
 
-	return total, nil
+	return res, nil
 }

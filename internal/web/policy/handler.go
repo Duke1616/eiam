@@ -120,7 +120,7 @@ func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq)
 		}
 	})
 
-	total, err := h.svc.BatchAttachPolicies(ctx.Request.Context(), subjects, req.PolicyCodes)
+	res, err := h.svc.BatchAttachPolicies(ctx.Request.Context(), subjects, req.PolicyCodes)
 	if err != nil {
 		return ginx.Result{Msg: "批量绑定策略失败"}, err
 	}
@@ -128,7 +128,9 @@ func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq)
 	return ginx.Result{
 		Msg: "批量绑定成功",
 		Data: BatchAttachPolicyRes{
-			Total: total,
+			Total:    res.Total,
+			Inserted: res.Inserted,
+			Ignored:  res.Ignored,
 		},
 	}, nil
 }

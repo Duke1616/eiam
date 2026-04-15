@@ -72,6 +72,7 @@ type BatchAttachPolicyReq struct {
 
 // BatchAttachPolicyRes 批量绑定结果
 type BatchAttachPolicyRes struct {
-	// Total 总绑定数量
-	Total int64 `json:"total"`
+	Total    int64 `json:"total"`
+	Inserted int64 `json:"inserted"`
+	Ignored  int64 `json:"ignored"`
 }
