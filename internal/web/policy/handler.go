@@ -44,6 +44,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/detach", h.Capability("解绑策略", "detach").
 		Handle(ginx.B[AttachPolicyReq](h.DetachPolicy)),
 	)
+	g.POST("/batch-attach", h.Capability("批量绑定策略", "batch-attach").
+		Handle(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
+	)
 }
 
 func (h *Handler) CreatePolicy(ctx *ginx.Context, req CreatePolicyReq) (ginx.Result, error) {
@@ -107,6 +110,27 @@ func (h *Handler) DetachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Res
 		return ginx.Result{Msg: "解绑策略失败"}, err
 	}
 	return ginx.Result{Msg: "解绑成功"}, nil
+}
+
+func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq) (ginx.Result, error) {
+	subjects := slice.Map(req.Subjects, func(idx int, src SubjectItem) domain.Subject {
+		return domain.Subject{
+			Type: src.Type,
+			ID:   src.Code,
+		}
+	})
+
+	total, err := h.svc.BatchAttachPolicies(ctx.Request.Context(), subjects, req.PolicyCodes)
+	if err != nil {
+		return ginx.Result{Msg: "批量绑定策略失败"}, err
+	}
+
+	return ginx.Result{
+		Msg: "批量绑定成功",
+		Data: BatchAttachPolicyRes{
+			Total: total,
+		},
+	}, nil
 }
 
 func (h *Handler) toVO(p domain.Policy) Policy {

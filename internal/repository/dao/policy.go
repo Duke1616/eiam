@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Policy 权限策略持久化实体
@@ -58,6 +59,8 @@ type IPolicyDAO interface {
 	GetByTypes(ctx context.Context, types []domain.PolicyType) ([]Policy, error)
 	// ListAssignments 分页获取策略分配关系
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error)
+	// BatchBind 批量绑定策略到多个主体
+	BatchBind(ctx context.Context, assignments []PolicyAssignment) (int64, error)
 }
 
 type policyDAO struct {
@@ -133,7 +136,6 @@ func (d *policyDAO) GetCodesBySubjects(ctx context.Context, subjects []domain.Su
 }
 
 func (d *policyDAO) Bind(ctx context.Context, subType, subCode, polyCode string) error {
-	// 注：GORM 插件会自动填充 TenantId
 	return d.db.WithContext(ctx).FirstOrCreate(&PolicyAssignment{
 		SubType:  subType,
 		SubCode:  subCode,
@@ -194,4 +196,22 @@ func (d *policyDAO) ListAssignments(ctx context.Context, offset, limit int64, su
 
 	err = query.Offset(int(offset)).Limit(int(limit)).Find(&assignments).Error
 	return assignments, total, err
+}
+
+func (d *policyDAO) BatchBind(ctx context.Context, assignments []PolicyAssignment) (int64, error) {
+	if len(assignments) == 0 {
+		return 0, nil
+	}
+
+	now := time.Now().UnixMilli()
+	for i := range assignments {
+		assignments[i].Ctime = now
+	}
+
+	// 批量插入，冲突时忽略
+	result := d.db.WithContext(ctx).Clauses(clause.OnConflict{
+		DoNothing: true,
+	}).CreateInBatches(assignments, 100)
+
+	return result.RowsAffected, result.Error
 }
