@@ -33,6 +33,10 @@ type IRoleDAO interface {
 	List(ctx context.Context, offset, limit int64) ([]Role, error)
 	// Count 统计角色总数
 	Count(ctx context.Context) (int64, error)
+	// Search 模糊查询
+	Search(ctx context.Context, keyword string, offset, limit int64) ([]Role, error)
+	// CountByKeyword 按关键字统计
+	CountByKeyword(ctx context.Context, keyword string) (int64, error)
 	// GetByCode 根据角色代码获取角色
 	GetByCode(ctx context.Context, code string) (Role, error)
 	// ListByIncludeCodes 根据给定的一组代码批量查询
@@ -80,6 +84,31 @@ func (d *RoleDAO) Count(ctx context.Context) (int64, error) {
 	var total int64
 	err := d.db.WithContext(ctx).Model(&Role{}).Count(&total).Error
 	return total, err
+}
+
+func (d *RoleDAO) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
+	var total int64
+	db := d.db.WithContext(ctx).Model(&Role{})
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		db = db.Where("name LIKE ? OR code LIKE ?", kw, kw)
+	}
+
+	err := db.Count(&total).Error
+	return total, err
+}
+
+func (d *RoleDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]Role, error) {
+	var roles []Role
+	db := d.db.WithContext(ctx).Model(&Role{})
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		db = db.Where("name LIKE ? OR code LIKE ?", kw, kw)
+	}
+
+	err := db.Offset(int(offset)).Limit(int(limit)).
+		Order("tenant_id ASC, ctime DESC").Find(&roles).Error
+	return roles, err
 }
 
 func (d *RoleDAO) GetByCode(ctx context.Context, code string) (Role, error) {

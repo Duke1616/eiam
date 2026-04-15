@@ -22,11 +22,13 @@ type Policy struct {
 	Utime    int64                               `gorm:"comment:'更新时间'"`
 }
 
-// RolePolicyAttachment 角色与策略的关联表 (实现多对多)
-type RolePolicyAttachment struct {
+// PolicyAssignment 策略分配关联表 (支持用户和角色统一授权)
+type PolicyAssignment struct {
 	Id       int64  `gorm:"primaryKey;autoIncrement"`
-	RoleCode string `gorm:"type:varchar(255);not null;index:idx_role_policy;comment:'角色代码'"`
-	PolyCode string `gorm:"type:varchar(255);not null;index:idx_role_policy;comment:'策略代码'"`
+	TenantId int64  `gorm:"type:bigint;not null;index:idx_subject_policy;comment:'租户ID'"`
+	SubType  string `gorm:"type:varchar(20);not null;index:idx_subject_policy;comment:'主体类型: user, role'"`
+	SubCode  string `gorm:"type:varchar(255);not null;index:idx_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
+	PolyCode string `gorm:"type:varchar(255);not null;index:idx_subject_policy;comment:'策略代码'"`
 	Ctime    int64
 }
 
@@ -42,18 +44,20 @@ type IPolicyDAO interface {
 	Count(ctx context.Context) (int64, error)
 	// Update 更新策略详情
 	Update(ctx context.Context, p Policy) error
-	// BindToRole 建立角色与托管策略的关联关系 (幂等)
-	BindToRole(ctx context.Context, roleCode, polyCode string) error
-	// UnbindFromRole 解除角色与托管策略的关联关系
-	UnbindFromRole(ctx context.Context, roleCode, polyCode string) error
-	// GetCodesByRole 获取指定角色关联的所有托管策略代码列表
-	GetCodesByRole(ctx context.Context, roleCode string) ([]string, error)
-	// GetCodesByRoleCodes 批量获取多个角色关联的所有托管策略代码映射
-	GetCodesByRoleCodes(ctx context.Context, roleCodes []string) ([]RolePolicyAttachment, error)
+	// Bind 建立主体与策略的关联关系 (幂等)
+	Bind(ctx context.Context, subType, subCode, polyCode string) error
+	// Unbind 解除主体与策略的关联关系
+	Unbind(ctx context.Context, subType, subCode, polyCode string) error
+	// GetCodesBySubject 获取指定主体关联的所有策略代码列表
+	GetCodesBySubject(ctx context.Context, subType, subCode string) ([]string, error)
+	// GetCodesBySubjects 批量获取多个主体代码关联的所有策略映射
+	GetCodesBySubjects(ctx context.Context, subjects []domain.Subject) ([]PolicyAssignment, error)
 	// GetByCodes 批量获取策略详情
 	GetByCodes(ctx context.Context, codes []string) ([]Policy, error)
 	// GetByTypes 按类型批量获取策略详情
 	GetByTypes(ctx context.Context, types []domain.PolicyType) ([]Policy, error)
+	// ListAssignments 分页获取策略分配关系
+	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error)
 }
 
 type policyDAO struct {
@@ -103,34 +107,52 @@ func (d *policyDAO) Update(ctx context.Context, p Policy) error {
 		}).Error
 }
 
-func (d *policyDAO) GetCodesByRoleCodes(ctx context.Context, roleCodes []string) ([]RolePolicyAttachment, error) {
-	var attachments []RolePolicyAttachment
-	err := d.db.WithContext(ctx).
-		Model(&RolePolicyAttachment{}).
-		Where("role_code IN ?", roleCodes).
-		Find(&attachments).Error
-	return attachments, err
+func (d *policyDAO) GetCodesBySubjects(ctx context.Context, subjects []domain.Subject) ([]PolicyAssignment, error) {
+	if len(subjects) == 0 {
+		return nil, nil
+	}
+
+	// 构造多主体条件查询：WHERE ((sub_type = ? AND sub_code = ?) OR ...)
+	// 注：GORM 插件会自动补全租户过滤
+	query := d.db.WithContext(ctx).Model(&PolicyAssignment{})
+	db := d.db.WithContext(ctx)
+
+	var orQuery *gorm.DB
+	for i, sub := range subjects {
+		cond := db.Where("sub_type = ? AND sub_code = ?", sub.Type, sub.ID)
+		if i == 0 {
+			orQuery = cond
+		} else {
+			orQuery = orQuery.Or(cond)
+		}
+	}
+
+	var assignments []PolicyAssignment
+	err := query.Where(orQuery).Find(&assignments).Error
+	return assignments, err
 }
 
-func (d *policyDAO) BindToRole(ctx context.Context, roleCode, polyCode string) error {
-	return d.db.WithContext(ctx).FirstOrCreate(&RolePolicyAttachment{
-		RoleCode: roleCode,
+func (d *policyDAO) Bind(ctx context.Context, subType, subCode, polyCode string) error {
+	// 注：GORM 插件会自动填充 TenantId
+	return d.db.WithContext(ctx).FirstOrCreate(&PolicyAssignment{
+		SubType:  subType,
+		SubCode:  subCode,
 		PolyCode: polyCode,
 		Ctime:    time.Now().UnixMilli(),
-	}, RolePolicyAttachment{RoleCode: roleCode, PolyCode: polyCode}).Error
+	}, PolicyAssignment{SubType: subType, SubCode: subCode, PolyCode: polyCode}).Error
 }
 
-func (d *policyDAO) UnbindFromRole(ctx context.Context, roleCode, polyCode string) error {
+func (d *policyDAO) Unbind(ctx context.Context, subType, subCode, polyCode string) error {
 	return d.db.WithContext(ctx).
-		Where("role_code = ? AND poly_code = ?", roleCode, polyCode).
-		Delete(&RolePolicyAttachment{}).Error
+		Where("sub_type = ? AND sub_code = ? AND poly_code = ?", subType, subCode, polyCode).
+		Delete(&PolicyAssignment{}).Error
 }
 
-func (d *policyDAO) GetCodesByRole(ctx context.Context, roleCode string) ([]string, error) {
+func (d *policyDAO) GetCodesBySubject(ctx context.Context, subType, subCode string) ([]string, error) {
 	var codes []string
 	err := d.db.WithContext(ctx).
-		Model(&RolePolicyAttachment{}).
-		Where("role_code = ?", roleCode).
+		Model(&PolicyAssignment{}).
+		Where("sub_type = ? AND sub_code = ?", subType, subCode).
 		Pluck("poly_code", &codes).Error
 	return codes, err
 }
@@ -149,4 +171,27 @@ func (d *policyDAO) GetByTypes(ctx context.Context, types []domain.PolicyType) (
 		Where("type IN ?", types).
 		Find(&policies).Error
 	return policies, err
+}
+
+func (d *policyDAO) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error) {
+	var (
+		assignments []PolicyAssignment
+		total       int64
+	)
+	query := d.db.WithContext(ctx).Model(&PolicyAssignment{})
+
+	if subType != "" {
+		query = query.Where("sub_type = ?", subType)
+	}
+	if keyword != "" {
+		query = query.Where("sub_code LIKE ? OR poly_code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+
+	err := query.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = query.Offset(int(offset)).Limit(int(limit)).Find(&assignments).Error
+	return assignments, total, err
 }

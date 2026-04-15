@@ -22,12 +22,12 @@ type User struct {
 	Identities []UserIdentity
 }
 
-// UserProfile 业务名片 (依然由 Membership 契约管理)
+// UserProfile 业务名片
 type UserProfile struct {
-	MembershipID int64
-	Nickname     string
-	Avatar       string
-	JobTitle     string
+	UserID   int64
+	Nickname string
+	Avatar   string
+	JobTitle string
 }
 
 // UserIdentity 全球身份标记：与租户彻底脱钩

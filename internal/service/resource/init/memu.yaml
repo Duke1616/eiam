@@ -536,7 +536,7 @@
     path: /iam/authorization
     component: /pages/iam/authorization/index.vue
     meta:
-      title: 授权功能
+      title: 授权治理
       icon: authorize
       is_hidden: false
       is_keepalive: false

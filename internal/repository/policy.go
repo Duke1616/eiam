@@ -20,18 +20,20 @@ type IPolicyRepository interface {
 	ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error)
 	// UpdatePolicy 更新权限策略
 	UpdatePolicy(ctx context.Context, p domain.Policy) error
-	// AttachPolicyToRole 将策略挂载到角色上
-	AttachPolicyToRole(ctx context.Context, roleCode, polyCode string) error
-	// DetachPolicyFromRole 从角色上移除已挂载的策略
-	DetachPolicyFromRole(ctx context.Context, roleCode, polyCode string) error
-	// GetAttachedPolicies 获取角色当前挂载的所有托管策略实体
-	GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error)
-	// GetAttachedPoliciesByCodes 批量获取多个角色当前挂载的所有托管策略实体
-	GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error)
+	// Attach 将策略挂载到主体上 (用户或角色)
+	Attach(ctx context.Context, subType, subCode, polyCode string) error
+	// Detach 从主体上移除已挂载的策略
+	Detach(ctx context.Context, subType, subCode, polyCode string) error
+	// GetAttached 获取主体当前挂载的所有托管策略实体
+	GetAttached(ctx context.Context, subType, subCode string) ([]domain.Policy, error)
+	// GetAttachedBySubjects 批量获取多个主体当前挂载的所有托管策略实体映射 (如用户+其所属的所有角色)
+	GetAttachedBySubjects(ctx context.Context, subjects []domain.Subject) (map[string][]domain.Policy, error)
 	// ListByCodes 根据一组策略标识码获取策略详情列表
 	ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error)
 	// ListByTypes 按类型筛选策略详情列表
 	ListByTypes(ctx context.Context, types []domain.PolicyType) ([]domain.Policy, error)
+	// ListAssignments 分页获取策略分配关系
+	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error)
 }
 
 type policyRepository struct {
@@ -82,39 +84,36 @@ func (r *policyRepository) UpdatePolicy(ctx context.Context, p domain.Policy) er
 	return r.dao.Update(ctx, r.toDAO(p))
 }
 
-func (r *policyRepository) AttachPolicyToRole(ctx context.Context, roleCode, polyCode string) error {
-	return r.dao.BindToRole(ctx, roleCode, polyCode)
+func (r *policyRepository) Attach(ctx context.Context, subType, subCode, polyCode string) error {
+	return r.dao.Bind(ctx, subType, subCode, polyCode)
 }
 
-func (r *policyRepository) DetachPolicyFromRole(ctx context.Context, roleCode, polyCode string) error {
-	return r.dao.UnbindFromRole(ctx, roleCode, polyCode)
+func (r *policyRepository) Detach(ctx context.Context, subType, subCode, polyCode string) error {
+	return r.dao.Unbind(ctx, subType, subCode, polyCode)
 }
 
-func (r *policyRepository) GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error) {
+func (r *policyRepository) GetAttached(ctx context.Context, subType, subCode string) ([]domain.Policy, error) {
 	// 1. 先从关联表拉取所有的策略代码
-	codes, err := r.dao.GetCodesByRole(ctx, roleCode)
+	codes, err := r.dao.GetCodesBySubject(ctx, subType, subCode)
 	if err != nil || len(codes) == 0 {
 		return nil, err
 	}
 
 	// 2. 批量拉取策略详情
-	ps, err := r.dao.GetByCodes(ctx, codes)
-	return slice.Map(ps, func(idx int, p dao.Policy) domain.Policy {
-		return r.toDomain(p)
-	}), err
+	return r.ListByCodes(ctx, codes)
 }
 
-func (r *policyRepository) GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error) {
-	// 1. 获取所有角色关联的策略代码
-	attachments, err := r.dao.GetCodesByRoleCodes(ctx, roleCodes)
-	if err != nil || len(attachments) == 0 {
+func (r *policyRepository) GetAttachedBySubjects(ctx context.Context, subjects []domain.Subject) (map[string][]domain.Policy, error) {
+	// 1. 获取所有主体关联的策略代码
+	assignments, err := r.dao.GetCodesBySubjects(ctx, subjects)
+	if err != nil || len(assignments) == 0 {
 		return nil, err
 	}
 
-	// 2. 提取并去重策略代码 (多对多关联中，多个角色可能指向同一个策略)
+	// 2. 提取并去重策略代码
 	policyCodeSet := make(map[string]struct{})
-	for i := range attachments {
-		policyCodeSet[attachments[i].PolyCode] = struct{}{}
+	for i := range assignments {
+		policyCodeSet[assignments[i].PolyCode] = struct{}{}
 	}
 	policyCodes := make([]string, 0, len(policyCodeSet))
 	for code := range policyCodeSet {
@@ -122,28 +121,29 @@ func (r *policyRepository) GetAttachedPoliciesByCodes(ctx context.Context, roleC
 	}
 
 	// 3. 批量获取策略详情
-	ps, err := r.dao.GetByCodes(ctx, policyCodes)
+	ps, err := r.ListByCodes(ctx, policyCodes)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. 构建策略代码到领域模型的映射索引
+	// 4. 构建策略代码映射索引
 	policyMap := make(map[string]domain.Policy, len(ps))
 	for i := range ps {
-		policyMap[ps[i].Code] = r.toDomain(ps[i])
+		policyMap[ps[i].Code] = ps[i]
 	}
 
-	// 5. 构建角色代码到策略列表的最终映射
-	roleToPolicies := make(map[string][]domain.Policy, len(roleCodes))
-	for i := range attachments {
-		roleCode := attachments[i].RoleCode
-		polyCode := attachments[i].PolyCode
+	// 5. 构建主体 URN (如 role:admin) 到策略列表的最终映射
+	result := make(map[string][]domain.Policy)
+	for i := range assignments {
+		// 这里使用 subType:subCode 作为 key
+		urn := assignments[i].SubType + ":" + assignments[i].SubCode
+		polyCode := assignments[i].PolyCode
 		if p, ok := policyMap[polyCode]; ok {
-			roleToPolicies[roleCode] = append(roleToPolicies[roleCode], p)
+			result[urn] = append(result[urn], p)
 		}
 	}
 
-	return roleToPolicies, nil
+	return result, nil
 }
 
 func (r *policyRepository) ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error) {
@@ -185,4 +185,8 @@ func (r *policyRepository) toDAO(p domain.Policy) dao.Policy {
 			Valid: true,
 		},
 	}
+}
+
+func (r *policyRepository) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error) {
+	return r.dao.ListAssignments(ctx, offset, limit, subType, keyword)
 }

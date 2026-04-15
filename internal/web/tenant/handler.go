@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/tenant"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
@@ -14,14 +16,16 @@ import (
 
 type Handler struct {
 	capability.IRegistry
-	svc  tenant.ITenantService
-	sess session.Provider
+	svc     tenant.ITenantService
+	permSvc permission.IPermissionService
+	sess    session.Provider
 }
 
-func NewHandler(svc tenant.ITenantService, sess session.Provider) *Handler {
+func NewHandler(svc tenant.ITenantService, permSvc permission.IPermissionService, sess session.Provider) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "tenant", "租户管理"),
 		svc:       svc,
+		permSvc:   permSvc,
 		sess:      sess,
 	}
 }
@@ -55,6 +59,13 @@ func (h *Handler) CreateTenant(ctx *ginx.Context, req CreateTenantReq, sess sess
 	tenantId, err := h.svc.CreateTenant(ctx.Request.Context(), req.Name, req.Code, username, sess.Claims().Uid)
 	if err != nil {
 		return ErrTenantCreate, err
+	}
+
+	// 初始化租户权限：给创建者分配 admin 角色
+	newCtx := ctxutil.WithTenantID(ctx.Context, tenantId)
+	_, err = h.permSvc.AssignRoleToUser(newCtx, username, "admin")
+	if err != nil {
+		fmt.Printf("租户创建者授权失败: %v\n", err)
 	}
 
 	return ginx.Result{

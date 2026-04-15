@@ -33,6 +33,7 @@ type IInitializer interface {
 
 	// SyncMenus 根据本地 YAML 定义，增量对齐 EIAM 自身维护的菜单物理资产
 	SyncMenus(ctx context.Context) error
+
 	// SyncServices 根据本地 YAML 定义，全量对齐服务目录
 	SyncServices(ctx context.Context) error
 }

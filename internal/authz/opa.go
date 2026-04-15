@@ -34,7 +34,7 @@ type OPAAuthorizer struct {
 }
 
 // NewOPAAuthorizer 初始化 OPA 鉴权器
-func NewOPAAuthorizer(ctx context.Context) (*OPAAuthorizer, error) {
+func NewOPAAuthorizer(ctx context.Context) (IAuthorizer, error) {
 	// 1. 编译单一判定查询
 	r := rego.New(
 		rego.Query("data.iam.authz.allow"),

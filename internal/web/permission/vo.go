@@ -98,3 +98,21 @@ type Authorization struct {
 	Scope       string `json:"scope"`
 	Ctime       int64  `json:"ctime"`
 }
+type SearchSubjectsReq struct {
+	Keyword string `json:"keyword"`
+	SubType string `json:"sub_type"`
+	Offset  int    `json:"offset"`
+	Limit   int    `json:"limit"`
+}
+
+type SearchSubjectsResp struct {
+	Total    int64     `json:"total"`
+	Subjects []Subject `json:"subjects"`
+}
+
+type Subject struct {
+	Type string `json:"type"`
+	Id   string `json:"id"`
+	Name string `json:"name"`
+	Desc string `json:"desc"`
+}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
@@ -13,28 +14,50 @@ import (
 )
 
 type Handler struct {
+	capability.IRegistry
 	svc  permissionsvc.IPermissionService
 	sess session.Provider
 }
 
 func NewHandler(svc permissionsvc.IPermissionService, sess session.Provider) *Handler {
 	return &Handler{
-		svc:  svc,
-		sess: sess,
+		svc:       svc,
+		sess:      sess,
+		IRegistry: capability.NewRegistry("iam", "permission", "权限管理"),
 	}
+}
+
+func (h *Handler) PublicRoutes(server *gin.Engine) {
+	g := server.Group("/api/permission")
+	// 鉴权接口本身需要公开，因为 SDK 内部会带上 Token 并在逻辑内自行校验
+	g.POST("/check_login", ginx.W(h.CheckLogin))
+	g.POST("/check_policy", ginx.B[CheckPolicyReq](h.CheckPolicy))
+}
+
+func (h *Handler) IdentityRoutes(server *gin.Engine) {
+	g := server.Group("/api/permission")
+
+	// 核心业务：查询当前用户的权限资产（用于前端渲染菜单）
+	g.GET("/menus", ginx.W(h.GetAuthorizedMenus))
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/permission")
 
-	// 核心业务：查询当前用户的权限资产（用于前端渲染菜单）
-	g.GET("/menus", ginx.W(h.GetAuthorizedMenus))
-
 	// 元数据管理：查询权限资产清单
-	g.GET("/manifest", ginx.W(h.GetPermissionManifest))
+	g.GET("/manifest", h.Capability("权限资产清单", "manifest").
+		Handle(ginx.W(h.GetPermissionManifest)),
+	)
 
 	// 授权治理：查询全量授权关系列表
-	g.POST("/authorizations", ginx.B[AuthorizationQueryReq](h.ListAuthorizations))
+	g.POST("/authorizations", h.Capability("授权治理列表", "view_authorizations").
+		Handle(ginx.B[AuthorizationQueryReq](h.ListAuthorizations)),
+	)
+
+	// 授权治理：查询可授权主体 (用户/角色)
+	g.POST("/subjects/search", h.Capability("搜索授权主体", "search_subjects").
+		Handle(ginx.B[SearchSubjectsReq](h.SearchSubjects)),
+	)
 }
 
 func (h *Handler) GetPermissionManifest(ctx *ginx.Context) (ginx.Result, error) {
@@ -74,13 +97,6 @@ func (h *Handler) toActionVOs(perms []domain.Permission) []Permission {
 			Name:    p.Name,
 		}
 	})
-}
-
-func (h *Handler) PublicRoutes(server *gin.Engine) {
-	g := server.Group("/api/permission")
-	// 鉴权接口本身需要公开，因为 SDK 内部会带上 Token 并在逻辑内自行校验
-	g.POST("/check_login", ginx.W(h.CheckLogin))
-	g.POST("/check_policy", ginx.B[CheckPolicyReq](h.CheckPolicy))
 }
 
 // CheckLogin 实现 SDK 的登录状态校验
@@ -214,6 +230,27 @@ func (h *Handler) ListAuthorizations(ctx *ginx.Context, req AuthorizationQueryRe
 					Note:        src.Note,
 					Scope:       src.Scope,
 					Ctime:       src.Ctime.UnixMilli(),
+				}
+			}),
+		},
+	}, nil
+}
+
+func (h *Handler) SearchSubjects(ctx *ginx.Context, req SearchSubjectsReq) (ginx.Result, error) {
+	subjects, total, err := h.svc.SearchSubjects(ctx.Request.Context(), req.Keyword, req.SubType, req.Offset, req.Limit)
+	if err != nil {
+		return ginx.Result{Msg: "搜索主体失败"}, err
+	}
+
+	return ginx.Result{
+		Data: SearchSubjectsResp{
+			Total: total,
+			Subjects: slice.Map(subjects, func(idx int, src domain.Subject) Subject {
+				return Subject{
+					Type: src.Type,
+					Id:   src.ID,
+					Name: src.Name,
+					Desc: src.Desc,
 				}
 			}),
 		},

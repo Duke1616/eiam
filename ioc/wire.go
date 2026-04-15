@@ -78,6 +78,9 @@ func InitApp() (*App, error) {
 		// Providers Registry
 		InitProviders,
 
+		// Providers 检索注册
+		InitSearchSubjectProviders,
+
 		// App Component
 		InitGinMiddlewares,
 		InitGinWebServer,

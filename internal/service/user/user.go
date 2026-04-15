@@ -5,17 +5,12 @@ import (
 	"errors"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
-	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"golang.org/x/crypto/bcrypt"
 )
-
-var ErrUserExist = errors.New("用户名已存在")
-var ErrInvalidUser = errors.New("账号或密码错误")
-var ErrProviderNotFound = errors.New("未找到指定的身份源适配器")
-var ErrTenantAccessDenied = errors.New("无权访问该租户空间")
 
 type IUserService interface {
 	Signup(ctx context.Context, u domain.User) (int64, error)
@@ -30,6 +25,9 @@ type IUserService interface {
 	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error)
 
 	List(ctx context.Context, offset, limit int64) ([]domain.User, int64, error)
+	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
+	// CountByKeyword 根据关键词获取符合条件的用户总数
+	CountByKeyword(ctx context.Context, keyword string) (int64, error)
 	Update(ctx context.Context, u domain.User) (int64, error)
 	UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error
 }
@@ -37,11 +35,10 @@ type IUserService interface {
 type userService struct {
 	repo      repository.IUserRepository
 	tenantSvc tenant.ITenantService
-	permSvc   permission.IPermissionService
 	providers map[string]IdentityProvider
 }
 
-func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService, ps []IdentityProvider, permSvc permission.IPermissionService) IUserService {
+func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService, ps []IdentityProvider) IUserService {
 	registry := make(map[string]IdentityProvider, len(ps))
 	for _, p := range ps {
 		registry[p.Name()] = p
@@ -49,7 +46,6 @@ func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantServic
 	return &userService{
 		repo:      r,
 		tenantSvc: tenantSvc,
-		permSvc:   permSvc,
 		providers: registry,
 	}
 }
@@ -65,11 +61,11 @@ func (s *userService) Login(ctx context.Context, provider, username, password st
 func (s *userService) loginLocal(ctx context.Context, username, password string) (domain.LoginResult, error) {
 	u, err := s.repo.FindByUsername(ctx, username)
 	if err != nil {
-		return domain.LoginResult{}, ErrInvalidUser
+		return domain.LoginResult{}, errs.ErrInvalidUser
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err != nil {
-		return domain.LoginResult{}, ErrInvalidUser
+		return domain.LoginResult{}, errs.ErrInvalidUser
 	}
 
 	return s.postLogin(ctx, u)
@@ -78,7 +74,7 @@ func (s *userService) loginLocal(ctx context.Context, username, password string)
 func (s *userService) loginExternal(ctx context.Context, providerName string, username, password string) (domain.LoginResult, error) {
 	strategy, ok := s.providers[providerName]
 	if !ok {
-		return domain.LoginResult{}, ErrProviderNotFound
+		return domain.LoginResult{}, errs.ErrProviderNotFound
 	}
 
 	extUser, err := strategy.Authenticate(ctx, username, password)
@@ -88,10 +84,10 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 
 	id, ok := extUser.GetPrimaryIdentity(providerName)
 	if !ok {
-		return domain.LoginResult{}, ErrProviderNotFound
+		return domain.LoginResult{}, errs.ErrProviderNotFound
 	}
 
-	// 老用户：直接进入后续租户路由
+	// 老用户：进入后续租户路由
 	localUser, err := s.repo.FindUserByIdentity(ctx, providerName, id.IdentityKey())
 	if err == nil {
 		return s.postLogin(ctx, localUser)
@@ -140,7 +136,7 @@ func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantI
 	}
 
 	if !hasAccess {
-		return domain.User{}, ErrTenantAccessDenied
+		return domain.User{}, errs.ErrTenantAccessDenied
 	}
 
 	return s.repo.FindById(ctxutil.WithTenantID(ctx, targetTenantID), uid)
@@ -192,7 +188,7 @@ func (s *userService) bindGlobalIdentity(ctx context.Context, uid int64, id doma
 func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) {
 	_, err := s.repo.FindByUsername(ctx, u.Username)
 	if err == nil {
-		return 0, ErrUserExist
+		return 0, errs.ErrUserExist
 	}
 
 	if u.Password != "" {
@@ -213,7 +209,7 @@ func (s *userService) UpdatePassword(ctx context.Context, uid int64, oldPassword
 
 	// 校验旧密码
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(oldPassword)); err != nil {
-		return ErrInvalidUser
+		return errs.ErrInvalidUser
 	}
 
 	// 加密新密码
@@ -236,12 +232,24 @@ func (s *userService) GetByUsername(ctx context.Context, username string) (domai
 }
 
 func (s *userService) List(ctx context.Context, offset, limit int64) ([]domain.User, int64, error) {
-	users, err := s.repo.List(ctx, offset, limit)
+	total, err := s.repo.Count(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
-	total, _ := s.repo.Count(ctx)
-	return users, total, nil
+
+	us, err := s.repo.List(ctx, offset, limit)
+	return us, total, err
+}
+
+func (s *userService) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
+	if limit <= 0 {
+		return []domain.User{}, nil
+	}
+	return s.repo.Search(ctx, keyword, offset, limit)
+}
+
+func (s *userService) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
+	return s.repo.CountByKeyword(ctx, keyword)
 }
 
 func (s *userService) Update(ctx context.Context, u domain.User) (int64, error) {

@@ -19,6 +19,10 @@ type IRoleRepository interface {
 	List(ctx context.Context, offset, limit int64) ([]domain.Role, error)
 	// Count 统计数量
 	Count(ctx context.Context) (int64, error)
+	// Search 模糊查询
+	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error)
+	// CountByKeyword 按关键字统计
+	CountByKeyword(ctx context.Context, keyword string) (int64, error)
 	// GetByCode 按代码获取
 	GetByCode(ctx context.Context, code string) (domain.Role, error)
 	// ListByIncludeCodes 按列表获取
@@ -55,6 +59,20 @@ func (r *RoleRepository) List(ctx context.Context, offset, limit int64) ([]domai
 
 func (r *RoleRepository) Count(ctx context.Context) (int64, error) {
 	return r.dao.Count(ctx)
+}
+
+func (r *RoleRepository) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
+	return r.dao.CountByKeyword(ctx, keyword)
+}
+
+func (r *RoleRepository) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error) {
+	roles, err := r.dao.Search(ctx, keyword, offset, limit)
+	if err != nil {
+		return nil, err
+	}
+	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
+		return r.toDomain(src)
+	}), nil
 }
 
 func (r *RoleRepository) GetByCode(ctx context.Context, code string) (domain.Role, error) {

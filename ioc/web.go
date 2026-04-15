@@ -36,12 +36,13 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	policyHdl.PublicRoutes(server.Engine)
 	tenantHdl.PublicRoutes(server.Engine)
 	resourceHdl.PublicRoutes(server.Engine)
+	permissionHdl.PublicRoutes(server.Engine)
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())
 
 	// 3. 基础权限层：仅需登录即可访问的私有接口 (如获取菜单)
-	permissionHdl.PrivateRoutes(server.Engine)
+	permissionHdl.IdentityRoutes(server.Engine)
 
 	// 4. API 业务鉴权层：基于 RBAC/OPA 的细粒度权限校验
 	server.Use(middleware.CheckPermission(permSvc))
@@ -52,6 +53,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	tenantHdl.PrivateRoutes(server.Engine)
 	roleHdl.PrivateRoutes(server.Engine)
 	resourceHdl.PrivateRoutes(server.Engine)
+	permissionHdl.PrivateRoutes(server.Engine)
 
 	return server
 }

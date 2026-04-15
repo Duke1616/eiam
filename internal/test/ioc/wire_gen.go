@@ -7,6 +7,7 @@
 package testioc
 
 import (
+	"github.com/Duke1616/eiam/internal/pkg/searcher"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
@@ -30,16 +31,17 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	iPolicyRepository := repository.NewPolicyRepository(iPolicyDAO)
 	iPolicyService := policy.NewPolicyService(iPolicyRepository)
 	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService)
+	iTenantService := tenant.NewTenantService(iTenantRepository, iRoleService)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)
 	iServiceDAO := dao.NewServiceDAO(db)
 	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
 	iResourceService := resource.NewResourceService(iResourceRepository, iServiceRepository)
+	iSubjectRegistry := ProvideTestSubjectRegistry()
 	iPermissionDAO := dao.NewPermissionDAO(db)
 	iPermissionRepository := repository.NewPermissionRepository(iPermissionDAO)
 	iAuthorizer := ioc.InitOPA()
-	iPermissionService := permission.NewPermissionService(syncedEnforcer, iRoleService, iPolicyService, iResourceService, iPermissionRepository, iAuthorizer)
-	iTenantService := tenant.NewTenantService(iTenantRepository, iPermissionService, iRoleService)
+	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer)
 	permissionSuiteDeps := &PermissionSuiteDeps{
 		DB:          db,
 		Enforcer:    syncedEnforcer,
@@ -50,4 +52,11 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		PermSvc:     iPermissionService,
 	}
 	return permissionSuiteDeps, nil
+}
+
+// wire.go:
+
+// ProvideTestSubjectRegistry 提供测试环境下空的主体注册中心
+func ProvideTestSubjectRegistry() searcher.ISubjectRegistry {
+	return searcher.NewSubjectRegistry()
 }

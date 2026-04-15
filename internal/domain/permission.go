@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -20,9 +21,8 @@ const (
 )
 
 const (
-	PrefixUser   = "user:"
-	PrefixRole   = "role:"
-	PrefixPolicy = "policy:"
+	PrefixUser = "user:"
+	PrefixRole = "role:"
 )
 
 const (
@@ -39,14 +39,12 @@ func RoleSubject(code string) string {
 	return PrefixRole + code
 }
 
-func PolicySubject(code string) string {
-	return PrefixPolicy + code
-}
-
 // Subject 权限主体解析结果
 type Subject struct {
 	Type string // user, role, policy
 	ID   string
+	Name string // 展示名称
+	Desc string // 描述
 }
 
 // ParseSubject 统一解析马甲标识
@@ -56,9 +54,6 @@ func ParseSubject(s string) Subject {
 	}
 	if strings.HasPrefix(s, PrefixRole) {
 		return Subject{Type: SubjectTypeRole, ID: strings.TrimPrefix(s, PrefixRole)}
-	}
-	if strings.HasPrefix(s, PrefixPolicy) {
-		return Subject{Type: SubjectTypePolicy, ID: strings.TrimPrefix(s, PrefixPolicy)}
 	}
 	return Subject{Type: "unknown", ID: s}
 }
@@ -124,7 +119,7 @@ type PermissionProvider interface {
 type Authorization struct {
 	ID          int64     `json:"id"`
 	Subject     Subject   `json:"subject"`      // 授权主体 (user:xxx 或 role:xxx)
-	Target      Subject   `json:"target"`       // 权限目标 (policy:xxx 或 role:xxx)
+	Target      Subject   `json:"target"`       // 权限目标 (policy 或 role)
 	SubjectName string    `json:"subject_name"` // 主体展示虚名（如：张三）
 	TargetName  string    `json:"target_name"`  // 目标展示虚名（如：管理员策略）
 	Note        string    `json:"note"`         // 备注
@@ -162,9 +157,17 @@ func (a *Authorization) FormatGovernance(v0Meta, v1Meta EntityMetadata) {
 		a.Scope = prefix + kind
 	}
 
-	// 4. 处理备注提示（示例逻辑）
-	if a.Target.Type == SubjectTypeRole && a.Subject.Type == SubjectTypeUser {
-		a.Note = "直接授权"
+	// 4. 处理备注提示（动态生成描述语句）
+	switch a.Target.Type {
+	case SubjectTypeRole:
+		switch a.Subject.Type {
+		case SubjectTypeUser:
+			a.Note = "直接授权"
+		case SubjectTypeRole:
+			a.Note = fmt.Sprintf("角色 %s 继承自角色 %s", a.SubjectName, a.TargetName)
+		}
+	case SubjectTypePolicy:
+		a.Note = lo.Ternary(v1Meta.Desc != "", v1Meta.Desc, "权限授权")
 	}
 }
 
@@ -179,6 +182,40 @@ const (
 	AuthObjSystemPolicy AuthorizationObjType = "system_policy"
 	AuthObjCustomPolicy AuthorizationObjType = "custom_policy"
 )
+
+// String 返回 AuthorizationSubType 的字符串表示
+func (t AuthorizationSubType) String() string {
+	return string(t)
+}
+
+// SubjectType 返回对应的 SubjectType
+func (t AuthorizationSubType) SubjectType() string {
+	switch t {
+	case AuthSubUser:
+		return SubjectTypeUser
+	case AuthSubRole:
+		return SubjectTypeRole
+	default:
+		return ""
+	}
+}
+
+// Prefix 返回对应的前缀
+func (t AuthorizationSubType) Prefix() string {
+	switch t {
+	case AuthSubUser:
+		return PrefixUser
+	case AuthSubRole:
+		return PrefixRole
+	default:
+		return ""
+	}
+}
+
+// String 返回 AuthorizationObjType 的字符串表示
+func (t AuthorizationObjType) String() string {
+	return string(t)
+}
 
 type AuthorizationQuery struct {
 	Offset  int64

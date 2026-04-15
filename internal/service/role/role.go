@@ -18,6 +18,10 @@ type IRoleService interface {
 	Create(ctx context.Context, r domain.Role) (int64, error)
 	// List 获取角色列表
 	List(ctx context.Context, offset, limit int64) ([]domain.Role, int64, error)
+	// Search 模糊查询
+	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error)
+	// CountByKeyword 根据关键词获取符合条件的角色总数
+	CountByKeyword(ctx context.Context, keyword string) (int64, error)
 	// Update 更新角色信息
 	Update(ctx context.Context, r domain.Role) (int64, error)
 	// UpdateInlinePolicies 修改角色的内联权限策略文档
@@ -49,29 +53,25 @@ func (s *roleService) Create(ctx context.Context, r domain.Role) (int64, error) 
 }
 
 func (s *roleService) List(ctx context.Context, offset, limit int64) ([]domain.Role, int64, error) {
-	var (
-		eg    errgroup.Group
-		roles []domain.Role
-		total int64
-	)
-
-	eg.Go(func() error {
-		var err error
-		roles, err = s.repo.List(ctx, offset, limit)
-		return err
-	})
-
-	eg.Go(func() error {
-		var err error
-		total, err = s.repo.Count(ctx)
-		return err
-	})
-
-	if err := eg.Wait(); err != nil {
+	total, err := s.repo.Count(ctx)
+	if err != nil {
 		return nil, 0, err
 	}
 
-	return roles, total, nil
+	rs, err := s.repo.List(ctx, offset, limit)
+	return rs, total, err
+}
+
+func (s *roleService) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error) {
+	if limit <= 0 {
+		return []domain.Role{}, nil
+	}
+
+	return s.repo.Search(ctx, keyword, offset, limit)
+}
+
+func (s *roleService) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
+	return s.repo.CountByKeyword(ctx, keyword)
 }
 
 func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) {

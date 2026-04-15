@@ -3,6 +3,7 @@
 package testioc
 
 import (
+	"github.com/Duke1616/eiam/internal/pkg/searcher"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
@@ -14,12 +15,18 @@ import (
 	"github.com/google/wire"
 )
 
+// ProvideTestSubjectRegistry 提供测试环境下空的主体注册中心
+func ProvideTestSubjectRegistry() searcher.ISubjectRegistry {
+	return searcher.NewSubjectRegistry()
+}
+
 func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	wire.Build(
 		// 基础组件：使用 testioc 本地定义的 InitDB (跳过 goose 迁移)
 		InitDB,
 		mainioc.InitCasbin,
 		mainioc.InitOPA,
+		ProvideTestSubjectRegistry,
 
 		// DAOs
 		dao.NewTenantDAO,

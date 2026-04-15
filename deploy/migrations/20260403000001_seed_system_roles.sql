@@ -4,10 +4,10 @@
 -- 注意：tenant_id = 0 代表全租户空间的系统预置角色模板。
 INSERT INTO `role` (`tenant_id`, `code`, `name`, `type`, `inline_policies`, `ctime`, `utime`)
 VALUES (0, 'super_admin', '系统全局超级管理员', 1,
-        '[{"Name":"ROOT全量授权","Type":1,"Statement":[{"Effect":"Allow","Action":["*"],"Resource":["*"]}]}]',
+        '[{"name":"ROOT全量授权","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
         (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000)),
        (0, 'admin', '租户管理员', 1,
-        '[{"Name":"敏感权限熔断策略","Type":1,"Statement":[{"Effect":"Deny","Action":["iam:tenant:*","iam:permission:global:*"],"Resource":["*"]}]}]',
+        '[{"name":"敏感权限熔断策略","type":1,"statement":[{"effect":"Deny","action":["iam:tenant:*","iam:permission:global:*"],"resource":["*"]}]}]',
         (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `name`            = VALUES(`name`),
                         `inline_policies` = VALUES(`inline_policies`),
@@ -44,7 +44,7 @@ VALUES (1, 1, 1, (UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `ctime` = VALUES(`ctime`);
 
 -- 初始化 admin 用户的个人名片（UserProfile）
-INSERT INTO `user_profile` (`id`, `membership_id`, `nickname`, `avatar`, `job_title`)
+INSERT INTO `user_profile` (`id`, `user_id`, `nickname`, `avatar`, `job_title`)
 VALUES (1, 1, '系统管理员', '', 'CEO')
 ON DUPLICATE KEY UPDATE `nickname` = VALUES(`nickname`);
 
@@ -60,7 +60,7 @@ DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'user:admin' AND `v1` =
 DELETE FROM `tenant` WHERE `code` = 'admin-personal';
 
 DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` = 1;
-DELETE FROM `user_profile` WHERE `membership_id` = 1;
+DELETE FROM `user_profile` WHERE `user_id` = 1;
 
 
 -- +goose StatementEnd

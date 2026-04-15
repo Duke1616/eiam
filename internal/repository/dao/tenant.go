@@ -19,6 +19,7 @@ type ITenantDAO interface {
 	GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error)
 
 	GetMembershipByUserId(ctx context.Context, userId int64) (Membership, error)
+	FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error)
 	FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error)
 	FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error)
 }
@@ -73,6 +74,15 @@ func (d *TenantDAO) GetMembershipByUserId(ctx context.Context, userId int64) (Me
 	// 注意：此处不显式传 tenant_id，交给 GORM 拦截器全权处理
 	err := d.db.WithContext(ctx).Where("user_id = ?", userId).First(&m).Error
 	return m, err
+}
+
+func (d *TenantDAO) FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error) {
+	var ms []Membership
+	if len(userIds) == 0 {
+		return ms, nil
+	}
+	err := d.db.WithContext(ctx).Where("user_id IN ?", userIds).Find(&ms).Error
+	return ms, err
 }
 
 func (d *TenantDAO) FindById(ctx context.Context, id int64) (Tenant, error) {
