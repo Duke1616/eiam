@@ -18,6 +18,8 @@ type IPolicyRepository interface {
 	GetPolicyByCode(ctx context.Context, code string) (domain.Policy, error)
 	// ListPolicies 分页获取策略列表
 	ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error)
+	// SearchPolicies 关键词与类型过滤获取策略列表
+	SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
 	// UpdatePolicy 更新权限策略
 	UpdatePolicy(ctx context.Context, p domain.Policy) error
 	// Attach 将策略挂载到主体上 (用户或角色)
@@ -70,6 +72,33 @@ func (r *policyRepository) ListPolicies(ctx context.Context, offset, limit int64
 	eg.Go(func() error {
 		var err error
 		total, err = r.dao.Count(ctx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, 0, err
+	}
+
+	return slice.Map(ps, func(idx int, src dao.Policy) domain.Policy {
+		return r.toDomain(src)
+	}), total, nil
+}
+
+func (r *policyRepository) SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error) {
+	var (
+		ps    []dao.Policy
+		total int64
+	)
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var err error
+		ps, err = r.dao.Search(ctx, offset, limit, keyword, uint8(policyType))
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		total, err = r.dao.CountBySearch(ctx, keyword, uint8(policyType))
 		return err
 	})
 

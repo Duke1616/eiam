@@ -16,6 +16,8 @@ type IPolicyService interface {
 	GetPolicy(ctx context.Context, code string) (domain.Policy, error)
 	// ListPolicies 分页获取策略列表
 	ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error)
+	// SearchPolicies 关键词与类型搜索列表
+	SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
 	UpdatePolicy(ctx context.Context, p domain.Policy) error
 	// AttachPolicyToUser 挂载托管策略到用户，用户将立即获得该策略定义的权限
 	AttachPolicyToUser(ctx context.Context, username, polyCode string) error
@@ -60,6 +62,10 @@ func (s *policyService) GetPolicy(ctx context.Context, code string) (domain.Poli
 
 func (s *policyService) ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error) {
 	return s.repo.ListPolicies(ctx, offset, limit)
+}
+
+func (s *policyService) SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error) {
+	return s.repo.SearchPolicies(ctx, offset, limit, keyword, policyType)
 }
 
 func (s *policyService) UpdatePolicy(ctx context.Context, p domain.Policy) error {

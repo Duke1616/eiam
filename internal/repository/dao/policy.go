@@ -43,6 +43,10 @@ type IPolicyDAO interface {
 	List(ctx context.Context, offset, limit int64) ([]Policy, error)
 	// Count 统计策略总数
 	Count(ctx context.Context) (int64, error)
+	// Search 关键词与类型搜索
+	Search(ctx context.Context, offset, limit int64, keyword string, policyType uint8) ([]Policy, error)
+	// CountBySearch 关键词与类型搜索总数
+	CountBySearch(ctx context.Context, keyword string, policyType uint8) (int64, error)
 	// Update 更新策略详情
 	Update(ctx context.Context, p Policy) error
 	// Bind 建立主体与策略的关联关系 (幂等)
@@ -95,6 +99,32 @@ func (d *policyDAO) List(ctx context.Context, offset, limit int64) ([]Policy, er
 func (d *policyDAO) Count(ctx context.Context) (int64, error) {
 	var total int64
 	err := d.db.WithContext(ctx).Model(&Policy{}).Count(&total).Error
+	return total, err
+}
+
+func (d *policyDAO) Search(ctx context.Context, offset, limit int64, keyword string, policyType uint8) ([]Policy, error) {
+	var ps []Policy
+	query := d.db.WithContext(ctx).Model(&Policy{})
+	if keyword != "" {
+		query = query.Where("name LIKE ? OR code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if policyType != 0 {
+		query = query.Where("type = ?", policyType)
+	}
+	err := query.Offset(int(offset)).Limit(int(limit)).Find(&ps).Error
+	return ps, err
+}
+
+func (d *policyDAO) CountBySearch(ctx context.Context, keyword string, policyType uint8) (int64, error) {
+	var total int64
+	query := d.db.WithContext(ctx).Model(&Policy{})
+	if keyword != "" {
+		query = query.Where("name LIKE ? OR code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if policyType != 0 {
+		query = query.Where("type = ?", policyType)
+	}
+	err := query.Count(&total).Error
 	return total, err
 }
 

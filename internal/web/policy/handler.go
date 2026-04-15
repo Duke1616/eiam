@@ -81,7 +81,7 @@ func (h *Handler) UpdatePolicy(ctx *ginx.Context, req UpdatePolicyReq) (ginx.Res
 }
 
 func (h *Handler) ListPolicies(ctx *ginx.Context, req ListPolicyReq) (ginx.Result, error) {
-	ps, total, err := h.svc.ListPolicies(ctx.Request.Context(), req.Offset, req.Limit)
+	ps, total, err := h.svc.SearchPolicies(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword, domain.PolicyType(req.Type))
 	if err != nil {
 		return ginx.Result{Msg: "查询策略列表失败"}, err
 	}

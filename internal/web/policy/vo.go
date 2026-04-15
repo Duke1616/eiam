@@ -38,8 +38,10 @@ type Condition struct {
 }
 
 type ListPolicyReq struct {
-	Offset int64 `json:"offset"`
-	Limit  int64 `json:"limit"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
+	Type    uint8  `json:"type"`
 }
 
 type ListPolicyRes struct {
