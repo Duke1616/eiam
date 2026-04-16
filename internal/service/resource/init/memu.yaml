@@ -520,6 +520,47 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["system"]
+- name: IdentityGovernance
+  path: /identity
+  component: Layouts
+  redirect: /identity/user
+  meta:
+    title: 身份管理
+    icon: identity
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["system"]
+  children:
+  - name: UserGovernance
+    permission_code: "iam:user:view"
+    path: /identity/user
+    component: /pages/iam/user/index.vue
+    meta:
+      title: 用户管理
+      icon: user
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: RoleGovernance
+    permission_code: "iam:role:view"
+    path: /identity/role
+    component: /pages/iam/role/index.vue
+    meta:
+      title: 角色管理
+      icon: role
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: TenantGovernance
+    permission_code: "iam:tenant:view"
+    path: /identity/tenant
+    component: /pages/iam/tenant/index.vue
+    meta:
+      title: 租户管理
+      icon: tenant
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
 - name: PermissionGovernance
   path: /iam
   component: Layouts
@@ -572,16 +613,6 @@
     is_keepalive: false
     platforms: ["system"]
   children:
-  - name: RoleGovernance
-    permission_code: "iam:role:view"
-    path: role
-    component: /views/system/role/index.vue
-    meta:
-      title: 角色管理
-      icon: role
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["system"]
   - name: MenuGovernance
     permission_code: "iam:menu:view"
     path: menu
@@ -600,16 +631,6 @@
       title: 权限配置
       icon: 
       is_hidden: true
-      is_keepalive: false
-      platforms: ["system"]
-  - name: UserGovernance
-    permission_code: "iam:user:view"
-    path: user
-    component: /views/system/user/index.vue
-    meta:
-      title: 用户管理
-      icon: user
-      is_hidden: false
       is_keepalive: false
       platforms: ["system"]
   - name: TeamGovernance

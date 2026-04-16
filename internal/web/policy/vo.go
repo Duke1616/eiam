@@ -16,12 +16,14 @@ type UpdatePolicyReq struct {
 }
 
 type Policy struct {
-	ID        int64       `json:"id"`
-	Name      string      `json:"name"`
-	Code      string      `json:"code"`
-	Desc      string      `json:"desc"`
-	Type      uint8       `json:"type"`
-	Statement []Statement `json:"statement"`
+	ID              int64       `json:"id"`
+	Name            string      `json:"name"`
+	Code            string      `json:"code"`
+	Desc            string      `json:"desc"`
+	Type            uint8       `json:"type"`
+	Statement       []Statement `json:"statement"`
+	Ctime           int64       `json:"ctime"`
+	AssignmentCount int64       `json:"assignment_count"`
 }
 
 type Statement struct {
@@ -50,8 +52,8 @@ type ListPolicyRes struct {
 }
 
 type AttachPolicyReq struct {
-	RoleCode string `json:"role_code"`
-	PolyCode string `json:"poly_code"`
+	RoleCode   string `json:"role_code"`
+	PolicyCode string `json:"policy_code"`
 }
 
 type SubjectItem struct {

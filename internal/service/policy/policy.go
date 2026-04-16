@@ -20,13 +20,13 @@ type IPolicyService interface {
 	SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
 	UpdatePolicy(ctx context.Context, p domain.Policy) error
 	// AttachPolicyToUser 挂载托管策略到用户，用户将立即获得该策略定义的权限
-	AttachPolicyToUser(ctx context.Context, username, polyCode string) error
+	AttachPolicyToUser(ctx context.Context, username, policyCode string) error
 	// AttachPolicyToRole 挂载托管策略到角色，角色将立即获得该策略定义的权限
-	AttachPolicyToRole(ctx context.Context, roleCode, polyCode string) error
+	AttachPolicyToRole(ctx context.Context, roleCode, policyCode string) error
 	// DetachFromUser 移除用户的托管策略
-	DetachFromUser(ctx context.Context, username, polyCode string) error
+	DetachFromUser(ctx context.Context, username, policyCode string) error
 	// DetachFromRole 移除角色的托管策略
-	DetachFromRole(ctx context.Context, roleCode, polyCode string) error
+	DetachFromRole(ctx context.Context, roleCode, policyCode string) error
 	// GetAttachedPolicies 获取角色关联的托管策略
 	GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error)
 	// GetAttachedPoliciesByCodes 批量获取角色关联的托管策略
@@ -61,31 +61,51 @@ func (s *policyService) GetPolicy(ctx context.Context, code string) (domain.Poli
 }
 
 func (s *policyService) ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error) {
-	return s.repo.ListPolicies(ctx, offset, limit)
+	ps, total, err := s.repo.ListPolicies(ctx, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 填充授权数量统计
+	if err = s.repo.FillAssignmentCounts(ctx, ps); err != nil {
+		return nil, 0, err
+	}
+
+	return ps, total, nil
 }
 
 func (s *policyService) SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error) {
-	return s.repo.SearchPolicies(ctx, offset, limit, keyword, policyType)
+	ps, total, err := s.repo.SearchPolicies(ctx, offset, limit, keyword, policyType)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 填充授权数量统计
+	if err = s.repo.FillAssignmentCounts(ctx, ps); err != nil {
+		return nil, 0, err
+	}
+
+	return ps, total, nil
 }
 
 func (s *policyService) UpdatePolicy(ctx context.Context, p domain.Policy) error {
 	return s.repo.UpdatePolicy(ctx, p)
 }
 
-func (s *policyService) AttachPolicyToUser(ctx context.Context, username, polyCode string) error {
-	return s.repo.Attach(ctx, domain.SubjectTypeUser, username, polyCode)
+func (s *policyService) AttachPolicyToUser(ctx context.Context, username, policyCode string) error {
+	return s.repo.Attach(ctx, domain.SubjectTypeUser, username, policyCode)
 }
 
-func (s *policyService) AttachPolicyToRole(ctx context.Context, roleCode, polyCode string) error {
-	return s.repo.Attach(ctx, domain.SubjectTypeRole, roleCode, polyCode)
+func (s *policyService) AttachPolicyToRole(ctx context.Context, roleCode, policyCode string) error {
+	return s.repo.Attach(ctx, domain.SubjectTypeRole, roleCode, policyCode)
 }
 
-func (s *policyService) DetachFromUser(ctx context.Context, username, polyCode string) error {
-	return s.repo.Detach(ctx, domain.SubjectTypeUser, username, polyCode)
+func (s *policyService) DetachFromUser(ctx context.Context, username, policyCode string) error {
+	return s.repo.Detach(ctx, domain.SubjectTypeUser, username, policyCode)
 }
 
-func (s *policyService) DetachFromRole(ctx context.Context, roleCode, polyCode string) error {
-	return s.repo.Detach(ctx, domain.SubjectTypeRole, roleCode, polyCode)
+func (s *policyService) DetachFromRole(ctx context.Context, roleCode, policyCode string) error {
+	return s.repo.Detach(ctx, domain.SubjectTypeRole, roleCode, policyCode)
 }
 
 func (s *policyService) GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error) {

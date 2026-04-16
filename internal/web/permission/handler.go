@@ -229,7 +229,7 @@ func (h *Handler) ListAuthorizations(ctx *ginx.Context, req AuthorizationQueryRe
 					TargetName:  src.TargetName,
 					Note:        src.Note,
 					Scope:       src.Scope,
-					Ctime:       src.Ctime.UnixMilli(),
+					Ctime:       src.Ctime,
 				}
 			}),
 		},

@@ -97,7 +97,7 @@ func (h *Handler) ListPolicies(ctx *ginx.Context, req ListPolicyReq) (ginx.Resul
 }
 
 func (h *Handler) AttachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
-	err := h.svc.AttachPolicyToRole(ctx.Request.Context(), req.RoleCode, req.PolyCode)
+	err := h.svc.AttachPolicyToRole(ctx.Request.Context(), req.RoleCode, req.PolicyCode)
 	if err != nil {
 		return ginx.Result{Msg: "绑定策略失败"}, err
 	}
@@ -105,7 +105,7 @@ func (h *Handler) AttachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Res
 }
 
 func (h *Handler) DetachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
-	err := h.svc.DetachFromRole(ctx.Request.Context(), req.RoleCode, req.PolyCode)
+	err := h.svc.DetachFromRole(ctx.Request.Context(), req.RoleCode, req.PolicyCode)
 	if err != nil {
 		return ginx.Result{Msg: "解绑策略失败"}, err
 	}
@@ -137,11 +137,13 @@ func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq)
 
 func (h *Handler) toVO(p domain.Policy) Policy {
 	return Policy{
-		ID:   p.ID,
-		Name: p.Name,
-		Code: p.Code,
-		Desc: p.Desc,
-		Type: uint8(p.Type),
+		ID:              p.ID,
+		Name:            p.Name,
+		Code:            p.Code,
+		Desc:            p.Desc,
+		Type:            uint8(p.Type),
+		Ctime:           p.Ctime,
+		AssignmentCount: p.AssignmentCount,
 		Statement: slice.Map(p.Statement, func(idx int, s domain.Statement) Statement {
 			return Statement{
 				Effect:   string(s.Effect),

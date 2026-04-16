@@ -23,9 +23,9 @@ type IPolicyRepository interface {
 	// UpdatePolicy 更新权限策略
 	UpdatePolicy(ctx context.Context, p domain.Policy) error
 	// Attach 将策略挂载到主体上 (用户或角色)
-	Attach(ctx context.Context, subType, subCode, polyCode string) error
+	Attach(ctx context.Context, subType, subCode, policyCode string) error
 	// Detach 从主体上移除已挂载的策略
-	Detach(ctx context.Context, subType, subCode, polyCode string) error
+	Detach(ctx context.Context, subType, subCode, policyCode string) error
 	// GetAttached 获取主体当前挂载的所有托管策略实体
 	GetAttached(ctx context.Context, subType, subCode string) ([]domain.Policy, error)
 	// GetAttachedBySubjects 批量获取多个主体当前挂载的所有托管策略实体映射 (如用户+其所属的所有角色)
@@ -38,6 +38,8 @@ type IPolicyRepository interface {
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error)
 	// BatchAttach 批量绑定策略到多个主体
 	BatchAttach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
+	// FillAssignmentCounts 为策略列表填充授权计数值
+	FillAssignmentCounts(ctx context.Context, ps []domain.Policy) error
 }
 
 type policyRepository struct {
@@ -62,16 +64,16 @@ func (r *policyRepository) ListPolicies(ctx context.Context, offset, limit int64
 		ps    []dao.Policy
 		total int64
 	)
-	eg, ctx := errgroup.WithContext(ctx)
+	eg, gctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		var err error
-		ps, err = r.dao.List(ctx, offset, limit)
+		ps, err = r.dao.List(gctx, offset, limit)
 		return err
 	})
 
 	eg.Go(func() error {
 		var err error
-		total, err = r.dao.Count(ctx)
+		total, err = r.dao.Count(gctx)
 		return err
 	})
 
@@ -89,16 +91,16 @@ func (r *policyRepository) SearchPolicies(ctx context.Context, offset, limit int
 		ps    []dao.Policy
 		total int64
 	)
-	eg, ctx := errgroup.WithContext(ctx)
+	eg, gctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		var err error
-		ps, err = r.dao.Search(ctx, offset, limit, keyword, uint8(policyType))
+		ps, err = r.dao.Search(gctx, offset, limit, keyword, uint8(policyType))
 		return err
 	})
 
 	eg.Go(func() error {
 		var err error
-		total, err = r.dao.CountBySearch(ctx, keyword, uint8(policyType))
+		total, err = r.dao.CountBySearch(gctx, keyword, uint8(policyType))
 		return err
 	})
 
@@ -115,12 +117,12 @@ func (r *policyRepository) UpdatePolicy(ctx context.Context, p domain.Policy) er
 	return r.dao.Update(ctx, r.toDAO(p))
 }
 
-func (r *policyRepository) Attach(ctx context.Context, subType, subCode, polyCode string) error {
-	return r.dao.Bind(ctx, subType, subCode, polyCode)
+func (r *policyRepository) Attach(ctx context.Context, subType, subCode, policyCode string) error {
+	return r.dao.Bind(ctx, subType, subCode, policyCode)
 }
 
-func (r *policyRepository) Detach(ctx context.Context, subType, subCode, polyCode string) error {
-	return r.dao.Unbind(ctx, subType, subCode, polyCode)
+func (r *policyRepository) Detach(ctx context.Context, subType, subCode, policyCode string) error {
+	return r.dao.Unbind(ctx, subType, subCode, policyCode)
 }
 
 func (r *policyRepository) GetAttached(ctx context.Context, subType, subCode string) ([]domain.Policy, error) {
@@ -144,7 +146,7 @@ func (r *policyRepository) GetAttachedBySubjects(ctx context.Context, subjects [
 	// 2. 提取并去重策略代码
 	policyCodeSet := make(map[string]struct{})
 	for i := range assignments {
-		policyCodeSet[assignments[i].PolyCode] = struct{}{}
+		policyCodeSet[assignments[i].PolicyCode] = struct{}{}
 	}
 	policyCodes := make([]string, 0, len(policyCodeSet))
 	for code := range policyCodeSet {
@@ -168,8 +170,8 @@ func (r *policyRepository) GetAttachedBySubjects(ctx context.Context, subjects [
 	for i := range assignments {
 		// 这里使用 subType:subCode 作为 key
 		urn := assignments[i].SubType + ":" + assignments[i].SubCode
-		polyCode := assignments[i].PolyCode
-		if p, ok := policyMap[polyCode]; ok {
+		policyCode := assignments[i].PolicyCode
+		if p, ok := policyMap[policyCode]; ok {
 			result[urn] = append(result[urn], p)
 		}
 	}
@@ -200,6 +202,7 @@ func (r *policyRepository) toDomain(p dao.Policy) domain.Policy {
 		Desc:      p.Desc,
 		Type:      domain.PolicyType(p.Type),
 		Statement: p.Document.Val,
+		Ctime:     p.Ctime,
 	}
 }
 
@@ -250,9 +253,9 @@ func (r *policyRepository) BatchAttach(ctx context.Context, subjects []domain.Su
 	for i := range subjects {
 		for j := range policyCodes {
 			assignments = append(assignments, dao.PolicyAssignment{
-				SubType:  subjects[i].Type,
-				SubCode:  subjects[i].ID,
-				PolyCode: policyCodes[j],
+				SubType:    subjects[i].Type,
+				SubCode:    subjects[i].ID,
+				PolicyCode: policyCodes[j],
 			})
 
 			if len(assignments) >= buildBatchSize {
@@ -268,4 +271,21 @@ func (r *policyRepository) BatchAttach(ctx context.Context, subjects []domain.Su
 	}
 
 	return res, nil
+}
+
+func (r *policyRepository) FillAssignmentCounts(ctx context.Context, ps []domain.Policy) error {
+	if len(ps) == 0 {
+		return nil
+	}
+	codes := slice.Map(ps, func(idx int, p domain.Policy) string {
+		return p.Code
+	})
+	counts, err := r.dao.CountAssignmentsByPolicyCodes(ctx, codes)
+	if err != nil {
+		return err
+	}
+	for i := range ps {
+		ps[i].AssignmentCount = counts[ps[i].Code]
+	}
+	return nil
 }

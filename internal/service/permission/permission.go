@@ -515,11 +515,12 @@ func (s *permissionService) listPolicyAuthorizations(ctx context.Context, query 
 			// 处理未知类型的情况
 			subject = domain.Subject{Type: a.SubType, ID: a.SubCode}
 		}
-		target := domain.Subject{Type: domain.SubjectTypePolicy, ID: a.PolyCode}
+		target := domain.Subject{Type: domain.SubjectTypePolicy, ID: a.PolicyCode}
 		authorizations = append(authorizations, domain.Authorization{
 			ID:      a.Id,
 			Subject: subject,
 			Target:  target,
+			Ctime:   a.Ctime,
 		})
 	}
 
@@ -608,7 +609,7 @@ func (s *permissionService) hydratePolicyMetadata(ctx context.Context, assignmen
 	// 收集所有策略代码
 	policyCodes := make([]string, 0, len(assignments))
 	for _, a := range assignments {
-		policyCodes = append(policyCodes, a.PolyCode)
+		policyCodes = append(policyCodes, a.PolicyCode)
 	}
 
 	// 获取策略元数据

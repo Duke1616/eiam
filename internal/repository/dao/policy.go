@@ -25,12 +25,12 @@ type Policy struct {
 
 // PolicyAssignment 策略分配关联表 (支持用户和角色统一授权)
 type PolicyAssignment struct {
-	Id       int64  `gorm:"primaryKey;autoIncrement"`
-	TenantId int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID'"`
-	SubType  string `gorm:"type:varchar(20);not null;uniqueIndex:uniq_subject_policy;comment:'主体类型: user, role'"`
-	SubCode  string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
-	PolyCode string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'策略代码'"`
-	Ctime    int64
+	Id         int64  `gorm:"primaryKey;autoIncrement"`
+	TenantId   int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID'"`
+	SubType    string `gorm:"type:varchar(20);not null;uniqueIndex:uniq_subject_policy;comment:'主体类型: user, role'"`
+	SubCode    string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
+	PolicyCode string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'策略代码'"`
+	Ctime      int64
 }
 
 // BatchBindResult 批量绑定结果元数据
@@ -57,9 +57,9 @@ type IPolicyDAO interface {
 	// Update 更新策略详情
 	Update(ctx context.Context, p Policy) error
 	// Bind 建立主体与策略的关联关系 (幂等)
-	Bind(ctx context.Context, subType, subCode, polyCode string) error
+	Bind(ctx context.Context, subType, subCode, policyCode string) error
 	// Unbind 解除主体与策略的关联关系
-	Unbind(ctx context.Context, subType, subCode, polyCode string) error
+	Unbind(ctx context.Context, subType, subCode, policyCode string) error
 	// GetCodesBySubject 获取指定主体关联的所有策略代码列表
 	GetCodesBySubject(ctx context.Context, subType, subCode string) ([]string, error)
 	// GetCodesBySubjects 批量获取多个主体代码关联的所有策略映射
@@ -72,6 +72,8 @@ type IPolicyDAO interface {
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error)
 	// BatchBind 批量绑定策略到多个主体
 	BatchBind(ctx context.Context, assignments []PolicyAssignment) (BatchBindResult, error)
+	// CountAssignmentsByPolicyCodes 批量获取策略关联的数量
+	CountAssignmentsByPolicyCodes(ctx context.Context, codes []string) (map[string]int64, error)
 }
 
 type policyDAO struct {
@@ -151,39 +153,33 @@ func (d *policyDAO) GetCodesBySubjects(ctx context.Context, subjects []domain.Su
 	if len(subjects) == 0 {
 		return nil, nil
 	}
-
-	// 构造多主体条件查询：WHERE ((sub_type = ? AND sub_code = ?) OR ...)
-	// 注：GORM 插件会自动补全租户过滤
-	query := d.db.WithContext(ctx).Model(&PolicyAssignment{})
-	db := d.db.WithContext(ctx)
-
-	var orQuery *gorm.DB
+	// 使用元组 IN 查询，更优雅且性能更好
+	values := make([][]any, len(subjects))
 	for i, sub := range subjects {
-		cond := db.Where("sub_type = ? AND sub_code = ?", sub.Type, sub.ID)
-		if i == 0 {
-			orQuery = cond
-		} else {
-			orQuery = orQuery.Or(cond)
-		}
+		values[i] = []any{sub.Type, sub.ID}
 	}
 
 	var assignments []PolicyAssignment
-	err := query.Where(orQuery).Find(&assignments).Error
+	err := d.db.WithContext(ctx).
+		Model(&PolicyAssignment{}).
+		Where("(sub_type, sub_code) IN ?", values).
+		Find(&assignments).Error
+
 	return assignments, err
 }
 
-func (d *policyDAO) Bind(ctx context.Context, subType, subCode, polyCode string) error {
+func (d *policyDAO) Bind(ctx context.Context, subType, subCode, policyCode string) error {
 	return d.db.WithContext(ctx).FirstOrCreate(&PolicyAssignment{
-		SubType:  subType,
-		SubCode:  subCode,
-		PolyCode: polyCode,
-		Ctime:    time.Now().UnixMilli(),
-	}, PolicyAssignment{SubType: subType, SubCode: subCode, PolyCode: polyCode}).Error
+		SubType:    subType,
+		SubCode:    subCode,
+		PolicyCode: policyCode,
+		Ctime:      time.Now().UnixMilli(),
+	}, PolicyAssignment{SubType: subType, SubCode: subCode, PolicyCode: policyCode}).Error
 }
 
-func (d *policyDAO) Unbind(ctx context.Context, subType, subCode, polyCode string) error {
+func (d *policyDAO) Unbind(ctx context.Context, subType, subCode, policyCode string) error {
 	return d.db.WithContext(ctx).
-		Where("sub_type = ? AND sub_code = ? AND poly_code = ?", subType, subCode, polyCode).
+		Where("sub_type = ? AND sub_code = ? AND policy_code = ?", subType, subCode, policyCode).
 		Delete(&PolicyAssignment{}).Error
 }
 
@@ -192,7 +188,7 @@ func (d *policyDAO) GetCodesBySubject(ctx context.Context, subType, subCode stri
 	err := d.db.WithContext(ctx).
 		Model(&PolicyAssignment{}).
 		Where("sub_type = ? AND sub_code = ?", subType, subCode).
-		Pluck("poly_code", &codes).Error
+		Pluck("policy_code", &codes).Error
 	return codes, err
 }
 
@@ -223,7 +219,7 @@ func (d *policyDAO) ListAssignments(ctx context.Context, offset, limit int64, su
 		query = query.Where("sub_type = ?", subType)
 	}
 	if keyword != "" {
-		query = query.Where("sub_code LIKE ? OR poly_code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		query = query.Where("sub_code LIKE ? OR policy_code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 
 	err := query.Count(&total).Error
@@ -255,4 +251,32 @@ func (d *policyDAO) BatchBind(ctx context.Context, assignments []PolicyAssignmen
 		Inserted: result.RowsAffected,
 		Ignored:  int64(len(assignments)) - result.RowsAffected,
 	}, result.Error
+}
+
+func (d *policyDAO) CountAssignmentsByPolicyCodes(ctx context.Context, codes []string) (map[string]int64, error) {
+	if len(codes) == 0 {
+		return make(map[string]int64), nil
+	}
+
+	type resultStruct struct {
+		PolicyCode string
+		Count      int64
+	}
+
+	var rs []resultStruct
+	err := d.db.WithContext(ctx).Model(&PolicyAssignment{}).
+		Where("policy_code IN ?", codes).
+		Select("policy_code, COUNT(*) as count").
+		Group("policy_code").
+		Scan(&rs).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]int64, len(rs))
+	for _, r := range rs {
+		res[r.PolicyCode] = r.Count
+	}
+	return res, nil
 }
