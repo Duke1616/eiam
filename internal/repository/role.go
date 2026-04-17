@@ -29,6 +29,8 @@ type IRoleRepository interface {
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
 	// UpdateInlinePolicies 更新角色的权限策略列表
 	UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error
+	// Delete 删除角色
+	Delete(ctx context.Context, id int64) error
 }
 
 type RoleRepository struct {
@@ -108,6 +110,10 @@ func (r *RoleRepository) UpdateInlinePolicies(ctx context.Context, code string, 
 	return r.dao.UpdateInlinePolicies(ctx, code, policies)
 }
 
+func (r *RoleRepository) Delete(ctx context.Context, id int64) error {
+	return r.dao.Delete(ctx, id)
+}
+
 func (r *RoleRepository) toDomain(role dao.Role) domain.Role {
 	return domain.Role{
 		ID:             role.Id,
@@ -115,7 +121,6 @@ func (r *RoleRepository) toDomain(role dao.Role) domain.Role {
 		Code:           role.Code,
 		Name:           role.Name,
 		Desc:           role.Desc,
-		Status:         role.Status,
 		Type:           role.Type,
 		InlinePolicies: role.InlinePolicies.Val,
 	}
@@ -128,7 +133,6 @@ func (r *RoleRepository) toEntity(role domain.Role) dao.Role {
 		Code:     role.Code,
 		Name:     role.Name,
 		Desc:     role.Desc,
-		Status:   role.Status,
 		Type:     role.Type,
 		InlinePolicies: sqlx.JSONColumn[[]domain.Policy]{
 			Val:   role.InlinePolicies,

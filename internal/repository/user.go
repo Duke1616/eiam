@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
+	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
@@ -35,6 +36,12 @@ type IUserRepository interface {
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
 	// CountByKeyword 根据关键字统计搜索结果总数
 	CountByKeyword(ctx context.Context, keyword string) (int64, error)
+	// Delete 删除用户
+	Delete(ctx context.Context, id int64) error
+	// BatchUpsert 批量 Upsert 用户数据
+	BatchUpsert(ctx context.Context, users []domain.User) error
+	// CheckUsersExist 批量检查用户名是否已经在系统中存在
+	CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error)
 }
 
 type userRepository struct {
@@ -272,4 +279,79 @@ func (repo *userRepository) toEntity(u domain.User) dao.User {
 		Ctime:    u.Ctime,
 		Utime:    u.Utime,
 	}
+}
+
+func (repo *userRepository) Delete(ctx context.Context, id int64) error {
+	return repo.dao.Delete(ctx, id)
+}
+
+func (repo *userRepository) BatchUpsert(ctx context.Context, users []domain.User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	daoUsers := lo.Map(users, func(u domain.User, _ int) dao.User { return repo.toEntity(u) })
+	usernames := lo.Map(users, func(u domain.User, _ int) string { return u.Username })
+
+	// 1. 批量同步基础用户
+	if err := repo.dao.BatchUpsertUsers(ctx, daoUsers); err != nil {
+		return err
+	}
+
+	// 2. 获取最新 ID 映射
+	savedUsers, err := repo.dao.FindUsersByUsernames(ctx, usernames)
+	if err != nil {
+		return err
+	}
+
+	idMap := lo.SliceToMap(savedUsers, func(u dao.User) (string, int64) {
+		return u.Username, u.ID
+	})
+
+	// 3. 构建关联数据
+	profiles := lo.FilterMap(users, func(u domain.User, _ int) (dao.UserProfile, bool) {
+		uid, ok := idMap[u.Username]
+		return dao.UserProfile{
+			UserID:   uid,
+			Nickname: u.Profile.Nickname,
+			Avatar:   u.Profile.Avatar,
+			JobTitle: u.Profile.JobTitle,
+		}, ok
+	})
+
+	identities := lo.FlatMap(users, func(u domain.User, _ int) []dao.UserIdentity {
+		uid, ok := idMap[u.Username]
+		if !ok {
+			return nil
+		}
+
+		return lo.Map(u.Identities, func(id domain.UserIdentity, _ int) dao.UserIdentity {
+			return dao.UserIdentity{
+				UserID:     uid,
+				Provider:   id.Provider,
+				LdapInfo:   sqlx.JSONColumn[dao.LdapInfo]{Val: dao.LdapInfo(id.LdapInfo), Valid: true},
+				WechatInfo: sqlx.JSONColumn[dao.WechatInfo]{Val: dao.WechatInfo(id.WechatInfo), Valid: true},
+				FeishuInfo: sqlx.JSONColumn[dao.FeishuInfo]{Val: dao.FeishuInfo(id.FeishuInfo), Valid: true},
+			}
+		})
+	})
+
+	// 4. 批量同步关联数据
+	return repo.dao.BatchUpsertProfilesAndIdentities(ctx, profiles, identities)
+}
+
+func (repo *userRepository) CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error) {
+	if len(usernames) == 0 {
+		return map[string]bool{}, nil
+	}
+	exists, err := repo.dao.FindUsersByUsernames(ctx, usernames)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]bool, len(exists))
+	for _, u := range exists {
+		res[u.Username] = true
+	}
+	return res, nil
 }

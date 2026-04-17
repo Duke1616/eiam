@@ -30,6 +30,8 @@ type IRoleService interface {
 	GetByCode(ctx context.Context, code string) (domain.Role, error)
 	// ListByIncludeCodes 查找包含当前角色代码的数据 (供鉴权中心调用)
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
+	// Delete 删除角色
+	Delete(ctx context.Context, id int64) error
 }
 
 type roleService struct {
@@ -133,4 +135,8 @@ func (s *roleService) ListByIncludeCodes(ctx context.Context, codes []string) ([
 	}
 
 	return roles, nil
+}
+
+func (s *roleService) Delete(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
 }

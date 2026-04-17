@@ -11,7 +11,10 @@ type ITenantDAO interface {
 	Create(ctx context.Context, t Tenant) (int64, error)
 	FindById(ctx context.Context, id int64) (Tenant, error)
 	FindByCode(ctx context.Context, code string) (Tenant, error)
-	FindAll(ctx context.Context) ([]Tenant, error)
+	FindAll(ctx context.Context, offset, limit int64) ([]Tenant, error)
+	Count(ctx context.Context) (int64, error)
+	Update(ctx context.Context, t Tenant) error
+	Delete(ctx context.Context, id int64) error
 
 	// --- Membership 持久化 ---
 
@@ -97,10 +100,29 @@ func (d *TenantDAO) FindByCode(ctx context.Context, code string) (Tenant, error)
 	return t, err
 }
 
-func (d *TenantDAO) FindAll(ctx context.Context) ([]Tenant, error) {
+func (d *TenantDAO) FindAll(ctx context.Context, offset, limit int64) ([]Tenant, error) {
 	var ts []Tenant
-	err := d.db.WithContext(ctx).Find(&ts).Error
+	err := d.db.WithContext(ctx).Offset(int(offset)).Limit(int(limit)).Find(&ts).Error
 	return ts, err
+}
+
+func (d *TenantDAO) Count(ctx context.Context) (int64, error) {
+	var count int64
+	err := d.db.WithContext(ctx).Model(&Tenant{}).Count(&count).Error
+	return count, err
+}
+
+func (d *TenantDAO) Update(ctx context.Context, t Tenant) error {
+	return d.db.WithContext(ctx).Model(&t).Where("id = ?", t.ID).Updates(map[string]any{
+		"name":   t.Name,
+		"code":   t.Code,
+		"domain": t.Domain,
+		"status": t.Status,
+	}).Error
+}
+
+func (d *TenantDAO) Delete(ctx context.Context, id int64) error {
+	return d.db.WithContext(ctx).Delete(&Tenant{}, id).Error
 }
 
 // FindTenantIDsByUserId 查询用户入驻的所有租户 ID（走 membership 索引）

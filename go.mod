@@ -3,6 +3,7 @@ module github.com/Duke1616/eiam
 go 1.25.0
 
 require (
+	github.com/RediSearch/redisearch-go/v2 v2.1.1
 	github.com/casbin/casbin/v2 v2.103.0
 	github.com/casbin/gorm-adapter/v3 v3.30.0
 	github.com/casbin/redis-watcher/v2 v2.8.0
@@ -76,6 +77,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
+	github.com/gomodule/redigo v1.8.9 // indirect
 	github.com/google/cel-go v0.11.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gotomicro/logrotate v0.0.0-20211108034117-46d53eedc960 // indirect

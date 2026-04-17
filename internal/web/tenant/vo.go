@@ -11,6 +11,24 @@ type CreateTenantReq struct {
 	Code string `json:"code" binding:"required,max=32"`
 }
 
+type UpdateTenantReq struct {
+	ID     int64  `json:"id" binding:"required"`
+	Name   string `json:"name" binding:"required,max=64"`
+	Code   string `json:"code" binding:"required,max=32"`
+	Domain string `json:"domain"`
+	Status int    `json:"status"`
+}
+
+type ListTenantReq struct {
+	Offset int64 `json:"offset"`
+	Limit  int64 `json:"limit"`
+}
+
+type ListTenantRes struct {
+	Total   int64      `json:"total"`
+	Tenants []TenantVO `json:"tenants"`
+}
+
 type TenantVO struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
@@ -22,13 +40,17 @@ type TenantVO struct {
 func ToTenantVOs(tenants []domain.Tenant) []TenantVO {
 	res := make([]TenantVO, 0, len(tenants))
 	for _, t := range tenants {
-		res = append(res, TenantVO{
-			ID:     t.ID,
-			Name:   t.Name,
-			Code:   t.Code,
-			Domain: t.Domain,
-			Status: t.Status,
-		})
+		res = append(res, ToTenantVO(t))
 	}
 	return res
+}
+
+func ToTenantVO(t domain.Tenant) TenantVO {
+	return TenantVO{
+		ID:     t.ID,
+		Name:   t.Name,
+		Code:   t.Code,
+		Domain: t.Domain,
+		Status: t.Status,
+	}
 }

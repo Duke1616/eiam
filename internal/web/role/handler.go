@@ -44,6 +44,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.GET("/detail/:code", h.Capability("角色详情", "get").
 		Handle(ginx.W(h.Detail)),
 	)
+	g.DELETE("/delete/:id", h.Capability("删除角色", "delete").
+		Handle(ginx.W(h.Delete)),
+	)
 
 	// 角色关系授权 (Relation)
 	g.POST("/assign", h.Capability("角色分配", "assign").
@@ -70,6 +73,7 @@ func (h *Handler) Create(ctx *ginx.Context, req CreateRoleRequest) (ginx.Result,
 
 func (h *Handler) Update(ctx *ginx.Context, req UpdateRoleRequest) (ginx.Result, error) {
 	_, err := h.svc.Update(ctx.Request.Context(), domain.Role{
+		ID:   req.ID,
 		Name: req.Name,
 		Code: req.Code,
 		Desc: req.Desc,
@@ -78,6 +82,20 @@ func (h *Handler) Update(ctx *ginx.Context, req UpdateRoleRequest) (ginx.Result,
 		return ErrRoleUpdateFailed, err
 	}
 	return ginx.Result{Msg: "更新成功"}, nil
+}
+
+func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
+	id, err := ctx.Param("id").AsInt64()
+	if err != nil {
+		return ErrRoleDeleteFailed, err
+	}
+
+	err = h.svc.Delete(ctx.Request.Context(), id)
+	if err != nil {
+		return ErrRoleDeleteFailed, err
+	}
+
+	return ginx.Result{Msg: "删除角色成功"}, nil
 }
 
 func (h *Handler) List(ctx *ginx.Context, req ListRoleRequest) (ginx.Result, error) {
@@ -101,6 +119,7 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 	if err != nil {
 		return ErrRoleNotFound, err
 	}
+
 	r, err := h.svc.GetByCode(ctx.Request.Context(), code)
 	if err != nil {
 		return ErrRoleNotFound, err
@@ -141,5 +160,19 @@ func (h *Handler) toVo(src domain.Role) Role {
 		Code: src.Code,
 		Name: src.Name,
 		Desc: src.Desc,
+		Type: src.Type,
+		InlinePolicies: slice.Map(src.InlinePolicies, func(idx int, src domain.Policy) Policy {
+			return Policy{
+				Name: src.Name,
+				Code: src.Code,
+				Statement: slice.Map(src.Statement, func(idx int, src domain.Statement) Statement {
+					return Statement{
+						Effect:   string(src.Effect),
+						Action:   src.Action,
+						Resource: src.Resource,
+					}
+				}),
+			}
+		}),
 	}
 }

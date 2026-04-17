@@ -7,6 +7,7 @@ type CreateRoleRequest struct {
 }
 
 type UpdateRoleRequest struct {
+	ID   int64  `json:"id" binding:"required"`
 	Name string `json:"name"`
 	Code string `json:"code" binding:"required"`
 	Desc string `json:"desc"`
@@ -22,10 +23,24 @@ type AssignRoleRequest struct {
 }
 
 type Role struct {
-	ID   int64  `json:"id"`
-	Code string `json:"code"`
-	Name string `json:"name"`
-	Desc string `json:"desc"`
+	ID             int64    `json:"id"`
+	Code           string   `json:"code"`
+	Name           string   `json:"name"`
+	Desc           string   `json:"desc"`
+	Type           uint8    `json:"type"`
+	InlinePolicies []Policy `json:"inline_policies"`
+}
+
+type Policy struct {
+	Name      string      `json:"name"`
+	Code      string      `json:"code"`
+	Statement []Statement `json:"statement"`
+}
+
+type Statement struct {
+	Effect   string   `json:"effect"`
+	Action   []string `json:"action"`
+	Resource []string `json:"resource"`
 }
 
 type RetrieveRole struct {

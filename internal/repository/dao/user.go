@@ -45,6 +45,14 @@ type IUserDAO interface {
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error)
 	// CountByKeyword 统计模糊搜索结果总数
 	CountByKeyword(ctx context.Context, keyword string) (int64, error)
+	// Delete 删除用户
+	Delete(ctx context.Context, id int64) error
+	// FindUsersByUsernames 批量根据用户名获取用户
+	FindUsersByUsernames(ctx context.Context, usernames []string) ([]User, error)
+	// BatchUpsertUsers 批量更新/写入基础用户资料
+	BatchUpsertUsers(ctx context.Context, users []User) error
+	// BatchUpsertProfilesAndIdentities 批量更新/写入名片与身份标记
+	BatchUpsertProfilesAndIdentities(ctx context.Context, profiles []UserProfile, identities []UserIdentity) error
 }
 
 type userDAO struct {
@@ -228,4 +236,51 @@ func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit in
 
 	err := db.Offset(int(offset)).Limit(int(limit)).Find(&us).Error
 	return us, err
+}
+
+func (dao *userDAO) Delete(ctx context.Context, id int64) error {
+	return dao.db.WithContext(ctx).Delete(&User{}, id).Error
+}
+
+func (dao *userDAO) FindUsersByUsernames(ctx context.Context, usernames []string) ([]User, error) {
+	var users []User
+	if len(usernames) == 0 {
+		return users, nil
+	}
+	err := dao.db.WithContext(ctx).Where("username IN ?", usernames).Find(&users).Error
+	return users, err
+}
+
+func (dao *userDAO) BatchUpsertUsers(ctx context.Context, users []User) error {
+	if len(users) == 0 {
+		return nil
+	}
+	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "username"}},
+		DoUpdates: clause.AssignmentColumns([]string{"email", "status", "utime"}),
+	}).Create(&users).Error
+}
+
+func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profiles []UserProfile, identities []UserIdentity) error {
+	return dao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(profiles) > 0 {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "user_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title"}),
+			}).Create(&profiles).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(identities) > 0 {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "provider"}, {Name: "user_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{"ldap_info", "feishu_info", "wechat_info"}),
+			}).Create(&identities).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }

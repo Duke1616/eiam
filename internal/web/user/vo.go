@@ -88,3 +88,29 @@ type UpdatePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 	ConfirmPassword string `json:"confirm_password"`
 }
+
+type ListUserRequest struct {
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
+}
+
+type SearchLdapUser struct {
+	Keywords string `json:"keywords"`
+	Offset   int    `json:"offset"`
+	Limit    int    `json:"limit"`
+}
+
+type SyncLdapUserReq struct {
+	Users []User `json:"users"`
+}
+
+type LdapSyncUser struct {
+	User
+	IsSynced bool `json:"is_synced"`
+}
+
+type LdapUserList struct {
+	Total int64          `json:"total"`
+	Users []LdapSyncUser `json:"users"`
+}

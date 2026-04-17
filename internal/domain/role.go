@@ -12,7 +12,6 @@ type Role struct {
 	Code     string // code 标识码，如 "AdminRole"
 	Name     string // 角色显示名称
 	Desc     string // 描述
-	Status   bool   // 状态
 	Type     uint8  // 角色类型: 1-系统预设, 2-租户自定义
 
 	// InlinePolicies 内联权限策略：该角色特有的权限声明

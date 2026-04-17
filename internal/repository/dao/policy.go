@@ -13,7 +13,7 @@ import (
 // Policy 权限策略持久化实体
 type Policy struct {
 	Id       int64                               `gorm:"type:bigint;primaryKey;autoIncrement;comment:'策略ID'"`
-	TenantId int64                               `gorm:"type:bigint;not null;default:0;index:idx_tenant_policy;comment:'租户ID，0为系统全局策略'"`
+	TenantId int64                               `gorm:"type:bigint;not null;default:0;index:idx_tenant_policy;comment:'租户ID，0为系统全局策略';eiam:'shared'"`
 	Name     string                              `gorm:"type:varchar(255);not null;comment:'策略显示名称'"`
 	Code     string                              `gorm:"type:varchar(255);not null;uniqueIndex:uniq_policy_code;comment:'策略唯一标识码'"`
 	Desc     string                              `gorm:"type:varchar(512);not null;default:'';comment:'策略描述信息'"`
@@ -26,7 +26,7 @@ type Policy struct {
 // PolicyAssignment 策略分配关联表 (支持用户和角色统一授权)
 type PolicyAssignment struct {
 	Id         int64  `gorm:"primaryKey;autoIncrement"`
-	TenantId   int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID'"`
+	TenantId   int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID';eiam:'shared'"`
 	SubType    string `gorm:"type:varchar(20);not null;uniqueIndex:uniq_subject_policy;comment:'主体类型: user, role'"`
 	SubCode    string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
 	PolicyCode string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'策略代码'"`

@@ -20,6 +20,14 @@ type ITenantService interface {
 	GetTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error)
 	// CheckUserTenantAccess 校验用户是否有权进入该租户空间
 	CheckUserTenantAccess(ctx context.Context, userId, tenantId int64) (bool, error)
+	// List 分页查看所有租户列表
+	List(ctx context.Context, offset, limit int64) ([]domain.Tenant, int64, error)
+	// Update 更新租户基本信息
+	Update(ctx context.Context, t domain.Tenant) error
+	// Delete 删除租户 (通常为逻辑删除)
+	Delete(ctx context.Context, id int64) error
+	// GetByID 获取租户详情
+	GetByID(ctx context.Context, id int64) (domain.Tenant, error)
 }
 
 type tenantService struct {
@@ -87,3 +95,25 @@ func (s *tenantService) CheckUserTenantAccess(ctx context.Context, userId, tenan
 	}
 	return true, nil
 }
+
+func (s *tenantService) List(ctx context.Context, offset, limit int64) ([]domain.Tenant, int64, error) {
+	total, err := s.repo.Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	ts, err := s.repo.FindAll(ctx, offset, limit)
+	return ts, total, err
+}
+
+func (s *tenantService) Update(ctx context.Context, t domain.Tenant) error {
+	return s.repo.Update(ctx, t)
+}
+
+func (s *tenantService) Delete(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
+}
+
+func (s *tenantService) GetByID(ctx context.Context, id int64) (domain.Tenant, error) {
+	return s.repo.FindById(ctx, id)
+}
+

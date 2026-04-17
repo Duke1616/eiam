@@ -30,16 +30,21 @@ type IUserService interface {
 	CountByKeyword(ctx context.Context, keyword string) (int64, error)
 	Update(ctx context.Context, u domain.User) (int64, error)
 	UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error
+	// Delete 删除用户
+	Delete(ctx context.Context, id int64) error
+
+	// CheckUsersExist 批量检查用户名是否存在
+	CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error)
 }
 
 type userService struct {
 	repo      repository.IUserRepository
 	tenantSvc tenant.ITenantService
-	providers map[string]IdentityProvider
+	providers map[string]domain.IdentityProvider
 }
 
-func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService, ps []IdentityProvider) IUserService {
-	registry := make(map[string]IdentityProvider, len(ps))
+func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService, ps []domain.IdentityProvider) IUserService {
+	registry := make(map[string]domain.IdentityProvider, len(ps))
 	for _, p := range ps {
 		registry[p.Name()] = p
 	}
@@ -254,4 +259,12 @@ func (s *userService) CountByKeyword(ctx context.Context, keyword string) (int64
 
 func (s *userService) Update(ctx context.Context, u domain.User) (int64, error) {
 	return s.repo.Update(ctx, u)
+}
+
+func (s *userService) Delete(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
+}
+
+func (s *userService) CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error) {
+	return s.repo.CheckUsersExist(ctx, usernames)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
@@ -40,12 +41,25 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Handle(ginx.BS[CreateTenantReq](h.CreateTenant)),
 	)
 	// 获取我所属的所有租户列表 (用于下拉框展示)
-	g.GET("/list", h.Capability("查询我的租户列表", "view_mine").
+	g.GET("/list/mine", h.Capability("查询我的租户列表", "view_mine").
 		Handle(ginx.W(h.ListMyTenants)),
 	)
 	// 【核心：租户上下文切换】
 	g.POST("/switch", h.Capability("切换租户空间", "switch").
 		Handle(ginx.B[SwitchTenantReq](h.SwitchTenant)),
+	)
+	// 租户管理 (全量列表/更新/删除/详情)
+	g.POST("/list", h.Capability("全量租户列表", "view").
+		Handle(ginx.B[ListTenantReq](h.ListTenants)),
+	)
+	g.POST("/update", h.Capability("修改租户信息", "edit").
+		Handle(ginx.B[UpdateTenantReq](h.UpdateTenant)),
+	)
+	g.DELETE("/delete/:id", h.Capability("删除租户空间", "delete").
+		Handle(ginx.W(h.DeleteTenant)),
+	)
+	g.GET("/detail/:id", h.Capability("查看租户详情", "get").
+		Handle(ginx.W(h.Detail)),
 	)
 }
 
@@ -108,6 +122,7 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantReq) (ginx.Res
 	// 2. 【核心录入点】：重新构建 Session 并注入新的租户 ID
 	jwtData := map[string]string{
 		"tenant_id": strconv.FormatInt(req.TenantID, 10),
+		"username":  sess.Claims().Data["username"],
 	}
 
 	// 重新 Build Session (Renew Token with new identity)
@@ -122,5 +137,64 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantReq) (ginx.Res
 
 	return ginx.Result{
 		Msg: "成功切换至新租户空间",
+	}, nil
+}
+
+func (h *Handler) ListTenants(ctx *ginx.Context, req ListTenantReq) (ginx.Result, error) {
+	tenants, total, err := h.svc.List(ctx.Context, req.Offset, req.Limit)
+	if err != nil {
+		return ErrTenantList, err
+	}
+
+	return ginx.Result{
+		Data: ListTenantRes{
+			Total:   total,
+			Tenants: ToTenantVOs(tenants),
+		},
+	}, nil
+}
+
+func (h *Handler) UpdateTenant(ctx *ginx.Context, req UpdateTenantReq) (ginx.Result, error) {
+	err := h.svc.Update(ctx.Context, domain.Tenant{
+		ID:     req.ID,
+		Name:   req.Name,
+		Code:   req.Code,
+		Domain: req.Domain,
+		Status: req.Status,
+	})
+	if err != nil {
+		return ErrTenantUpdate, err
+	}
+
+	return ginx.Result{Msg: "更新租户空间信息成功"}, nil
+}
+
+func (h *Handler) DeleteTenant(ctx *ginx.Context) (ginx.Result, error) {
+	id, err := ctx.Param("id").AsInt64()
+	if err != nil {
+		return ErrTenantDelete, err
+	}
+
+	err = h.svc.Delete(ctx.Context, id)
+	if err != nil {
+		return ErrTenantDelete, err
+	}
+
+	return ginx.Result{Msg: "删除租户空间成功"}, nil
+}
+
+func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
+	id, err := ctx.Param("id").AsInt64()
+	if err != nil {
+		return ErrTenantGet, err
+	}
+
+	t, err := h.svc.GetByID(ctx.Context, id)
+	if err != nil {
+		return ErrTenantGet, err
+	}
+
+	return ginx.Result{
+		Data: ToTenantVO(t),
 	}, nil
 }

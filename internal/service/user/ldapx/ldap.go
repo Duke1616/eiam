@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/internal/service/user"
 	"github.com/go-ldap/ldap/v3"
 )
 
@@ -39,8 +38,9 @@ type Connection interface {
 }
 
 type LdapProvider interface {
-	user.IdentityProvider
+	domain.IdentityProvider
 	CheckConnect() error
+	SearchUserWithPaging(ctx context.Context) ([]domain.User, error)
 }
 
 type ldapProvider struct {
@@ -53,6 +53,39 @@ func NewLdap(conf Config) LdapProvider {
 
 func (p *ldapProvider) Name() string {
 	return "ldap"
+}
+
+// SearchUserWithPaging 全量分页搜索用户
+func (p *ldapProvider) SearchUserWithPaging(ctx context.Context) ([]domain.User, error) {
+	var users []domain.User
+	err := p.execute(p.conf.BindDN, p.conf.BindPassword, func(conn Connection) error {
+		filter := p.conf.SyncUserFilter
+		if filter == "" {
+			filter = p.conf.UserFilter
+		}
+		// 容错处理：如果没有配置 filter，默认搜索所有人员
+		if filter == "" {
+			filter = "(objectClass=*)"
+		}
+
+		searchRequest := ldap.NewSearchRequest(
+			p.conf.BaseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
+			0, 0, false, filter, p.getRequiredAttributes(), nil,
+		)
+
+		// 默认每页 500 条
+		sr, innerErr := conn.SearchWithPaging(searchRequest, 500)
+		if innerErr != nil {
+			return fmt.Errorf("LDAP 分页搜索失败: %w", innerErr)
+		}
+
+		for _, entry := range sr.Entries {
+			users = append(users, p.buildDraftUser(entry))
+		}
+		return nil
+	})
+
+	return users, err
 }
 
 // Authenticate 适配：支持契约化侧写构造

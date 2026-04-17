@@ -3,7 +3,7 @@ package ioc
 import (
 	"fmt"
 
-	"github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/service/user/ldapx"
 	"github.com/spf13/viper"
 )
@@ -18,8 +18,8 @@ func InitLdapConfig() ldapx.Config {
 
 // InitIdentityProviders 显式返回系统支持的所有联邦身份源列表
 // 这次我们一次性解决 Wire 注入 []IdentityProvider 的问题
-func InitIdentityProviders(lconf ldapx.Config) []user.IdentityProvider {
-	return []user.IdentityProvider{
+func InitIdentityProviders(lconf ldapx.Config) []domain.IdentityProvider {
+	return []domain.IdentityProvider{
 		ldapx.NewLdap(lconf),
 		// 未来您可以在这里直接追加: feishu.NewProvider(fconf),
 	}

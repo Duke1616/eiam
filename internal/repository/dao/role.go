@@ -16,7 +16,6 @@ type Role struct {
 	Name           string                           `gorm:"type:varchar(255);not null;comment:'角色名称'"`
 	Code           string                           `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_tenant_role_code,priority:2;comment:'角色标识码'"`
 	Desc           string                           `gorm:"type:varchar(512);not null;default:'';comment:'角色描述信息'"`
-	Status         bool                             `gorm:"type:tinyint;not null;default:1;comment:'状态: 1-启用, 0-禁用'"`
 	Type           uint8                            `gorm:"type:tinyint;not null;default:2;comment:'角色类型: 1-系统预设, 2-自定义'"`
 	InlinePolicies sqlx.JSONColumn[[]domain.Policy] `gorm:"type:json;column:inline_policies;comment:'内联权限策略列表'"`
 	Ctime          int64                            `gorm:"comment:'创建时间'"`
@@ -43,6 +42,8 @@ type IRoleDAO interface {
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]Role, error)
 	// UpdateInlinePolicies 更新角色关联的内联权限策略列表
 	UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error
+	// Delete 删除角色
+	Delete(ctx context.Context, id int64) error
 }
 
 type RoleDAO struct {
@@ -65,10 +66,9 @@ func (d *RoleDAO) Insert(ctx context.Context, r Role) (int64, error) {
 func (d *RoleDAO) Update(ctx context.Context, r Role) (int64, error) {
 	res := d.db.WithContext(ctx).Model(&Role{}).
 		Where("id = ?", r.Id).Updates(map[string]interface{}{
-		"name":   r.Name,
-		"desc":   r.Desc,
-		"status": r.Status,
-		"utime":  time.Now().UnixMilli(),
+		"name":  r.Name,
+		"desc":  r.Desc,
+		"utime": time.Now().UnixMilli(),
 	})
 	return res.RowsAffected, res.Error
 }
@@ -134,4 +134,8 @@ func (d *RoleDAO) UpdateInlinePolicies(ctx context.Context, code string, policie
 		},
 		"utime": time.Now().UnixMilli(),
 	}).Error
+}
+
+func (d *RoleDAO) Delete(ctx context.Context, id int64) error {
+	return d.db.WithContext(ctx).Delete(&Role{}, id).Error
 }

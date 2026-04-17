@@ -14,6 +14,9 @@ var (
 	ErrTenantCreate = ginx.Result{Code: 4020901, Msg: "创建租户空间失败"}
 	ErrTenantList   = ginx.Result{Code: 4020902, Msg: "批量检索租户空间失败"}
 	ErrTenantSwitch = ginx.Result{Code: 4020903, Msg: "该目标租户上下文不可用"}
+	ErrTenantUpdate = ginx.Result{Code: 4020904, Msg: "更新租户空间信息失败"}
+	ErrTenantDelete = ginx.Result{Code: 4020905, Msg: "删除租户空间失败"}
+	ErrTenantGet    = ginx.Result{Code: 4020906, Msg: "获取租户空间详情失败"}
 
 	ErrUnauthenticated = user.ErrUnauthenticated
 )

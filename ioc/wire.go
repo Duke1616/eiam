@@ -4,6 +4,7 @@ package ioc
 
 import (
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
@@ -17,6 +18,7 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
+	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
 )
 
@@ -29,6 +31,7 @@ var BaseSet = wire.NewSet(
 	InitOPA,
 
 	// LDAP 基础设施
+	InitRedisSearch,
 	InitLdapConfig,
 	InitIdentityProviders,
 
@@ -36,9 +39,17 @@ var BaseSet = wire.NewSet(
 	InitServiceConfig,
 )
 
+func InitLdapUserCache(conn *redisearch.Client) cache.RedisearchLdapUserCache {
+	return cache.NewRedisearchLdapUserCache(conn)
+}
+
 func InitApp() (*App, error) {
 	wire.Build(
 		BaseSet,
+
+		// Cache
+		InitLdapUserCache,
+
 		// DAOs
 		dao.NewUserDAO,
 		dao.NewTenantDAO,
@@ -59,6 +70,7 @@ func InitApp() (*App, error) {
 
 		// Services
 		usersvc.NewUserService,
+		usersvc.NewLdapService,
 		tenantsvc.NewTenantService,
 		role.NewRoleService,
 		resource.NewResourceService,

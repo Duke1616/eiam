@@ -13,7 +13,10 @@ type ITenantRepository interface {
 	Create(ctx context.Context, t domain.Tenant) (int64, error)
 	FindById(ctx context.Context, id int64) (domain.Tenant, error)
 	FindByCode(ctx context.Context, code string) (domain.Tenant, error)
-	FindAll(ctx context.Context) ([]domain.Tenant, error)
+	FindAll(ctx context.Context, offset, limit int64) ([]domain.Tenant, error)
+	Count(ctx context.Context) (int64, error)
+	Update(ctx context.Context, t domain.Tenant) error
+	Delete(ctx context.Context, id int64) error
 
 	// --- Membership 纯净契约管理 ---
 
@@ -75,8 +78,8 @@ func (r *TenantRepository) FindByCode(ctx context.Context, code string) (domain.
 	return r.toDomain(t), nil
 }
 
-func (r *TenantRepository) FindAll(ctx context.Context) ([]domain.Tenant, error) {
-	ts, err := r.dao.FindAll(ctx)
+func (r *TenantRepository) FindAll(ctx context.Context, offset, limit int64) ([]domain.Tenant, error) {
+	ts, err := r.dao.FindAll(ctx, offset, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +89,25 @@ func (r *TenantRepository) FindAll(ctx context.Context) ([]domain.Tenant, error)
 	}
 	return res, nil
 }
+
+func (r *TenantRepository) Count(ctx context.Context) (int64, error) {
+	return r.dao.Count(ctx)
+}
+
+func (r *TenantRepository) Update(ctx context.Context, t domain.Tenant) error {
+	return r.dao.Update(ctx, dao.Tenant{
+		ID:     t.ID,
+		Name:   t.Name,
+		Code:   t.Code,
+		Domain: t.Domain,
+		Status: t.Status,
+	})
+}
+
+func (r *TenantRepository) Delete(ctx context.Context, id int64) error {
+	return r.dao.Delete(ctx, id)
+}
+
 
 func (r *TenantRepository) FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {
 	// 从 membership 表查出该用户入驻的所有租户 ID
