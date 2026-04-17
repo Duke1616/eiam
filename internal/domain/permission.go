@@ -104,7 +104,7 @@ type GroupNode struct {
 
 // ResourceBinding 物理资源绑定关系 (抽取租户 ID 为独立字段)
 type ResourceBinding struct {
-	TenantId    int64  `json:"tenant_id"`    // 租户标识，全局资产固定为 0
+	TenantId    int64  `json:"tenant_id"`    // 租户标识，全局资产固定为 1
 	ResourceURN string `json:"resource_urn"` // 统一资产标识，如 eiam:iam:menu:user
 }
 

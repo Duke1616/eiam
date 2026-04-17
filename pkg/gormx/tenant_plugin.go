@@ -93,9 +93,13 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	tid := ctxutil.GetTenantID(db.Statement.Context)
 	if tid != 0 {
 		if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
-			// 核心优化：利用插件内部缓存探测结果
+			// 利用插件内部缓存探测结果
 			if p.isShared(db.Statement.Schema) {
-				db.Where(fmt.Sprintf("%s IN (?, 0)", tenantColumn), tid)
+				if tid == 1 {
+					db.Where(fmt.Sprintf("%s = ?", tenantColumn), 1)
+				} else {
+					db.Where(fmt.Sprintf("%s IN (?, 1)", tenantColumn), tid)
+				}
 			} else {
 				db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid)
 			}

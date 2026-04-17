@@ -69,7 +69,7 @@ func (s *PermissionSuite) clearAll() {
 	s.db.Exec("DELETE FROM `membership`")
 	s.db.Exec("DELETE FROM `role`")
 	s.db.Exec("DELETE FROM `policy`")
-	s.db.Exec("DELETE FROM `role_policy_attachment`")
+	s.db.Exec("DELETE FROM `policy_assignment`")
 	s.db.Exec("DELETE FROM `api`")
 	s.db.Exec("DELETE FROM `permission`")
 	s.db.Exec("DELETE FROM `permission_binding`")
@@ -78,8 +78,11 @@ func (s *PermissionSuite) clearAll() {
 
 // ensureAdminRole 确保环境中存在基础的 admin 角色记录，以支持 CreateTenant 等业务链条
 func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
+	// 强制将系统角色的创建域设置为 1，确保全系统可见
+	sysCtx := ctxutil.WithTenantID(ctx, 1)
+
 	// 1. 创建全局超级管理员 (赋予全量 Allow)
-	_, _ = s.roleSvc.Create(ctx, domain.Role{
+	_, _ = s.roleSvc.Create(sysCtx, domain.Role{
 		Code: "super_admin",
 		Name: "全量管理员",
 		InlinePolicies: []domain.Policy{
@@ -90,13 +93,13 @@ func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
 		},
 	})
 	// 2. 创建租户管理员 (通过继承获得能力)
-	_, _ = s.roleSvc.Create(ctx, domain.Role{
+	_, _ = s.roleSvc.Create(sysCtx, domain.Role{
 		Code: "admin",
 		Name: "租户管理员",
 	})
 
 	// 3. 建立 Casbin 层面的继承关系 (admin 继承 super_admin)
-	_, _ = s.permSvc.AssignRoleInheritance(ctx, "admin", "super_admin")
+	_, _ = s.permSvc.AssignRoleInheritance(sysCtx, "admin", "super_admin")
 }
 
 func (s *PermissionSuite) TestCheckAPI() {

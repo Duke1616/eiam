@@ -136,6 +136,7 @@ func (r *PermissionRepository) BatchBindResources(ctx context.Context, bindings 
 			daoBindings = append(daoBindings, dao.PermissionBinding{
 				PermId:      id,
 				PermCode:    code,
+				TenantId:    1, // 全局资产统一归属到租户 1
 				ResourceURN: urn,
 			})
 		}
@@ -199,6 +200,7 @@ func (r *PermissionRepository) SyncResourceBindings(ctx context.Context, allURNs
 			daoBindings = append(daoBindings, dao.PermissionBinding{
 				PermId:      id,
 				PermCode:    code,
+				TenantId:    1, // 全局资产统一归属到租户 1
 				ResourceURN: urn,
 			})
 		}

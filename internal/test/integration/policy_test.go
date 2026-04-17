@@ -61,7 +61,7 @@ func (s *PolicyTestSuite) clearAll() {
 	s.db.Exec("DELETE FROM `tenant`")
 	s.db.Exec("DELETE FROM `role`")
 	s.db.Exec("DELETE FROM `policy`")
-	s.db.Exec("DELETE FROM `role_policy_attachment`")
+	s.db.Exec("DELETE FROM `policy_assignment`")
 	s.db.Exec("DELETE FROM `casbin_rule`")
 }
 

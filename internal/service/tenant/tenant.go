@@ -6,6 +6,8 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/service/role"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/casbin/casbin/v2"
 )
 
 // ITenantService 租户业务接口
@@ -31,14 +33,16 @@ type ITenantService interface {
 }
 
 type tenantService struct {
-	repo    repository.ITenantRepository
-	roleSvc role.IRoleService // 注入角色服务：用于初始化系统固有角色
+	repo     repository.ITenantRepository
+	roleSvc  role.IRoleService      // 注入角色服务：用于初始化系统固有角色
+	enforcer *casbin.SyncedEnforcer // 直接操作引擎，打破循环依赖
 }
 
-func NewTenantService(r repository.ITenantRepository, roleSvc role.IRoleService) ITenantService {
+func NewTenantService(r repository.ITenantRepository, roleSvc role.IRoleService, enforcer *casbin.SyncedEnforcer) ITenantService {
 	return &tenantService{
-		repo:    r,
-		roleSvc: roleSvc,
+		repo:     r,
+		roleSvc:  roleSvc,
+		enforcer: enforcer,
 	}
 }
 
@@ -54,17 +58,24 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code, username s
 		return 0, err
 	}
 
-	// 3. 将创建者加入该租户 (建立纯净契约关系)
+	// 2. 将创建者加入该租户
 	err = s.repo.AddMembership(ctx, userID, tenantID)
 	if err != nil {
 		return 0, err
 	}
 
+	// 3. 自动授予 admin 角色 (直接通过 Enforcer 操作)
+	_, err = s.enforcer.AddGroupingPolicy(
+		domain.UserSubject(username),
+		domain.RoleSubject("admin"),
+		ctxutil.ContextID(tenantID).String(),
+	)
+
 	return tenantID, err
 }
 
 func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, username string) (int64, error) {
-	// 初始化个人空间
+	// 1. 初始化个人空间
 	tenantID, err := s.repo.Create(ctx, domain.Tenant{
 		Name:   username + "的个人空间",
 		Code:   username + "-personal",
@@ -74,11 +85,18 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 		return 0, err
 	}
 
-	// 建立契约
+	// 2. 建立契约
 	err = s.repo.AddMembership(ctx, userId, tenantID)
 	if err != nil {
 		return 0, err
 	}
+
+	// 3. 自动授予 admin 权限
+	_, err = s.enforcer.AddGroupingPolicy(
+		domain.UserSubject(username),
+		domain.RoleSubject("admin"),
+		ctxutil.ContextID(tenantID).String(),
+	)
 
 	return tenantID, err
 }
@@ -116,4 +134,3 @@ func (s *tenantService) Delete(ctx context.Context, id int64) error {
 func (s *tenantService) GetByID(ctx context.Context, id int64) (domain.Tenant, error) {
 	return s.repo.FindById(ctx, id)
 }
-

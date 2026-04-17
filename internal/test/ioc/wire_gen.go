@@ -31,7 +31,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	iPolicyRepository := repository.NewPolicyRepository(iPolicyDAO)
 	iPolicyService := policy.NewPolicyService(iPolicyRepository)
 	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService)
-	iTenantService := tenant.NewTenantService(iTenantRepository, iRoleService)
+	iTenantService := tenant.NewTenantService(iTenantRepository, iRoleService, syncedEnforcer)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)
 	iServiceDAO := dao.NewServiceDAO(db)
