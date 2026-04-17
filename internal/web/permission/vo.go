@@ -101,8 +101,8 @@ type Authorization struct {
 type SearchSubjectsReq struct {
 	Keyword string `json:"keyword"`
 	SubType string `json:"sub_type"`
-	Offset  int    `json:"offset"`
-	Limit   int    `json:"limit"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
 }
 
 type SearchSubjectsResp struct {

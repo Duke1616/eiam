@@ -58,7 +58,7 @@ func NewPermissionService(
 	}
 }
 
-func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, subType string, offset, limit int) ([]domain.Subject, int64, error) {
+func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error) {
 	// 委托给注册中心处理路由与聚合
 	p := s.registry.Route(subType)
 
@@ -473,8 +473,9 @@ func (s *permissionService) listRoleAuthorizations(ctx context.Context, query do
 
 	v1Prefix = domain.PrefixRole
 
+	tid := ctxutil.GetTenantID(ctx).Int64()
 	// 分页拉取原子规则记录
-	rules, total, err := s.permRepo.ListCasbinRules(ctx, query.Offset, query.Limit, v0Prefix, v1Prefix, query.Keyword, nil)
+	rules, total, err := s.permRepo.ListCasbinRules(ctx, tid, query.Offset, query.Limit, v0Prefix, v1Prefix, query.Keyword)
 	if err != nil {
 		return nil, 0, err
 	}

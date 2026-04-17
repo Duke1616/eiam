@@ -39,11 +39,17 @@ type IUserDAO interface {
 
 	// List 分页查询基础用户列表
 	List(ctx context.Context, offset, limit int64) ([]User, error)
+	// ListByTenantMembership 分页查询当前租户成员用户列表
+	ListByTenantMembership(ctx context.Context, offset, limit int64) ([]User, error)
 	// Count 统计用户总数
 	Count(ctx context.Context) (int64, error)
+	// CountTenantMembers 统计当前租户成员总数
+	CountTenantMembers(ctx context.Context) (int64, error)
 	// Search 模糊搜索用户 (支持 username 或 nickname 维度)
+	// 在多租户系统中，此查询只返回当前租户的成员
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error)
-	// CountByKeyword 统计模糊搜索结果总数
+	// CountByKeyword 统计搜索结果总数
+	// 在多租户系统中，此统计只计算当前租户成员范围
 	CountByKeyword(ctx context.Context, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
@@ -222,7 +228,15 @@ func (dao *userDAO) CountByKeyword(ctx context.Context, keyword string) (int64, 
 		db = db.Where("username LIKE ?", kw)
 	}
 
-	err := db.Count(&total).Error
+	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
+	err := db.Where("id IN (?)", subQuery).Count(&total).Error
+	return total, err
+}
+
+func (dao *userDAO) CountTenantMembers(ctx context.Context) (int64, error) {
+	var total int64
+	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
+	err := dao.db.WithContext(ctx).Model(&User{}).Where("id IN (?)", subQuery).Count(&total).Error
 	return total, err
 }
 
@@ -233,8 +247,15 @@ func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit in
 		kw := "%" + keyword + "%"
 		db = db.Where("username LIKE ?", kw)
 	}
+	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
+	err := db.Where("id IN (?)", subQuery).Offset(int(offset)).Limit(int(limit)).Find(&us).Error
+	return us, err
+}
 
-	err := db.Offset(int(offset)).Limit(int(limit)).Find(&us).Error
+func (dao *userDAO) ListByTenantMembership(ctx context.Context, offset, limit int64) ([]User, error) {
+	var us []User
+	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
+	err := dao.db.WithContext(ctx).Model(&User{}).Where("id IN (?)", subQuery).Offset(int(offset)).Limit(int(limit)).Find(&us).Error
 	return us, err
 }
 

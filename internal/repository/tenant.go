@@ -108,7 +108,6 @@ func (r *TenantRepository) Delete(ctx context.Context, id int64) error {
 	return r.dao.Delete(ctx, id)
 }
 
-
 func (r *TenantRepository) FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {
 	// 从 membership 表查出该用户入驻的所有租户 ID
 	ids, err := r.dao.FindTenantIDsByUserId(ctx, userId)

@@ -65,7 +65,7 @@ type IPermissionDAO interface {
 	// SyncResourceBindings 同步物理资产与功能码的映射关系 (基于 URN 的 Full-Sync)
 	SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error
 	// ListCasbinRules 查询 Casbin 关系规则 (带分页)
-	ListCasbinRules(ctx context.Context, offset, limit int64, v0Prefix, v1Prefix, keyword string, v1s []string) ([]CasbinRule, int64, error)
+	ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]CasbinRule, int64, error)
 }
 
 type PermissionDAO struct {
@@ -169,7 +169,7 @@ func (d *PermissionDAO) SyncResourceBindings(ctx context.Context, resURNs []stri
 	})
 }
 
-func (d *PermissionDAO) ListCasbinRules(ctx context.Context, offset, limit int64, v0Prefix, v1Prefix, keyword string, v1s []string) ([]CasbinRule, int64, error) {
+func (d *PermissionDAO) ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]CasbinRule, int64, error) {
 	var (
 		res   []CasbinRule
 		total int64
@@ -177,7 +177,7 @@ func (d *PermissionDAO) ListCasbinRules(ctx context.Context, offset, limit int64
 
 	// 只查询 g 类型的记录（即主体与角色/策略的继承关系）
 	db := d.db.WithContext(ctx).Model(&CasbinRule{}).
-		Where("ptype = 'g'")
+		Where("ptype = 'g' AND v2 = ?", tid)
 
 	// 主体类型前缀过滤 (如 user:, role:)
 	if v0Prefix != "" {
@@ -193,11 +193,6 @@ func (d *PermissionDAO) ListCasbinRules(ctx context.Context, offset, limit int64
 	if keyword != "" {
 		kw := "%" + keyword + "%"
 		db = db.Where("(v0 LIKE ? OR v1 LIKE ?)", kw, kw)
-	}
-
-	// 目标特定的集合过滤 (如 [policy:p1, policy:p2])
-	if len(v1s) > 0 {
-		db = db.Where("v1 IN ?", v1s)
 	}
 
 	if err := db.Count(&total).Error; err != nil {

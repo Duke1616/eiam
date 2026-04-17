@@ -28,8 +28,8 @@ func InitSearchSubjectProviders(
 func NewRoleAdapter(roleSvc role.IRoleService) searcher.SubjectProvider {
 	return searcher.NewSubjectAdapter(
 		domain.SubjectTypeRole,
-		func(ctx context.Context, keyword string, offset, limit int) ([]domain.Role, error) {
-			return roleSvc.Search(ctx, keyword, int64(offset), int64(limit))
+		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error) {
+			return roleSvc.Search(ctx, keyword, offset, limit)
 		},
 		func(ctx context.Context, keyword string) (int64, error) {
 			return roleSvc.CountByKeyword(ctx, keyword)
@@ -43,8 +43,8 @@ func NewRoleAdapter(roleSvc role.IRoleService) searcher.SubjectProvider {
 func NewUserAdapter(userSvc user.IUserService) searcher.SubjectProvider {
 	return searcher.NewSubjectAdapter(
 		domain.SubjectTypeUser,
-		func(ctx context.Context, keyword string, offset, limit int) ([]domain.User, error) {
-			return userSvc.Search(ctx, keyword, int64(offset), int64(limit))
+		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
+			return userSvc.Search(ctx, keyword, offset, limit)
 		},
 		func(ctx context.Context, keyword string) (int64, error) {
 			return userSvc.CountByKeyword(ctx, keyword)

@@ -30,11 +30,15 @@ type IUserRepository interface {
 
 	// List 分页获取用户列表
 	List(ctx context.Context, offset, limit int64) ([]domain.User, error)
+	// ListByTenantMembership 分页获取当前租户成员用户列表
+	ListByTenantMembership(ctx context.Context, offset, limit int64) ([]domain.User, error)
 	// Count 获取用户总数
 	Count(ctx context.Context) (int64, error)
-	// Search 根据关键字模糊搜索用户 (支持用户名、昵称)
+	// CountTenantMembers 统计当前租户成员总数
+	CountTenantMembers(ctx context.Context) (int64, error)
+	// Search 根据关键字模糊搜索当前租户成员用户
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
-	// CountByKeyword 根据关键字统计搜索结果总数
+	// CountByKeyword 根据关键字统计当前租户成员搜索结果总数
 	CountByKeyword(ctx context.Context, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
@@ -160,8 +164,25 @@ func (repo *userRepository) List(ctx context.Context, offset, limit int64) ([]do
 	return res, nil
 }
 
+func (repo *userRepository) ListByTenantMembership(ctx context.Context, offset, limit int64) ([]domain.User, error) {
+	us, err := repo.dao.ListByTenantMembership(ctx, offset, limit)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]domain.User, 0, len(us))
+	for _, u := range us {
+		d, _ := repo.fullHydration(ctx, u)
+		res = append(res, d)
+	}
+	return res, nil
+}
+
 func (repo *userRepository) Count(ctx context.Context) (int64, error) {
 	return repo.dao.Count(ctx)
+}
+
+func (repo *userRepository) CountTenantMembers(ctx context.Context) (int64, error) {
+	return repo.dao.CountTenantMembers(ctx)
 }
 
 func (repo *userRepository) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
@@ -169,10 +190,6 @@ func (repo *userRepository) CountByKeyword(ctx context.Context, keyword string) 
 }
 
 func (repo *userRepository) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
-	if keyword == "" {
-		return repo.List(ctx, offset, limit)
-	}
-
 	users, err := repo.dao.Search(ctx, keyword, offset, limit)
 	if err != nil {
 		return nil, err

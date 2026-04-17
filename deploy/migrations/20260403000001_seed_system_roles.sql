@@ -6,11 +6,11 @@ INSERT INTO `role` (`tenant_id`, `code`, `name`, `type`, `desc`, `inline_policie
 VALUES
     (0, 'super_admin', '系统全局超级管理员', 1,
      '拥有系统所有权限，不受任何限制',
-     '[{"name":"ROOT全量授权","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
+     '[{"name":"ROOT全量授权","code":"FullAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
      (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000)),
     (0, 'admin', '租户管理员', 1,
      '租户内最高权限，但受限于全局敏感操作',
-     '[{"name":"敏感权限熔断策略","type":1,"statement":[{"effect":"Deny","action":["iam:tenant:*","iam:permission:global:*"],"resource":["*"]}]}]',
+     '[{"name":"敏感权限熔断策略","code":"AdminStandard","type":1,"statement":[{"effect":"Deny","action":["iam:tenant:*","iam:permission:global:*"],"resource":["*"]}]}]',
      (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
     ON DUPLICATE KEY UPDATE
                          `name`            = VALUES(`name`),

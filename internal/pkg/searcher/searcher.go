@@ -22,7 +22,7 @@ type SubjectProvider interface {
 	// @param keyword 搜索关键字，通常匹配名称或系统标识
 	// @param offset 偏移起始位置
 	// @param limit 返回数量上限
-	SearchSubjects(ctx context.Context, keyword string, offset, limit int) ([]Subject, error)
+	SearchSubjects(ctx context.Context, keyword string, offset, limit int64) ([]Subject, error)
 
 	// CountSubjects 获取符合关键词搜索条件的主体总数
 	// 用于支持前端分页计算以及聚合搜索时的偏移区间定位
@@ -36,14 +36,14 @@ type SubjectProvider interface {
 // SubjectAdapter 适配器
 type SubjectAdapter[T any] struct {
 	supportType string
-	searchFn    func(ctx context.Context, keyword string, offset, limit int) ([]T, error)
+	searchFn    func(ctx context.Context, keyword string, offset, limit int64) ([]T, error)
 	countFn     func(ctx context.Context, keyword string) (int64, error)
 	mapper      func(T) Subject
 }
 
 func NewSubjectAdapter[T any](
 	supportType string,
-	search func(ctx context.Context, keyword string, offset, limit int) ([]T, error),
+	search func(ctx context.Context, keyword string, offset, limit int64) ([]T, error),
 	count func(ctx context.Context, keyword string) (int64, error),
 	mapper func(T) Subject,
 ) *SubjectAdapter[T] {
@@ -55,7 +55,7 @@ func NewSubjectAdapter[T any](
 	}
 }
 
-func (a *SubjectAdapter[T]) SearchSubjects(ctx context.Context, keyword string, offset, limit int) ([]Subject, error) {
+func (a *SubjectAdapter[T]) SearchSubjects(ctx context.Context, keyword string, offset, limit int64) ([]Subject, error) {
 	ts, err := a.searchFn(ctx, keyword, offset, limit)
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (r *subjectRegistry) Route(subType string) SubjectProvider {
 	return r
 }
 
-func (r *subjectRegistry) SearchSubjects(ctx context.Context, keyword string, offset, limit int) ([]Subject, error) {
+func (r *subjectRegistry) SearchSubjects(ctx context.Context, keyword string, offset, limit int64) ([]Subject, error) {
 	r.mu.RLock()
 	ps := r.providers
 	r.mu.RUnlock()
@@ -144,8 +144,8 @@ func (r *subjectRegistry) SearchSubjects(ctx context.Context, keyword string, of
 	currentOffset := offset
 	for i, p := range ps {
 		pTotal := totals[i]
-		if len(res) < limit && currentOffset < int(pTotal) {
-			pLimit := limit - len(res)
+		if int64(len(res)) < limit && currentOffset < pTotal {
+			pLimit := limit - int64(len(res))
 			pSubjects, err := p.SearchSubjects(ctx, keyword, currentOffset, pLimit)
 			if err != nil {
 				return nil, err
@@ -153,7 +153,7 @@ func (r *subjectRegistry) SearchSubjects(ctx context.Context, keyword string, of
 			res = append(res, pSubjects...)
 			currentOffset = 0
 		} else {
-			currentOffset = max(0, currentOffset-int(pTotal))
+			currentOffset = max(0, currentOffset-pTotal)
 		}
 	}
 	return res, nil

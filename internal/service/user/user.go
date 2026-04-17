@@ -237,6 +237,16 @@ func (s *userService) GetByUsername(ctx context.Context, username string) (domai
 }
 
 func (s *userService) List(ctx context.Context, offset, limit int64) ([]domain.User, int64, error) {
+	if ctxutil.GetTenantID(ctx) != 0 {
+		total, err := s.repo.CountTenantMembers(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		us, err := s.repo.ListByTenantMembership(ctx, offset, limit)
+		return us, total, err
+	}
+
 	total, err := s.repo.Count(ctx)
 	if err != nil {
 		return nil, 0, err
