@@ -78,8 +78,8 @@ func (s *PermissionSuite) clearAll() {
 
 // ensureAdminRole 确保环境中存在基础的 admin 角色记录，以支持 CreateTenant 等业务链条
 func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
-	// 强制将系统角色的创建域设置为 1，确保全系统可见
-	sysCtx := ctxutil.WithTenantID(ctx, 1)
+	// 强制将系统角色的创建域设置为 SystemTenantID，确保全系统可见
+	sysCtx := ctxutil.WithTenantID(ctx, ctxutil.SystemTenantID)
 
 	// 1. 创建全局超级管理员 (赋予全量 Allow)
 	_, _ = s.roleSvc.Create(sysCtx, domain.Role{

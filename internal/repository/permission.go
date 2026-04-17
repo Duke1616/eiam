@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/ecodeclub/ekit/slice"
 )
 
@@ -136,7 +137,7 @@ func (r *PermissionRepository) BatchBindResources(ctx context.Context, bindings 
 			daoBindings = append(daoBindings, dao.PermissionBinding{
 				PermId:      id,
 				PermCode:    code,
-				TenantId:    1, // 全局资产统一归属到租户 1
+				TenantId:    ctxutil.SystemTenantID, // 全局资产统一归属到租户 1
 				ResourceURN: urn,
 			})
 		}

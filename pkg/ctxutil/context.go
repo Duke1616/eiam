@@ -9,6 +9,11 @@ import (
 const (
 	TenantIDKey = "tenant_id"
 	UserIDKey   = "user_id"
+
+	// SystemTenantID 系统根租户 ID (母体租户)
+	SystemTenantID int64 = 1
+	// SystemTenantIDStr 字符串格式，用于 Casbin 域等场景
+	SystemTenantIDStr = "1"
 )
 
 // ContextID 对 int64 的包装，提供便捷的转换方法

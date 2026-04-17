@@ -95,13 +95,13 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 		if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
 			// 利用插件内部缓存探测结果
 			if p.isShared(db.Statement.Schema) {
-				if tid == 1 {
-					db.Where(fmt.Sprintf("%s = ?", tenantColumn), 1)
+				if tid.Int64() == ctxutil.SystemTenantID {
+					db.Where(fmt.Sprintf("%s = ?", tenantColumn), ctxutil.SystemTenantID)
 				} else {
-					db.Where(fmt.Sprintf("%s IN (?, 1)", tenantColumn), tid)
+					db.Where(fmt.Sprintf("%s IN (?, ?)", tenantColumn), tid.Int64(), ctxutil.SystemTenantID)
 				}
 			} else {
-				db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid)
+				db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid.Int64())
 			}
 		}
 	}

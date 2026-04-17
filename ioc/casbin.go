@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	defaultrolemanager "github.com/casbin/casbin/v2/rbac/default-role-manager"
@@ -84,10 +85,10 @@ func InitCasbin(db *gorm.DB) *casbin.SyncedEnforcer {
 	enforcer.StartAutoLoadPolicy(time.Minute)
 
 	// 核心配置 —— 全局域穿透逻辑
-	// 当我们在某个租户 TID 下查找角色关系时，如果规则是定义在全局域 "1" 下的，
-	// 通过下述匹配函数，Casbin 会自动将 TID 匹配到 "1"，从而实现全局继承关系的自动解析。
+	// 当我们在某个租户 TID 下查找角色关系时，如果规则是定义在全局域 ctxutil.SystemTenantIDStr 下的，
+	// 通过下述匹配函数，Casbin 会自动将 TID 匹配到 ctxutil.SystemTenantIDStr，从而实现全局继承关系的自动解析。
 	enforcer.GetRoleManager().(*defaultrolemanager.RoleManager).AddDomainMatchingFunc("DomainMatch", func(d1, d2 string) bool {
-		return d1 == d2 || d2 == "1"
+		return d1 == d2 || d2 == ctxutil.SystemTenantIDStr
 	})
 
 	return enforcer
