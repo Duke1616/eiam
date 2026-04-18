@@ -86,6 +86,7 @@ type UserProfile struct {
 	Nickname string `gorm:"type:varchar(64)"`
 	Avatar   string `gorm:"type:varchar(255)"`
 	JobTitle string `gorm:"type:varchar(128)"`
+	Phone    string `gorm:"type:varchar(32)"`
 }
 
 type UserIdentity struct {

@@ -33,6 +33,7 @@ type UserProfile struct {
 	Nickname string
 	Avatar   string
 	JobTitle string
+	Phone    string
 }
 
 // UserIdentity 全球身份标记：与租户彻底脱钩

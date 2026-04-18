@@ -14,6 +14,7 @@ func (req SignupRequest) ToDomain() domain.User {
 			Nickname: req.Nickname,
 			Avatar:   req.Avatar,
 			JobTitle: req.JobTitle,
+			Phone:    req.Phone,
 		},
 	}
 }
@@ -38,6 +39,7 @@ func ToUserVO(u domain.User) User {
 		Nickname:    u.Profile.Nickname,
 		Avatar:      u.Profile.Avatar,
 		JobTitle:    u.Profile.JobTitle,
+		Phone:       u.Profile.Phone,
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,
@@ -65,6 +67,7 @@ func (req UpdateUserReq) ToDomain() domain.User {
 			Nickname: req.Nickname,
 			Avatar:   req.Avatar,
 			JobTitle: req.JobTitle,
+			Phone:    req.Phone,
 		},
 	}
 }
@@ -93,6 +96,7 @@ func (u User) ToDomain() domain.User {
 			Nickname: u.Nickname,
 			Avatar:   u.Avatar,
 			JobTitle: u.JobTitle,
+			Phone:    u.Phone,
 		},
 		Identities: identities,
 	}

@@ -6,10 +6,10 @@ type SignupRequest struct {
 	Password        string `json:"password"`
 	ConfirmPassword string `json:"confirm_password"`
 	Email           string `json:"email"`
-
-	Nickname string `json:"nickname"`
-	Avatar   string `json:"avatar"`
-	JobTitle string `json:"job_title"`
+	Nickname        string `json:"nickname"`
+	Avatar          string `json:"avatar"`
+	JobTitle        string `json:"job_title"`
+	Phone           string `json:"phone"`
 }
 
 // LoginLdapRequest LDAP 登录请求
@@ -32,6 +32,7 @@ type User struct {
 	Nickname    string `json:"nickname"`
 	Avatar      string `json:"avatar"`
 	JobTitle    string `json:"job_title"`
+	Phone       string `json:"phone"`
 	Ctime       int64  `json:"ctime"`
 	Utime       int64  `json:"utime"`
 	LastLoginAt int64  `json:"last_login_at"`
@@ -80,6 +81,7 @@ type UpdateUserReq struct {
 	Nickname string `json:"nickname"`
 	Avatar   string `json:"avatar"`
 	JobTitle string `json:"job_title"`
+	Phone    string `json:"phone"`
 }
 
 type RetrieveUsers[T any] struct {
