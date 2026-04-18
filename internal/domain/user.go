@@ -12,13 +12,14 @@ const (
 
 // User 全局主账户
 type User struct {
-	ID       int64
-	Username string
-	Password string
-	Email    string
-	Status   Status
-	Ctime    int64
-	Utime    int64
+	ID          int64
+	Username    string
+	Password    string
+	Email       string
+	Status      Status
+	Ctime       int64
+	Utime       int64
+	LastLoginAt int64
 
 	// 各司其职：侧写资料归公司
 	Profile UserProfile

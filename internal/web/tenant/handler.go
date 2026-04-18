@@ -61,6 +61,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.GET("/detail/:id", h.Capability("查看租户详情", "get").
 		Handle(ginx.W(h.Detail)),
 	)
+	// 查询特定用户的关联租户 (管理侧使用)
+	g.POST("/list/attached/user", h.Capability("查询用户所属租户", "view_user_tenants").
+		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId)),
+	)
 }
 
 // CreateTenant 允许用户主动创建一个属于自己的企业/工作空间
@@ -196,5 +200,23 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 
 	return ginx.Result{
 		Data: ToTenantVO(t),
+	}, nil
+}
+
+func (h *Handler) GetTenantsByUserId(ctx *ginx.Context, req ListUserTenantsReq, sess session.Session) (ginx.Result, error) {
+	// 获取租户ID
+	tid := ctxutil.GetTenantID(ctx).Int64()
+
+	// 获取该用户关联的租户列表（将当前租户 ID 注入，用于底层 SQL 隔离）
+	tenants, total, err := h.svc.GetAttachedTenantsWithFilter(ctx.Context, req.UserID, tid, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
+		return ErrTenantList, err
+	}
+
+	return ginx.Result{
+		Data: ListTenantRes{
+			Total:   total,
+			Tenants: ToTenantVOs(tenants),
+		},
 	}, nil
 }

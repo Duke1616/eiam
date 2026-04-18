@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -38,20 +39,14 @@ type IUserDAO interface {
 	// FindIdentityByExternal 根据第三方平台的唯一标识查找关联身份
 	FindIdentityByExternal(ctx context.Context, provider, externalID string) (UserIdentity, error)
 
-	// List 分页查询基础用户列表
-	List(ctx context.Context, offset, limit int64) ([]User, error)
-	// ListByTenantMembership 分页查询当前租户成员用户列表
-	ListByTenantMembership(ctx context.Context, offset, limit int64) ([]User, error)
+	// List 分页模糊查询用户列表（支持 tid 隔离与关键字搜索）
+	List(ctx context.Context, tid, offset, limit int64, keyword string) ([]User, error)
 	// Count 统计用户总数
-	Count(ctx context.Context) (int64, error)
-	// CountTenantMembers 统计当前租户成员总数
-	CountTenantMembers(ctx context.Context) (int64, error)
-	// Search 模糊搜索用户 (支持 username 或 nickname 维度)
-	// 在多租户系统中，此查询只返回当前租户的成员
+	Count(ctx context.Context, tid int64, keyword string) (int64, error)
+	// Search 模糊搜索当前租户下的成员用户
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error)
-	// CountByKeyword 统计搜索结果总数
-	// 在多租户系统中，此统计只计算当前租户成员范围
-	CountByKeyword(ctx context.Context, keyword string) (int64, error)
+	// CountSearch 统计模糊搜索结果总数
+	CountSearch(ctx context.Context, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// FindUsersByUsernames 批量根据用户名获取用户
@@ -62,6 +57,8 @@ type IUserDAO interface {
 	BatchUpsertUsers(ctx context.Context, users []User) error
 	// BatchUpsertProfilesAndIdentities 批量更新/写入名片与身份标记
 	BatchUpsertProfilesAndIdentities(ctx context.Context, profiles []UserProfile, identities []UserIdentity) error
+	// UpdateLastLoginAt 更新最近登录时间
+	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
 }
 
 type userDAO struct {
@@ -73,13 +70,14 @@ func NewUserDAO(db *gorm.DB) IUserDAO {
 }
 
 type User struct {
-	ID       int64  `gorm:"primaryKey;autoIncrement"`
-	Username string `gorm:"uniqueIndex;type:varchar(64)"`
-	Password string `gorm:"type:varchar(255)"`
-	Email    string `gorm:"type:varchar(128)"`
-	Status   int    `gorm:"type:tinyint"`
-	Ctime    int64  `gorm:"comment:'创建时间'"`
-	Utime    int64  `gorm:"comment:'更新时间'"`
+	ID          int64  `gorm:"primaryKey;autoIncrement"`
+	Username    string `gorm:"uniqueIndex;type:varchar(64)"`
+	Password    string `gorm:"type:varchar(255)"`
+	Email       string `gorm:"type:varchar(128)"`
+	Status      int    `gorm:"type:tinyint"`
+	Ctime       int64  `gorm:"comment:'创建时间'"`
+	Utime       int64  `gorm:"comment:'更新时间'"`
+	LastLoginAt int64  `gorm:"comment:'最近登录时间'"`
 }
 
 type UserProfile struct {
@@ -211,19 +209,47 @@ func (dao *userDAO) FindIdentityByExternal(ctx context.Context, provider, extern
 	return y, err
 }
 
-func (dao *userDAO) List(ctx context.Context, offset, limit int64) ([]User, error) {
+func (dao *userDAO) List(ctx context.Context, tid, offset, limit int64, keyword string) ([]User, error) {
 	var us []User
-	err := dao.db.WithContext(ctx).Offset(int(offset)).Limit(int(limit)).Find(&us).Error
+	db := dao.db.WithContext(ctx).Model(&User{})
+
+	// 1. 租户隔离
+	if tid != ctxutil.SystemTenantID {
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+		db = db.Where("id IN (?)", subQuery)
+	}
+
+	// 2. 关键词模糊搜索
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		db = db.Where("username LIKE ?", kw)
+	}
+
+	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&us).Error
 	return us, err
 }
 
-func (dao *userDAO) Count(ctx context.Context) (int64, error) {
+func (dao *userDAO) Count(ctx context.Context, tid int64, keyword string) (int64, error) {
 	var total int64
-	err := dao.db.WithContext(ctx).Model(&User{}).Count(&total).Error
+	db := dao.db.WithContext(ctx).Model(&User{})
+
+	// 1. 租户隔离
+	if tid != ctxutil.SystemTenantID {
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+		db = db.Where("id IN (?)", subQuery)
+	}
+
+	// 2. 关键词模糊搜索
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		db = db.Where("username LIKE ?", kw)
+	}
+
+	err := db.Count(&total).Error
 	return total, err
 }
 
-func (dao *userDAO) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
+func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, error) {
 	var total int64
 	db := dao.db.WithContext(ctx).Model(&User{})
 	if keyword != "" {
@@ -236,13 +262,6 @@ func (dao *userDAO) CountByKeyword(ctx context.Context, keyword string) (int64, 
 	return total, err
 }
 
-func (dao *userDAO) CountTenantMembers(ctx context.Context) (int64, error) {
-	var total int64
-	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-	err := dao.db.WithContext(ctx).Model(&User{}).Where("id IN (?)", subQuery).Count(&total).Error
-	return total, err
-}
-
 func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error) {
 	var us []User
 	db := dao.db.WithContext(ctx).Model(&User{})
@@ -252,13 +271,6 @@ func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit in
 	}
 	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
 	err := db.Where("id IN (?)", subQuery).Offset(int(offset)).Limit(int(limit)).Find(&us).Error
-	return us, err
-}
-
-func (dao *userDAO) ListByTenantMembership(ctx context.Context, offset, limit int64) ([]User, error) {
-	var us []User
-	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-	err := dao.db.WithContext(ctx).Model(&User{}).Where("id IN (?)", subQuery).Offset(int(offset)).Limit(int(limit)).Find(&us).Error
 	return us, err
 }
 
@@ -339,4 +351,7 @@ func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profil
 
 		return nil
 	})
+}
+func (dao *userDAO) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error {
+	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("last_login_at", loginAt).Error
 }

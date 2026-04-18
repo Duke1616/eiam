@@ -47,7 +47,7 @@ func NewUserAdapter(userSvc user.IUserService) searcher.SubjectProvider {
 			return userSvc.Search(ctx, keyword, offset, limit)
 		},
 		func(ctx context.Context, keyword string) (int64, error) {
-			return userSvc.CountByKeyword(ctx, keyword)
+			return userSvc.CountSearch(ctx, keyword)
 		},
 		func(src domain.User) searcher.Subject {
 			return searcher.Subject{Type: domain.SubjectTypeUser, ID: src.Username, Name: src.Profile.Nickname}

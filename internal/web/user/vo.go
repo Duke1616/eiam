@@ -26,16 +26,23 @@ type LoginSystemRequest struct {
 
 // User 用户展示对象
 type User struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Nickname string `json:"nickname"`
-	Avatar   string `json:"avatar"`
-	JobTitle string `json:"job_title"`
-	Ctime    int64  `json:"ctime"`
-	Utime    int64  `json:"utime"`
+	ID          int64  `json:"id"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	Nickname    string `json:"nickname"`
+	Avatar      string `json:"avatar"`
+	JobTitle    string `json:"job_title"`
+	Ctime       int64  `json:"ctime"`
+	Utime       int64  `json:"utime"`
+	LastLoginAt int64  `json:"last_login_at"`
 
 	Identities []Identity `json:"identities"`
+}
+
+// UserMemberVO 组合了用户基础信息与当前租户的成员状态
+type UserMemberVO struct {
+	User
+	IsMember *bool `json:"is_member,omitempty"`
 }
 
 type Identity struct {
@@ -75,9 +82,9 @@ type UpdateUserReq struct {
 	JobTitle string `json:"job_title"`
 }
 
-type RetrieveUsers struct {
-	Total int64  `json:"total"`
-	Users []User `json:"users"`
+type RetrieveUsers[T any] struct {
+	Total int64 `json:"total"`
+	Users []T   `json:"users"`
 }
 
 type RetrieveUser struct {

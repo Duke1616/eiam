@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
@@ -10,6 +11,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/sync/errgroup"
 )
 
 type IUserService interface {
@@ -24,10 +26,10 @@ type IUserService interface {
 
 	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error)
 
-	List(ctx context.Context, offset, limit int64) ([]domain.User, int64, error)
+	List(ctx context.Context, tid, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
-	// CountByKeyword 根据关键词获取符合条件的用户总数
-	CountByKeyword(ctx context.Context, keyword string) (int64, error)
+	// CountSearch 根据关键词获取符合条件的用户总数
+	CountSearch(ctx context.Context, keyword string) (int64, error)
 	Update(ctx context.Context, u domain.User) (int64, error)
 	UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error
 	// Delete 删除用户
@@ -106,6 +108,9 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 		return domain.LoginResult{}, err
 	}
 
+	// 更新最近登录时间
+	_ = s.repo.UpdateLastLoginAt(ctx, u.ID, time.Now().UnixMilli())
+
 	// 新用户只有一个刚建好的空间，直接返回
 	return domain.LoginResult{
 		User:     u,
@@ -116,6 +121,9 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 
 // postLogin 认证后公共逻辑：查询租户列表并决定路由
 func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.LoginResult, error) {
+	// 记录最近登录时间（即使后续租户查询失败，登录行为本身已发生）
+	_ = s.repo.UpdateLastLoginAt(ctx, u.ID, time.Now().UnixMilli())
+
 	tenants, err := s.tenantSvc.GetTenantsByUserId(ctx, u.ID)
 	if err != nil || len(tenants) == 0 {
 		return domain.LoginResult{}, errors.New("用户无可用租户空间")
@@ -238,24 +246,32 @@ func (s *userService) GetByUsername(ctx context.Context, username string) (domai
 	return s.repo.FindByUsername(ctx, username)
 }
 
-func (s *userService) List(ctx context.Context, offset, limit int64) ([]domain.User, int64, error) {
-	if ctxutil.GetTenantID(ctx) != 0 {
-		total, err := s.repo.CountTenantMembers(ctx)
-		if err != nil {
-			return nil, 0, err
-		}
+func (s *userService) List(ctx context.Context, tid, offset, limit int64, keyword string) ([]domain.User, int64, error) {
+	var (
+		users []domain.User
+		total int64
+	)
+	eg, _ := errgroup.WithContext(ctx)
 
-		us, err := s.repo.ListByTenantMembership(ctx, offset, limit)
-		return us, total, err
-	}
+	// 1. 并发查询用户列表
+	eg.Go(func() error {
+		var err error
+		users, err = s.repo.List(ctx, tid, offset, limit, keyword)
+		return err
+	})
 
-	total, err := s.repo.Count(ctx)
-	if err != nil {
+	// 2. 并发查询总数
+	eg.Go(func() error {
+		var err error
+		total, err = s.repo.Count(ctx, tid, keyword)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
 		return nil, 0, err
 	}
 
-	us, err := s.repo.List(ctx, offset, limit)
-	return us, total, err
+	return users, total, nil
 }
 
 func (s *userService) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
@@ -265,8 +281,8 @@ func (s *userService) Search(ctx context.Context, keyword string, offset, limit 
 	return s.repo.Search(ctx, keyword, offset, limit)
 }
 
-func (s *userService) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
-	return s.repo.CountByKeyword(ctx, keyword)
+func (s *userService) CountSearch(ctx context.Context, keyword string) (int64, error) {
+	return s.repo.CountSearch(ctx, keyword)
 }
 
 func (s *userService) Update(ctx context.Context, u domain.User) (int64, error) {

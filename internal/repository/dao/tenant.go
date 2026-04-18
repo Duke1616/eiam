@@ -3,28 +3,45 @@ package dao
 import (
 	"context"
 
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"gorm.io/gorm"
 )
 
 // ITenantDAO 租户数据持久化接口
 type ITenantDAO interface {
+	// Create 创建新租户详情
 	Create(ctx context.Context, t Tenant) (int64, error)
+	// FindById 根据主键 ID 查询租户详情
 	FindById(ctx context.Context, id int64) (Tenant, error)
+	// FindByCode 根据唯一标识代码查询租户详情
 	FindByCode(ctx context.Context, code string) (Tenant, error)
+	// FindAll 分页获取系统内所有租户列表
 	FindAll(ctx context.Context, offset, limit int64) ([]Tenant, error)
+	// Count 统计系统内租户总数
 	Count(ctx context.Context) (int64, error)
+	// Update 更新租户名称、域名及状态等信息
 	Update(ctx context.Context, t Tenant) error
+	// Delete 物理删除租户记录
 	Delete(ctx context.Context, id int64) error
 
 	// --- Membership 持久化 ---
 
+	// InsertMembership 插入用户与租户的关联映射（入驻记录）
 	InsertMembership(ctx context.Context, m Membership) error
+	// GetMembership 精确查询特定租户下特定用户的入驻信息
 	GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error)
 
+	// GetMembershipByUserId 查询用户在当前操作语境下的入驻信息
 	GetMembershipByUserId(ctx context.Context, userId int64) (Membership, error)
+	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
 	FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error)
-	FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error)
+	// FindTenantsByIDs 根据 ID 列表批量检索租户详情
 	FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error)
+	// FindTenantIDsByUserId 查询指定用户所属的所有租户 ID 列表
+	FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error)
+	// GetAttachedTenantsWithFilter 分页模糊查询关联用户的租户
+	// tid 用于权限辅助过滤，由上层 Service 根据登录态注入
+	GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]Tenant, int64, error)
 }
 
 type TenantDAO struct {
@@ -145,4 +162,40 @@ func (d *TenantDAO) FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant
 	var ts []Tenant
 	err := d.db.WithContext(ctx).Where("id IN ?", ids).Find(&ts).Error
 	return ts, err
+}
+
+func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]Tenant, int64, error) {
+	var (
+		ts    []Tenant
+		total int64
+	)
+
+	// 1. 构造子查询：从 membership 中找出该用户入驻的所有租户 ID
+	subQuery := d.db.Model(&Membership{}).
+		Select("tenant_id").
+		Where("user_id = ?", userID)
+
+	// 2. 租户隔离：如果是非系统中心租户，强制限制子查询范围
+	if tid != ctxutil.SystemTenantID {
+		subQuery = subQuery.Where("tenant_id = ?", tid)
+	}
+
+	// 3. 主查询：基于子查询结果筛选租户
+	query := d.db.WithContext(ctx).Model(&Tenant{}).
+		Where("id IN (?)", subQuery)
+
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		query = query.Where("(name LIKE ? OR code LIKE ?)", kw, kw)
+	}
+
+	err := query.Count(&total).Error
+	if err != nil || total == 0 {
+		return nil, 0, err
+	}
+
+	err = query.Offset(int(offset)).Limit(int(limit)).
+		Order("ctime DESC").Find(&ts).Error
+
+	return ts, total, err
 }

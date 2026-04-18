@@ -24,6 +24,13 @@ type ListTenantReq struct {
 	Limit  int64 `json:"limit"`
 }
 
+type ListUserTenantsReq struct {
+	UserID  int64  `json:"user_id"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
+}
+
 type ListTenantRes struct {
 	Total   int64      `json:"total"`
 	Tenants []TenantVO `json:"tenants"`

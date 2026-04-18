@@ -5,26 +5,29 @@ import (
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/sync/errgroup"
 )
 
 type Handler struct {
 	capability.IRegistry
-	svc     usersvc.IUserService
-	ldapSvc usersvc.LdapService
-	sp      session.Provider
+	svc       usersvc.IUserService
+	tenantSvc tenant.ITenantService
+	ldapSvc   usersvc.LdapService
+	sp        session.Provider
 }
 
-func NewUserHandler(svc usersvc.IUserService, ldapSvc usersvc.LdapService, sp session.Provider) *Handler {
+func NewUserHandler(svc usersvc.IUserService, tenantSvc tenant.ITenantService, ldapSvc usersvc.LdapService, sp session.Provider) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "user", "用户管理"),
 		svc:       svc,
+		tenantSvc: tenantSvc,
 		ldapSvc:   ldapSvc,
 		sp:        sp,
 	}
@@ -187,32 +190,36 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 }
 
 func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, error) {
-	var (
-		users []domain.User
-		total int64
-	)
-	var eg errgroup.Group
-	eg.Go(func() error {
-		var err error
-		users, err = h.svc.Search(ctx.Request.Context(), req.Keyword, req.Offset, req.Limit)
-		return err
-	})
+	tid := ctxutil.GetTenantID(ctx).Int64()
 
-	eg.Go(func() error {
-		var err error
-		total, err = h.svc.CountByKeyword(ctx.Request.Context(), req.Keyword)
-		return err
-	})
-
-	if err := eg.Wait(); err != nil {
+	users, total, err := h.svc.List(ctx.Request.Context(), tid, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
 		return ErrUserListFailed, err
 	}
 
+	// 1. 普通租户视角：直接返回基础视图（卫语句优先返回）
+	if tid != ctxutil.SystemTenantID {
+		return ginx.Result{
+			Data: RetrieveUsers[User]{
+				Total: total,
+				Users: slice.Map(users, func(idx int, src domain.User) User {
+					return ToUserVO(src)
+				}),
+			},
+		}, nil
+	}
+
+	// 2. 网络中心/系统租户（超管视角）：批量装饰 IsMember 标记
+	userIDs := slice.Map(users, func(idx int, src domain.User) int64 {
+		return src.ID
+	})
+	memberMap, _ := h.tenantSvc.FindMembershipsByUserIds(ctx.Request.Context(), userIDs)
 	return ginx.Result{
-		Data: RetrieveUsers{
+		Data: RetrieveUsers[UserMemberVO]{
 			Total: total,
-			Users: slice.Map(users, func(idx int, src domain.User) User {
-				return ToUserVO(src)
+			Users: slice.Map(users, func(idx int, src domain.User) UserMemberVO {
+				_, ok := memberMap[src.ID]
+				return UserMemberVO{User: ToUserVO(src), IsMember: &ok}
 			}),
 		},
 	}, nil
@@ -237,7 +244,24 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrUserNotFound, err
 	}
 
-	return ginx.Result{Data: ToUserVO(u)}, nil
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	// 1. 普通租户视角：直接返回基础 User VO
+	if tid != ctxutil.SystemTenantID {
+		return ginx.Result{Data: ToUserVO(u)}, nil
+	}
+
+	// 2. 网络中心/系统租户视角：返回带装饰的 UserMemberVO
+	memberMap, err := h.tenantSvc.FindMembershipsByUserIds(ctx.Request.Context(), []int64{u.ID})
+	isMember := false
+	if err == nil {
+		_, isMember = memberMap[u.ID]
+	}
+	return ginx.Result{
+		Data: UserMemberVO{
+			User:     ToUserVO(u),
+			IsMember: &isMember,
+		},
+	}, nil
 }
 
 func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
@@ -261,7 +285,7 @@ func (h *Handler) ListAttachedRole(ctx *ginx.Context, req ListRoleUsersRequest) 
 	}
 
 	return ginx.Result{
-		Data: RetrieveUsers{
+		Data: RetrieveUsers[User]{
 			Total: total,
 			Users: slice.Map(users, func(idx int, src domain.User) User {
 				return ToUserVO(src)

@@ -22,6 +22,8 @@ type ITenantService interface {
 	GetTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error)
 	// CheckUserTenantAccess 校验用户是否有权进入该租户空间
 	CheckUserTenantAccess(ctx context.Context, userId, tenantId int64) (bool, error)
+	// GetAttachedTenantsWithFilter 分页查看用户所属租户
+	GetAttachedTenantsWithFilter(ctx context.Context, userId, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error)
 	// List 分页查看所有租户列表
 	List(ctx context.Context, offset, limit int64) ([]domain.Tenant, int64, error)
 	// Update 更新租户基本信息
@@ -30,6 +32,8 @@ type ITenantService interface {
 	Delete(ctx context.Context, id int64) error
 	// GetByID 获取租户详情
 	GetByID(ctx context.Context, id int64) (domain.Tenant, error)
+	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
+	FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error)
 }
 
 type tenantService struct {
@@ -114,6 +118,10 @@ func (s *tenantService) CheckUserTenantAccess(ctx context.Context, userId, tenan
 	return true, nil
 }
 
+func (s *tenantService) GetAttachedTenantsWithFilter(ctx context.Context, userId, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error) {
+	return s.repo.GetAttachedTenantsWithFilter(ctx, userId, tid, offset, limit, keyword)
+}
+
 func (s *tenantService) List(ctx context.Context, offset, limit int64) ([]domain.Tenant, int64, error) {
 	total, err := s.repo.Count(ctx)
 	if err != nil {
@@ -133,4 +141,17 @@ func (s *tenantService) Delete(ctx context.Context, id int64) error {
 
 func (s *tenantService) GetByID(ctx context.Context, id int64) (domain.Tenant, error) {
 	return s.repo.FindById(ctx, id)
+}
+func (s *tenantService) FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error) {
+	ms, err := s.repo.FindMembershipsByUserIds(ctx, userIds)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[int64]domain.Membership, len(ms))
+	for _, m := range ms {
+		res[m.UserID] = m
+	}
+
+	return res, nil
 }

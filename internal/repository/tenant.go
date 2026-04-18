@@ -10,19 +10,33 @@ import (
 
 // ITenantRepository 租户仓储接口
 type ITenantRepository interface {
+	// Create 创建租户领域模型记录
 	Create(ctx context.Context, t domain.Tenant) (int64, error)
+	// FindById 根据 ID 获取租户领域模型
 	FindById(ctx context.Context, id int64) (domain.Tenant, error)
+	// FindByCode 根据 Code 获取租户领域模型
 	FindByCode(ctx context.Context, code string) (domain.Tenant, error)
+	// FindAll 分页获取租户领域模型列表
 	FindAll(ctx context.Context, offset, limit int64) ([]domain.Tenant, error)
+	// Count 统计租户总数
 	Count(ctx context.Context) (int64, error)
+	// Update 更新租户领域模型
 	Update(ctx context.Context, t domain.Tenant) error
+	// Delete 删除租户记录
 	Delete(ctx context.Context, id int64) error
 
 	// --- Membership 纯净契约管理 ---
 
+	// AddMembership 建立用户与租户的关联契约（入驻）
 	AddMembership(ctx context.Context, userID, tenantID int64) error
+	// GetMembership 获取用户在特定租户下的契约详情
 	GetMembership(ctx context.Context, tenantId, userId int64) (domain.Membership, error)
+	// FindTenantsByUserId 获取指定用户关联的所有租户领域模型列表
 	FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error)
+	// GetAttachedTenantsWithFilter 分页模糊查询关联用户的租户
+	GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error)
+	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
+	FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error)
 }
 
 type TenantRepository struct {
@@ -126,6 +140,17 @@ func (r *TenantRepository) FindTenantsByUserId(ctx context.Context, userId int64
 	}), nil
 }
 
+func (r *TenantRepository) GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error) {
+	ts, total, err := r.dao.GetAttachedTenantsWithFilter(ctx, userID, tid, offset, limit, keyword)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return slice.Map(ts, func(idx int, src dao.Tenant) domain.Tenant {
+		return r.toDomain(src)
+	}), total, nil
+}
+
 func (r *TenantRepository) toDomain(t dao.Tenant) domain.Tenant {
 	return domain.Tenant{
 		ID:     t.ID,
@@ -136,4 +161,18 @@ func (r *TenantRepository) toDomain(t dao.Tenant) domain.Tenant {
 		Ctime:  t.Ctime,
 		Utime:  t.Utime,
 	}
+}
+func (r *TenantRepository) FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error) {
+	ms, err := r.dao.FindMembershipsByUserIds(ctx, userIds)
+	if err != nil {
+		return nil, err
+	}
+
+	return slice.Map(ms, func(idx int, src dao.Membership) domain.Membership {
+		return domain.Membership{
+			ID:       src.ID,
+			TenantID: src.TenantID,
+			UserID:   src.UserID,
+		}
+	}), nil
 }

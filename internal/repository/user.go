@@ -28,20 +28,18 @@ type IUserRepository interface {
 	// SaveIdentity 绑定/更新用户第三方身份信息
 	SaveIdentity(ctx context.Context, ui domain.UserIdentity) error
 
-	// List 分页获取用户列表
-	List(ctx context.Context, offset, limit int64) ([]domain.User, error)
-	// ListByTenantMembership 分页获取当前租户成员用户列表
-	ListByTenantMembership(ctx context.Context, offset, limit int64) ([]domain.User, error)
-	// Count 获取用户总数
-	Count(ctx context.Context) (int64, error)
-	// CountTenantMembers 统计当前租户成员总数
-	CountTenantMembers(ctx context.Context) (int64, error)
+	// List 分页模糊查询用户列表
+	List(ctx context.Context, tid, offset, limit int64, keyword string) ([]domain.User, error)
+	// Count 统计搜索结果总数
+	Count(ctx context.Context, tid int64, keyword string) (int64, error)
 	// Search 根据关键字模糊搜索当前租户成员用户
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
-	// CountByKeyword 根据关键字统计当前租户成员搜索结果总数
-	CountByKeyword(ctx context.Context, keyword string) (int64, error)
+	// CountSearch 根据关键字统计当前租户成员搜索结果总数
+	CountSearch(ctx context.Context, keyword string) (int64, error)
 	// GetAttachedUsersWithFilter 分页获取关联角色的用户详情，支持关键词过滤
 	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]domain.User, int64, error)
+	// UpdateLastLoginAt 更新最近登录时间
+	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// BatchUpsert 批量 Upsert 用户数据
@@ -153,42 +151,16 @@ func (repo *userRepository) SaveIdentity(ctx context.Context, ui domain.UserIden
 	})
 }
 
-func (repo *userRepository) List(ctx context.Context, offset, limit int64) ([]domain.User, error) {
-	us, err := repo.dao.List(ctx, offset, limit)
+func (repo *userRepository) List(ctx context.Context, tid, offset, limit int64, keyword string) ([]domain.User, error) {
+	us, err := repo.dao.List(ctx, tid, offset, limit, keyword)
 	if err != nil {
 		return nil, err
 	}
-	res := make([]domain.User, 0, len(us))
-	for _, u := range us {
-		d, _ := repo.fullHydration(ctx, u)
-		res = append(res, d)
-	}
-	return res, nil
+	return repo.batchHydration(ctx, us)
 }
 
-func (repo *userRepository) ListByTenantMembership(ctx context.Context, offset, limit int64) ([]domain.User, error) {
-	us, err := repo.dao.ListByTenantMembership(ctx, offset, limit)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]domain.User, 0, len(us))
-	for _, u := range us {
-		d, _ := repo.fullHydration(ctx, u)
-		res = append(res, d)
-	}
-	return res, nil
-}
-
-func (repo *userRepository) Count(ctx context.Context) (int64, error) {
-	return repo.dao.Count(ctx)
-}
-
-func (repo *userRepository) CountTenantMembers(ctx context.Context) (int64, error) {
-	return repo.dao.CountTenantMembers(ctx)
-}
-
-func (repo *userRepository) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
-	return repo.dao.CountByKeyword(ctx, keyword)
+func (repo *userRepository) Count(ctx context.Context, tid int64, keyword string) (int64, error) {
+	return repo.dao.Count(ctx, tid, keyword)
 }
 
 func (repo *userRepository) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
@@ -198,6 +170,10 @@ func (repo *userRepository) Search(ctx context.Context, keyword string, offset, 
 	}
 
 	return repo.batchHydration(ctx, users)
+}
+
+func (repo *userRepository) CountSearch(ctx context.Context, keyword string) (int64, error) {
+	return repo.dao.CountSearch(ctx, keyword)
 }
 
 func (repo *userRepository) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]domain.User, int64, error) {
@@ -281,13 +257,14 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 	}
 
 	return domain.User{
-		ID:       u.ID,
-		Username: u.Username,
-		Password: u.Password,
-		Email:    u.Email,
-		Status:   domain.Status(u.Status),
-		Ctime:    u.Ctime,
-		Utime:    u.Utime,
+		ID:          u.ID,
+		Username:    u.Username,
+		Password:    u.Password,
+		Email:       u.Email,
+		Status:      domain.Status(u.Status),
+		Ctime:       u.Ctime,
+		Utime:       u.Utime,
+		LastLoginAt: u.LastLoginAt,
 		Profile: domain.UserProfile{
 			UserID:   up.UserID,
 			Nickname: up.Nickname,
@@ -300,14 +277,19 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 
 func (repo *userRepository) toEntity(u domain.User) dao.User {
 	return dao.User{
-		ID:       u.ID,
-		Username: u.Username,
-		Password: u.Password,
-		Email:    u.Email,
-		Status:   int(u.Status),
-		Ctime:    u.Ctime,
-		Utime:    u.Utime,
+		ID:          u.ID,
+		Username:    u.Username,
+		Password:    u.Password,
+		Email:       u.Email,
+		Status:      int(u.Status),
+		Ctime:       u.Ctime,
+		Utime:       u.Utime,
+		LastLoginAt: u.LastLoginAt,
 	}
+}
+
+func (repo *userRepository) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error {
+	return repo.dao.UpdateLastLoginAt(ctx, id, loginAt)
 }
 
 func (repo *userRepository) Delete(ctx context.Context, id int64) error {

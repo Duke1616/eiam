@@ -32,15 +32,16 @@ func ToUserVO(u domain.User) User {
 	})
 
 	return User{
-		ID:         u.ID,
-		Username:   u.Username,
-		Email:      u.Email,
-		Nickname:   u.Profile.Nickname,
-		Avatar:     u.Profile.Avatar,
-		JobTitle:   u.Profile.JobTitle,
-		Ctime:      u.Ctime,
-		Utime:      u.Utime,
-		Identities: identities,
+		ID:          u.ID,
+		Username:    u.Username,
+		Email:       u.Email,
+		Nickname:    u.Profile.Nickname,
+		Avatar:      u.Profile.Avatar,
+		JobTitle:    u.Profile.JobTitle,
+		Ctime:       u.Ctime,
+		Utime:       u.Utime,
+		LastLoginAt: u.LastLoginAt,
+		Identities:  identities,
 	}
 }
 
@@ -82,11 +83,12 @@ func (u User) ToDomain() domain.User {
 	})
 
 	return domain.User{
-		ID:       u.ID,
-		Username: u.Username,
-		Email:    u.Email,
-		Ctime:    u.Ctime,
-		Utime:    u.Utime,
+		ID:          u.ID,
+		Username:    u.Username,
+		Email:       u.Email,
+		Ctime:       u.Ctime,
+		Utime:       u.Utime,
+		LastLoginAt: u.LastLoginAt,
 		Profile: domain.UserProfile{
 			Nickname: u.Nickname,
 			Avatar:   u.Avatar,
