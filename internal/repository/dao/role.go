@@ -42,6 +42,8 @@ type IRoleDAO interface {
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]Role, error)
 	// UpdateInlinePolicies 更新角色关联的内联权限策略列表
 	UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error
+	// GetAttachedRolesWithFilter 联表分页获取指定主体关联的角色详情，支持关键词过滤
+	GetAttachedRolesWithFilter(ctx context.Context, username string, tid, offset, limit int64, keyword string) ([]Role, int64, error)
 	// Delete 删除角色
 	Delete(ctx context.Context, id int64) error
 }
@@ -140,6 +142,38 @@ func (d *RoleDAO) UpdateInlinePolicies(ctx context.Context, code string, policie
 		},
 		"utime": time.Now().UnixMilli(),
 	}).Error
+}
+
+func (d *RoleDAO) GetAttachedRolesWithFilter(ctx context.Context, username string, tid, offset, limit int64, keyword string) ([]Role, int64, error) {
+	var (
+		rs    []Role
+		total int64
+	)
+
+	// 1. 构造子查询：从 casbin_rule 中找出该租户下关联该主体的所有角色代码
+	// NOTE: Casbin 中 v0 (Subject) 通常存为 user:username，v1 (Object) 存为 role:code
+	subQuery := d.db.Table("casbin_rule").
+		Select("REPLACE(v1, ?, '')", domain.PrefixRole).
+		Where("ptype = 'g' AND v0 = ? AND v2 = ?", domain.UserSubject(username), tid)
+
+	// 2. 主查询：基于子查询结果筛选角色映射，并支持关键词过滤
+	query := d.db.WithContext(ctx).Model(&Role{}).
+		Where("code IN (?)", subQuery)
+
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		query = query.Where("(name LIKE ? OR code LIKE ?)", kw, kw)
+	}
+
+	err := query.Count(&total).Error
+	if err != nil || total == 0 {
+		return nil, 0, err
+	}
+
+	err = query.Offset(int(offset)).Limit(int(limit)).
+		Order("ctime DESC").Find(&rs).Error
+
+	return rs, total, err
 }
 
 func (d *RoleDAO) Delete(ctx context.Context, id int64) error {

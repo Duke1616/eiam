@@ -62,6 +62,10 @@ type IPolicyDAO interface {
 	Unbind(ctx context.Context, subType, subCode, policyCode string) error
 	// GetCodesBySubject 获取指定主体关联的所有策略代码列表
 	GetCodesBySubject(ctx context.Context, subType, subCode string) ([]string, error)
+	// GetCodesBySubjectWithPagination 分页获取指定主体关联的策略代码列表
+	GetCodesBySubjectWithPagination(ctx context.Context, subType, subCode string, offset, limit int64) ([]string, int64, error)
+	// GetAttachedPoliciesWithFilter 联表分页获取指定主体关联的策略详情，支持关键词与类型过滤
+	GetAttachedPoliciesWithFilter(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType uint8) ([]Policy, int64, error)
 	// GetCodesBySubjects 批量获取多个主体代码关联的所有策略映射
 	GetCodesBySubjects(ctx context.Context, subjects []domain.Subject) ([]PolicyAssignment, error)
 	// GetByCodes 批量获取策略详情
@@ -183,6 +187,23 @@ func (d *policyDAO) Unbind(ctx context.Context, subType, subCode, policyCode str
 		Delete(&PolicyAssignment{}).Error
 }
 
+func (d *policyDAO) GetCodesBySubjectWithPagination(ctx context.Context, subType, subCode string, offset, limit int64) ([]string, int64, error) {
+	var (
+		codes []string
+		total int64
+	)
+	query := d.db.WithContext(ctx).Model(&PolicyAssignment{}).
+		Where("sub_type = ? AND sub_code = ?", subType, subCode)
+
+	err := query.Count(&total).Error
+	if err != nil || total == 0 {
+		return nil, 0, err
+	}
+
+	err = query.Offset(int(offset)).Limit(int(limit)).Pluck("policy_code", &codes).Error
+	return codes, total, err
+}
+
 func (d *policyDAO) GetCodesBySubject(ctx context.Context, subType, subCode string) ([]string, error) {
 	var codes []string
 	err := d.db.WithContext(ctx).
@@ -190,6 +211,38 @@ func (d *policyDAO) GetCodesBySubject(ctx context.Context, subType, subCode stri
 		Where("sub_type = ? AND sub_code = ?", subType, subCode).
 		Pluck("policy_code", &codes).Error
 	return codes, err
+}
+
+func (d *policyDAO) GetAttachedPoliciesWithFilter(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType uint8) ([]Policy, int64, error) {
+	var (
+		ps    []Policy
+		total int64
+	)
+
+	// 1. 构造子查询：从 policy_assignment 中找出关联的策略代码
+	// 使用 Model(&PolicyAssignment{}) 让 GORM 自动处理表名映射
+	subQuery := d.db.Model(&PolicyAssignment{}).
+		Select("policy_code").
+		Where("sub_type = ? AND sub_code = ?", subType, subCode)
+
+	// 2. 主查询：基于子查询结果筛选策略详情
+	query := d.db.WithContext(ctx).Model(&Policy{}).
+		Where("code IN (?)", subQuery)
+
+	if keyword != "" {
+		query = query.Where("(name LIKE ? OR code LIKE ?)", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if policyType != 0 {
+		query = query.Where("type = ?", policyType)
+	}
+
+	err := query.Count(&total).Error
+	if err != nil || total == 0 {
+		return nil, 0, err
+	}
+
+	err = query.Offset(int(offset)).Limit(int(limit)).Find(&ps).Error
+	return ps, total, err
 }
 
 func (d *policyDAO) GetByCodes(ctx context.Context, codes []string) ([]Policy, error) {

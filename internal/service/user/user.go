@@ -35,6 +35,8 @@ type IUserService interface {
 
 	// CheckUsersExist 批量检查用户名是否存在
 	CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error)
+	// GetAttachedUsersWithFilter 获取关联角色的用户详情，支持关键词过滤
+	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]domain.User, int64, error)
 }
 
 type userService struct {
@@ -277,4 +279,9 @@ func (s *userService) Delete(ctx context.Context, id int64) error {
 
 func (s *userService) CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error) {
 	return s.repo.CheckUsersExist(ctx, usernames)
+}
+
+func (s *userService) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]domain.User, int64, error) {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	return s.repo.GetAttachedUsersWithFilter(ctx, roleCode, tid, offset, limit, keyword)
 }

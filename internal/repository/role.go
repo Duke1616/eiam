@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"github.com/ecodeclub/ekit/slice"
 )
@@ -29,6 +30,8 @@ type IRoleRepository interface {
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
 	// UpdateInlinePolicies 更新角色的权限策略列表
 	UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error
+	// GetAttachedWithPagination 联表分页获取主体关联的角色详情，支持关键词过滤
+	GetAttachedWithPagination(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error)
 	// Delete 删除角色
 	Delete(ctx context.Context, id int64) error
 }
@@ -104,6 +107,20 @@ func (r *RoleRepository) ListByIncludeCodes(ctx context.Context, codes []string)
 	}
 
 	return res, nil
+}
+
+func (r *RoleRepository) GetAttachedWithPagination(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error) {
+	// 获取租户 ID 用于 Casbin 联表过滤 (Casbin 存储的是字符串形式)
+	tid := ctxutil.GetTenantID(ctx).Int64()
+
+	roles, total, err := r.dao.GetAttachedRolesWithFilter(ctx, username, tid, offset, limit, keyword)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
+		return r.toDomain(src)
+	}), total, nil
 }
 
 func (r *RoleRepository) UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error {

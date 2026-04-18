@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 
+	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -55,6 +56,8 @@ type IUserDAO interface {
 	Delete(ctx context.Context, id int64) error
 	// FindUsersByUsernames 批量根据用户名获取用户
 	FindUsersByUsernames(ctx context.Context, usernames []string) ([]User, error)
+	// GetAttachedUsersWithFilter 联表分页获取关联角色的用户详情，支持关键词过滤
+	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]User, int64, error)
 	// BatchUpsertUsers 批量更新/写入基础用户资料
 	BatchUpsertUsers(ctx context.Context, users []User) error
 	// BatchUpsertProfilesAndIdentities 批量更新/写入名片与身份标记
@@ -270,6 +273,38 @@ func (dao *userDAO) FindUsersByUsernames(ctx context.Context, usernames []string
 	}
 	err := dao.db.WithContext(ctx).Where("username IN ?", usernames).Find(&users).Error
 	return users, err
+}
+
+func (dao *userDAO) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]User, int64, error) {
+	var (
+		us    []User
+		total int64
+	)
+
+	// 1. 构造子查询：从 casbin_rule 中找出该租户下关联该角色的所有用户标识
+	// NOTE: v0 是 user:username, v1 是 role:roleCode
+	subQuery := dao.db.Table("casbin_rule").
+		Select("REPLACE(v0, ?, '')", domain.PrefixUser).
+		Where("ptype = 'g' AND v1 = ? AND v2 = ?", domain.RoleSubject(roleCode), tid)
+
+	// 2. 主查询：基于子查询结果筛选用户，并支持关键词过滤
+	query := dao.db.WithContext(ctx).Model(&User{}).
+		Where("username IN (?)", subQuery)
+
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		query = query.Where("username LIKE ?", kw)
+	}
+
+	err := query.Count(&total).Error
+	if err != nil || total == 0 {
+		return nil, 0, err
+	}
+
+	err = query.Offset(int(offset)).Limit(int(limit)).
+		Order("ctime DESC").Find(&us).Error
+
+	return us, total, err
 }
 
 func (dao *userDAO) BatchUpsertUsers(ctx context.Context, users []User) error {

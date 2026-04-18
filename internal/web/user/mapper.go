@@ -38,6 +38,8 @@ func ToUserVO(u domain.User) User {
 		Nickname:   u.Profile.Nickname,
 		Avatar:     u.Profile.Avatar,
 		JobTitle:   u.Profile.JobTitle,
+		Ctime:      u.Ctime,
+		Utime:      u.Utime,
 		Identities: identities,
 	}
 }
@@ -83,6 +85,8 @@ func (u User) ToDomain() domain.User {
 		ID:       u.ID,
 		Username: u.Username,
 		Email:    u.Email,
+		Ctime:    u.Ctime,
+		Utime:    u.Utime,
 		Profile: domain.UserProfile{
 			Nickname: u.Nickname,
 			Avatar:   u.Avatar,

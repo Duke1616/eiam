@@ -33,6 +33,10 @@ type IPolicyService interface {
 	GetAttachedPoliciesByCodes(ctx context.Context, roleCodes []string) (map[string][]domain.Policy, error)
 	// GetAttachedBySubjects 批量获取多个主体当前挂载的所有托管策略实体映射
 	GetAttachedBySubjects(ctx context.Context, subjects []domain.Subject) (map[string][]domain.Policy, error)
+	// GetAttachedWithPagination 分页获取主体当前挂载的策略实体
+	GetAttachedWithPagination(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
+	// ListAttachedPolicies 分页获取主体关联的策略
+	ListAttachedPolicies(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
 	// ListAssignments 分页获取策略分配关系
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error)
 	// ListByCodes 根据一组策略标识码获取策略详情
@@ -126,6 +130,14 @@ func (s *policyService) GetAttachedPoliciesByCodes(ctx context.Context, roleCode
 
 func (s *policyService) GetAttachedBySubjects(ctx context.Context, subjects []domain.Subject) (map[string][]domain.Policy, error) {
 	return s.repo.GetAttachedBySubjects(ctx, subjects)
+}
+
+func (s *policyService) GetAttachedWithPagination(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error) {
+	return s.repo.GetAttachedWithPagination(ctx, subType, subCode, offset, limit, keyword, policyType)
+}
+
+func (s *policyService) ListAttachedPolicies(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error) {
+	return s.repo.GetAttachedWithPagination(ctx, subType, subCode, offset, limit, keyword, policyType)
 }
 
 func (s *policyService) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error) {

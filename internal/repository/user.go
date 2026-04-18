@@ -40,6 +40,8 @@ type IUserRepository interface {
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
 	// CountByKeyword 根据关键字统计当前租户成员搜索结果总数
 	CountByKeyword(ctx context.Context, keyword string) (int64, error)
+	// GetAttachedUsersWithFilter 分页获取关联角色的用户详情，支持关键词过滤
+	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// BatchUpsert 批量 Upsert 用户数据
@@ -196,6 +198,16 @@ func (repo *userRepository) Search(ctx context.Context, keyword string, offset, 
 	}
 
 	return repo.batchHydration(ctx, users)
+}
+
+func (repo *userRepository) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]domain.User, int64, error) {
+	users, total, err := repo.dao.GetAttachedUsersWithFilter(ctx, roleCode, tid, offset, limit, keyword)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	res, err := repo.batchHydration(ctx, users)
+	return res, total, err
 }
 
 func (repo *userRepository) batchHydration(ctx context.Context, users []dao.User) ([]domain.User, error) {

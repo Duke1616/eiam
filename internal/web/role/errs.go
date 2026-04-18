@@ -14,8 +14,12 @@ var (
 	ErrRoleAssignFailed = ginx.Result{Code: 4030904, Msg: "分配角色失败"}
 	ErrGetMyRolesFailed = ginx.Result{Code: 4030905, Msg: "获取当前有效角色失败"}
 
-	// ErrRoleNotFound 资源类错误
 	ErrRoleNotFound = ginx.Result{Code: 4030501, Msg: "该角色标识不存在"}
+
+	ErrInvalidUserId         = ginx.Result{Code: 4010505, Msg: "用户 ID 非法"}
+	ErrGetUserFailed         = ginx.Result{Code: 4010506, Msg: "获取用户信息失败"}
+	ErrGetUserRoleCodeFailed = ginx.Result{Code: 4010507, Msg: "获取用户角色代码失败"}
+	ErrGetRoleDetailFailed   = ginx.Result{Code: 4010508, Msg: "获取角色详情失败"}
 
 	ErrUnauthenticated = user.ErrUnauthenticated
 )

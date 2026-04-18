@@ -28,6 +28,8 @@ type IRoleService interface {
 	UpdateInlinePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error
 	// GetByCode 根据角色代码获取角色
 	GetByCode(ctx context.Context, code string) (domain.Role, error)
+	// ListAttachedRoles 分页获取主体关联的角色详情，支持关键词过滤
+	ListAttachedRoles(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error)
 	// ListByIncludeCodes 查找包含当前角色代码的数据 (供鉴权中心调用)
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
 	// Delete 删除角色
@@ -135,6 +137,10 @@ func (s *roleService) ListByIncludeCodes(ctx context.Context, codes []string) ([
 	}
 
 	return roles, nil
+}
+
+func (s *roleService) ListAttachedRoles(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error) {
+	return s.repo.GetAttachedWithPagination(ctx, username, offset, limit, keyword)
 }
 
 func (s *roleService) Delete(ctx context.Context, id int64) error {

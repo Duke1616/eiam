@@ -14,8 +14,16 @@ type UpdateRoleRequest struct {
 }
 
 type ListRoleRequest struct {
-	Offset int64 `json:"offset"`
-	Limit  int64 `json:"limit"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
+}
+
+type ListUserRolesRequest struct {
+	UserID  int64  `json:"user_id"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
 }
 
 type AssignRoleRequest struct {

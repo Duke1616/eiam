@@ -32,6 +32,8 @@ type User struct {
 	Nickname string `json:"nickname"`
 	Avatar   string `json:"avatar"`
 	JobTitle string `json:"job_title"`
+	Ctime    int64  `json:"ctime"`
+	Utime    int64  `json:"utime"`
 
 	Identities []Identity `json:"identities"`
 }
@@ -99,6 +101,13 @@ type SearchLdapUser struct {
 	Keywords string `json:"keywords"`
 	Offset   int    `json:"offset"`
 	Limit    int    `json:"limit"`
+}
+
+type ListRoleUsersRequest struct {
+	RoleCode string `json:"role_code"`
+	Offset   int64  `json:"offset"`
+	Limit    int64  `json:"limit"`
+	Keyword  string `json:"keyword"`
 }
 
 type SyncLdapUserReq struct {

@@ -6,6 +6,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
 	rolesvc "github.com/Duke1616/eiam/internal/service/role"
+	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
@@ -17,13 +18,15 @@ type Handler struct {
 	capability.IRegistry
 	svc     rolesvc.IRoleService
 	permSvc permissionsvc.IPermissionService
+	userSvc usersvc.IUserService
 }
 
-func NewHandler(svc rolesvc.IRoleService, permSvc permissionsvc.IPermissionService) *Handler {
+func NewHandler(svc rolesvc.IRoleService, permSvc permissionsvc.IPermissionService, userSvc usersvc.IUserService) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "role", "角色管理"),
 		svc:       svc,
 		permSvc:   permSvc,
+		userSvc:   userSvc,
 	}
 }
 
@@ -57,6 +60,45 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.GET("/mine", h.Capability("查看个人角色", "view_mine").
 		Handle(ginx.BS[any](h.GetMyRoles)),
 	)
+
+	// 查询特定用户的关联角色 (管理侧使用)
+	g.POST("/list/attached/user", h.Capability("查询用户角色", "view_user_roles").
+		Handle(ginx.B[ListUserRolesRequest](h.GetRolesByUserId)),
+	)
+}
+
+func (h *Handler) GetRolesByUserId(ctx *ginx.Context, req ListUserRolesRequest) (ginx.Result, error) {
+	id := req.UserID
+	if id == 0 {
+		return ErrInvalidUserId, nil
+	}
+
+	// 设置默认分页
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+
+	// 1. 获取用户信息，拿到 username
+	u, err := h.userSvc.GetById(ctx.Request.Context(), id)
+	if err != nil {
+		return ErrGetUserFailed, err
+	}
+
+	// 2. 获取用户直接关联的角色 (支持数据库分页与关键词过滤)
+	roles, total, err := h.svc.ListAttachedRoles(ctx.Request.Context(), u.Username, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
+		return ErrGetUserRoleCodeFailed, err
+	}
+
+	// 5. 映射为 VO 并按 RetrieveRole 格式返回
+	return ginx.Result{
+		Data: RetrieveRole{
+			Total: total,
+			Roles: slice.Map(roles, func(idx int, src domain.Role) Role {
+				return h.toVo(src)
+			}),
+		},
+	}, nil
 }
 
 func (h *Handler) Create(ctx *ginx.Context, req CreateRoleRequest) (ginx.Result, error) {

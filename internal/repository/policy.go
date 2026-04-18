@@ -30,6 +30,8 @@ type IPolicyRepository interface {
 	GetAttached(ctx context.Context, subType, subCode string) ([]domain.Policy, error)
 	// GetAttachedBySubjects 批量获取多个主体当前挂载的所有托管策略实体映射 (如用户+其所属的所有角色)
 	GetAttachedBySubjects(ctx context.Context, subjects []domain.Subject) (map[string][]domain.Policy, error)
+	// GetAttachedWithPagination 分页获取主体当前挂载的策略实体，支持关键词与类型过滤
+	GetAttachedWithPagination(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
 	// ListByCodes 根据一组策略标识码获取策略详情列表
 	ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error)
 	// ListByTypes 按类型筛选策略详情列表
@@ -177,6 +179,18 @@ func (r *policyRepository) GetAttachedBySubjects(ctx context.Context, subjects [
 	}
 
 	return result, nil
+}
+
+func (r *policyRepository) GetAttachedWithPagination(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error) {
+	// 直接调用联表过滤 DAO
+	ps, total, err := r.dao.GetAttachedPoliciesWithFilter(ctx, subType, subCode, offset, limit, keyword, uint8(policyType))
+	if err != nil || total == 0 {
+		return nil, total, err
+	}
+
+	return slice.Map(ps, func(idx int, src dao.Policy) domain.Policy {
+		return r.toDomain(src)
+	}), total, nil
 }
 
 func (r *policyRepository) ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error) {

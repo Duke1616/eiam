@@ -60,6 +60,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.DELETE("/delete/:id", h.Capability("删除用户", "delete").
 		Handle(ginx.W(h.Delete)),
 	)
+	g.POST("/list/attached/role", h.Capability("角色关联用户列表", "view").
+		Handle(ginx.B[ListRoleUsersRequest](h.ListAttachedRole)),
+	)
 
 	// LDAP 管理接口
 	g.POST("/ldap/search", h.Capability("搜索 LDAP", "ldap_search").
@@ -249,6 +252,22 @@ func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{Msg: "删除用户成功"}, nil
+}
+
+func (h *Handler) ListAttachedRole(ctx *ginx.Context, req ListRoleUsersRequest) (ginx.Result, error) {
+	users, total, err := h.svc.GetAttachedUsersWithFilter(ctx.Request.Context(), req.RoleCode, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
+		return ErrUserListFailed, err
+	}
+
+	return ginx.Result{
+		Data: RetrieveUsers{
+			Total: total,
+			Users: slice.Map(users, func(idx int, src domain.User) User {
+				return ToUserVO(src)
+			}),
+		},
+	}, nil
 }
 
 func (h *Handler) SearchLdapUser(ctx *ginx.Context, req SearchLdapUser) (ginx.Result, error) {

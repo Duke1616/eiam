@@ -541,6 +541,16 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
+  - name: UserDetail
+    permission_code: "iam:user:view"
+    path: /identity/user/detail/:id
+    component: /pages/iam/user/detail.vue
+    meta:
+      title: 用户详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
   - name: RoleGovernance
     permission_code: "iam:role:view"
     path: /identity/role

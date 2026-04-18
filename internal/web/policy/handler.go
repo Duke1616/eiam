@@ -3,6 +3,7 @@ package policy
 import (
 	"github.com/Duke1616/eiam/internal/domain"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
+	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
@@ -11,13 +12,15 @@ import (
 
 type Handler struct {
 	capability.IRegistry
-	svc policysvc.IPolicyService
+	svc     policysvc.IPolicyService
+	userSvc usersvc.IUserService
 }
 
-func NewHandler(svc policysvc.IPolicyService) *Handler {
+func NewHandler(svc policysvc.IPolicyService, userSvc usersvc.IUserService) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "policy", "策略管理"),
 		svc:       svc,
+		userSvc:   userSvc,
 	}
 }
 
@@ -47,6 +50,43 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/batch-attach", h.Capability("批量绑定策略", "batch-attach").
 		Handle(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
 	)
+	// 查询特定用户的关联策略 (管理侧使用)
+	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user_policies").
+		Handle(ginx.B[ListUserPoliciesReq](h.GetPoliciesByUserId)),
+	)
+}
+
+func (h *Handler) GetPoliciesByUserId(ctx *ginx.Context, req ListUserPoliciesReq) (ginx.Result, error) {
+	id := req.UserID
+	if id == 0 {
+		return ErrInvalidUserId, nil
+	}
+
+	// 设置默认分页
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+
+	// 1. 获取用户信息，拿到 username
+	u, err := h.userSvc.GetById(ctx.Request.Context(), id)
+	if err != nil {
+		return ErrGetUserFailed, err
+	}
+
+	// 2. 分页获取该用户关联的策略
+	ps, total, err := h.svc.ListAttachedPolicies(ctx.Request.Context(), domain.SubjectTypeUser, u.Username, req.Offset, req.Limit, req.Keyword, domain.PolicyType(req.Type))
+	if err != nil {
+		return ErrGetAttachedFailed, err
+	}
+
+	return ginx.Result{
+		Data: ListPolicyRes{
+			Total: total,
+			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+				return h.toVO(src)
+			}),
+		},
+	}, nil
 }
 
 func (h *Handler) CreatePolicy(ctx *ginx.Context, req CreatePolicyReq) (ginx.Result, error) {
