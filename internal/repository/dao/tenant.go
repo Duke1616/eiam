@@ -23,11 +23,15 @@ type ITenantDAO interface {
 	Update(ctx context.Context, t Tenant) error
 	// Delete 物理删除租户记录
 	Delete(ctx context.Context, id int64) error
+	// BatchCreate 批量创建新租户
+	BatchCreate(ctx context.Context, ts []Tenant) ([]Tenant, error)
 
 	// --- Membership 持久化 ---
 
 	// InsertMembership 插入用户与租户的关联映射（入驻记录）
 	InsertMembership(ctx context.Context, m Membership) error
+	// BatchInsertMemberships 批量插入用户与租户的关联映射
+	BatchInsertMemberships(ctx context.Context, ms []Membership) error
 	// GetMembership 精确查询特定租户下特定用户的入驻信息
 	GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error)
 
@@ -79,8 +83,25 @@ func (d *TenantDAO) Create(ctx context.Context, t Tenant) (int64, error) {
 	return t.ID, err
 }
 
+func (d *TenantDAO) BatchCreate(ctx context.Context, ts []Tenant) ([]Tenant, error) {
+	err := d.db.WithContext(ctx).Create(&ts).Error
+	return ts, err
+}
+
 func (d *TenantDAO) InsertMembership(ctx context.Context, m Membership) error {
 	return d.db.WithContext(ctx).Create(&m).Error
+}
+
+func (d *TenantDAO) BatchInsertMemberships(ctx context.Context, ms []Membership) error {
+	return d.db.WithContext(ctx).Create(&ms).Error
+}
+
+func (d *TenantDAO) AddMembership(ctx context.Context, userID, tenantID int64) error {
+	return d.db.WithContext(ctx).Create(&Membership{UserID: userID, TenantID: tenantID}).Error
+}
+
+func (d *TenantDAO) BatchAddMemberships(ctx context.Context, ms []Membership) error {
+	return d.db.WithContext(ctx).Create(&ms).Error
 }
 
 func (d *TenantDAO) GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error) {

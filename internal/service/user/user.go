@@ -126,6 +126,15 @@ func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.Logi
 	_ = s.repo.UpdateLastLoginAt(ctx, u.ID, time.Now().UnixMilli())
 
 	tenants, err := s.tenantSvc.GetTenantsByUserId(ctx, u.ID)
+	// 针对没有任何租户的用户（如 LDAP 批量同步过来的），执行延迟初始化
+	if err == nil && len(tenants) == 0 {
+		tID, initErr := s.tenantSvc.InitPersonalTenant(ctx, u.ID, u.Username)
+		if initErr == nil {
+			// 初始化成功后，重新获取租户列表以保证后续逻辑统一
+			tenants = []domain.Tenant{{ID: tID}}
+		}
+	}
+
 	if err != nil || len(tenants) == 0 {
 		return domain.LoginResult{}, errors.New("用户无可用租户空间")
 	}

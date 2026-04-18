@@ -34,6 +34,8 @@ type ITenantService interface {
 	GetByID(ctx context.Context, id int64) (domain.Tenant, error)
 	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
 	FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error)
+	// BatchInitPersonalTenant 批量为用户初始化个人空间
+	BatchInitPersonalTenant(ctx context.Context, users []domain.User) error
 }
 
 type tenantService struct {
@@ -103,6 +105,53 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 	)
 
 	return tenantID, err
+}
+
+func (s *tenantService) BatchInitPersonalTenant(ctx context.Context, users []domain.User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	// 1. 构造租户信息并批量创建
+	tenants := make([]domain.Tenant, 0, len(users))
+	for _, u := range users {
+		tenants = append(tenants, domain.Tenant{
+			Name:   u.Username + "的个人空间",
+			Code:   u.Username + "-personal",
+			Status: 1,
+		})
+	}
+
+	savedTenants, err := s.repo.BatchCreate(ctx, tenants)
+	if err != nil {
+		return err
+	}
+
+	// 2. 构造 Membership 并批量插入
+	memberships := make([]domain.Membership, 0, len(users))
+	for i, u := range users {
+		memberships = append(memberships, domain.Membership{
+			UserID:   u.ID,
+			TenantID: savedTenants[i].ID,
+		})
+	}
+
+	if err = s.repo.BatchAddMemberships(ctx, memberships); err != nil {
+		return err
+	}
+
+	// 3. 构造 Casbin 策略并批量授权
+	rules := make([][]string, 0, len(users))
+	for i, u := range users {
+		rules = append(rules, []string{
+			domain.UserSubject(u.Username),
+			domain.RoleSubject("admin"),
+			ctxutil.ContextID(savedTenants[i].ID).String(),
+		})
+	}
+
+	_, err = s.enforcer.AddGroupingPolicies(rules)
+	return err
 }
 
 func (s *tenantService) GetTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {

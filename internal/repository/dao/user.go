@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
@@ -114,14 +115,19 @@ type FeishuInfo struct {
 }
 
 func (dao *userDAO) Create(ctx context.Context, u User) (int64, error) {
+	now := time.Now().UnixMilli()
+	u.Ctime = now
+	u.Utime = now
 	err := dao.db.WithContext(ctx).Create(&u).Error
 	return u.ID, err
 }
 
 func (dao *userDAO) Update(ctx context.Context, u User, ui UserProfile) (int64, error) {
 	err := dao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UnixMilli()
+		u.Utime = now
 		// 1. 更新全球 User 基础资料
-		if err := tx.Updates(&u).Error; err != nil {
+		if err := tx.Model(&u).Updates(&u).Error; err != nil {
 			return err
 		}
 
@@ -129,7 +135,7 @@ func (dao *userDAO) Update(ctx context.Context, u User, ui UserProfile) (int64, 
 		// 确保在初次入职时，如果不存在记录则创建
 		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "user_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title"}),
+			DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title", "phone"}),
 		}).Create(&ui).Error
 	})
 	return u.ID, err

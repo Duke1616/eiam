@@ -50,7 +50,7 @@ ON DUPLICATE KEY UPDATE `tenant_id` = VALUES(`tenant_id`);
 
 -- 初始化 admin 用户的个人名片（UserProfile）
 INSERT INTO `user_profile` (`id`, `user_id`, `nickname`, `avatar`, `job_title`, `phone`)
-VALUES (1, 1, 'root', '', '系统管理员', '')
+VALUES (1, 1, '系统管理员', '', '平台负责人', '')
 ON DUPLICATE KEY UPDATE `nickname` = VALUES(`nickname`), `job_title` = VALUES(`job_title`), `phone` = VALUES(`phone`);
 
 

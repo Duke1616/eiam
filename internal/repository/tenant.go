@@ -24,11 +24,15 @@ type ITenantRepository interface {
 	Update(ctx context.Context, t domain.Tenant) error
 	// Delete 删除租户记录
 	Delete(ctx context.Context, id int64) error
+	// BatchCreate 批量创建租户
+	BatchCreate(ctx context.Context, ts []domain.Tenant) ([]domain.Tenant, error)
 
 	// --- Membership 纯净契约管理 ---
 
 	// AddMembership 建立用户与租户的关联契约（入驻）
 	AddMembership(ctx context.Context, userID, tenantID int64) error
+	// BatchAddMemberships 批量增加成员
+	BatchAddMemberships(ctx context.Context, ms []domain.Membership) error
 	// GetMembership 获取用户在特定租户下的契约详情
 	GetMembership(ctx context.Context, tenantId, userId int64) (domain.Membership, error)
 	// FindTenantsByUserId 获取指定用户关联的所有租户领域模型列表
@@ -162,17 +166,58 @@ func (r *TenantRepository) toDomain(t dao.Tenant) domain.Tenant {
 		Utime:  t.Utime,
 	}
 }
+
+func (r *TenantRepository) toEntity(t domain.Tenant) dao.Tenant {
+	return dao.Tenant{
+		ID:     t.ID,
+		Name:   t.Name,
+		Code:   t.Code,
+		Domain: t.Domain,
+		Status: t.Status,
+	}
+}
+
+func (r *TenantRepository) toDomainMembership(m dao.Membership) domain.Membership {
+	return domain.Membership{
+		ID:       m.ID,
+		TenantID: m.TenantID,
+		UserID:   m.UserID,
+	}
+}
+
 func (r *TenantRepository) FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error) {
 	ms, err := r.dao.FindMembershipsByUserIds(ctx, userIds)
 	if err != nil {
 		return nil, err
 	}
 
-	return slice.Map(ms, func(idx int, src dao.Membership) domain.Membership {
-		return domain.Membership{
-			ID:       src.ID,
-			TenantID: src.TenantID,
-			UserID:   src.UserID,
-		}
+	return slice.Map(ms, func(idx int, m dao.Membership) domain.Membership {
+		return r.toDomainMembership(m)
 	}), nil
+}
+
+func (r *TenantRepository) BatchCreate(ctx context.Context, ts []domain.Tenant) ([]domain.Tenant, error) {
+	daoTs := slice.Map(ts, func(idx int, t domain.Tenant) dao.Tenant {
+		return r.toEntity(t)
+	})
+
+	res, err := r.dao.BatchCreate(ctx, daoTs)
+	if err != nil {
+		return nil, err
+	}
+
+	return slice.Map(res, func(idx int, t dao.Tenant) domain.Tenant {
+		return r.toDomain(t)
+	}), nil
+}
+
+func (r *TenantRepository) BatchAddMemberships(ctx context.Context, ms []domain.Membership) error {
+	daoMs := slice.Map(ms, func(idx int, m domain.Membership) dao.Membership {
+		return dao.Membership{
+			UserID:   m.UserID,
+			TenantID: m.TenantID,
+		}
+	})
+
+	return r.dao.BatchInsertMemberships(ctx, daoMs)
 }

@@ -46,6 +46,8 @@ type IUserRepository interface {
 	BatchUpsert(ctx context.Context, users []domain.User) error
 	// CheckUsersExist 批量检查用户名是否已经在系统中存在
 	CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error)
+	// FindUsersByUsernames 批量根据用户名查找用户
+	FindUsersByUsernames(ctx context.Context, usernames []string) ([]domain.User, error)
 }
 
 type userRepository struct {
@@ -370,4 +372,17 @@ func (repo *userRepository) CheckUsersExist(ctx context.Context, usernames []str
 		res[u.Username] = true
 	}
 	return res, nil
+}
+func (repo *userRepository) FindUsersByUsernames(ctx context.Context, usernames []string) ([]domain.User, error) {
+	users, err := repo.dao.FindUsersByUsernames(ctx, usernames)
+	if err != nil {
+		return nil, err
+	}
+
+	return lo.Map(users, func(u dao.User, _ int) domain.User {
+		return domain.User{
+			ID:       u.ID,
+			Username: u.Username,
+		}
+	}), nil
 }

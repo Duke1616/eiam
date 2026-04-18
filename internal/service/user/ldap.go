@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
+	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user/ldapx"
 )
 
@@ -18,27 +19,45 @@ type LdapService interface {
 }
 
 type ldapService struct {
-	repo  repository.IUserRepository
-	ldap  ldapx.LdapProvider
-	cache cache.RedisearchLdapUserCache
+	repo      repository.IUserRepository
+	tenantSvc tenant.ITenantService
+	ldap      ldapx.LdapProvider
+	cache     cache.RedisearchLdapUserCache
 }
 
-func NewLdapService(repo repository.IUserRepository, conf ldapx.Config, cache cache.RedisearchLdapUserCache) LdapService {
+func NewLdapService(repo repository.IUserRepository, tenantSvc tenant.ITenantService,
+	conf ldapx.Config, cache cache.RedisearchLdapUserCache) LdapService {
 	return &ldapService{
-		repo:  repo,
-		ldap:  ldapx.NewLdap(conf),
-		cache: cache,
+		repo:      repo,
+		tenantSvc: tenantSvc,
+		ldap:      ldapx.NewLdap(conf),
+		cache:     cache,
 	}
 }
 
 func (l *ldapService) Sync(ctx context.Context, users []domain.User) error {
 	now := time.Now().UnixMilli()
+	usernames := make([]string, 0, len(users))
 	for i := range users {
 		users[i].Source = domain.SourceLdap
 		users[i].Ctime = now
 		users[i].Utime = now
+		usernames = append(usernames, users[i].Username)
 	}
-	return l.repo.BatchUpsert(ctx, users)
+
+	// 1. 批量持久化用户
+	if err := l.repo.BatchUpsert(ctx, users); err != nil {
+		return err
+	}
+
+	// 2. 重新获取数据库生成的 ID（用于后续租户初始化）
+	savedUsers, err := l.repo.FindUsersByUsernames(ctx, usernames)
+	if err != nil {
+		return err
+	}
+
+	// 3. 为用户初始化个人租户空间（Batch 批量处理）
+	return l.tenantSvc.BatchInitPersonalTenant(ctx, savedUsers)
 }
 
 func (l *ldapService) SearchCacheUserWithPager(ctx context.Context, keywords string,
