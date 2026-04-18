@@ -40,6 +40,7 @@ func ToUserVO(u domain.User) User {
 		Avatar:      u.Profile.Avatar,
 		JobTitle:    u.Profile.JobTitle,
 		Phone:       u.Profile.Phone,
+		Source:      u.Source.String(),
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,

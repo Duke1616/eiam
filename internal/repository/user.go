@@ -71,6 +71,7 @@ func (repo *userRepository) Create(ctx context.Context, u domain.User) (int64, e
 		Nickname: u.Profile.Nickname,
 		Avatar:   u.Profile.Avatar,
 		JobTitle: u.Profile.JobTitle,
+		Phone:    u.Profile.Phone,
 	})
 
 	return id, err
@@ -130,6 +131,7 @@ func (repo *userRepository) Update(ctx context.Context, u domain.User) (int64, e
 		Nickname: u.Profile.Nickname,
 		Avatar:   u.Profile.Avatar,
 		JobTitle: u.Profile.JobTitle,
+		Phone:    u.Profile.Phone,
 	})
 }
 
@@ -262,6 +264,7 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 		Password:    u.Password,
 		Email:       u.Email,
 		Status:      domain.Status(u.Status),
+		Source:      domain.Source(u.Source),
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,
@@ -270,6 +273,7 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 			Nickname: up.Nickname,
 			Avatar:   up.Avatar,
 			JobTitle: up.JobTitle,
+			Phone:    up.Phone,
 		},
 		Identities: identities,
 	}
@@ -282,6 +286,7 @@ func (repo *userRepository) toEntity(u domain.User) dao.User {
 		Password:    u.Password,
 		Email:       u.Email,
 		Status:      int(u.Status),
+		Source:      u.Source.String(),
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,

@@ -10,6 +10,19 @@ const (
 	StatusDisable Status = 2
 )
 
+type Source string
+
+const (
+	SourceLocal  Source = "local"
+	SourceLdap   Source = "ldap"
+	SourceFeishu Source = "feishu"
+	SourceWechat Source = "wechat"
+)
+
+func (s Source) String() string {
+	return string(s)
+}
+
 // User 全局主账户
 type User struct {
 	ID          int64
@@ -17,6 +30,7 @@ type User struct {
 	Password    string
 	Email       string
 	Status      Status
+	Source      Source
 	Ctime       int64
 	Utime       int64
 	LastLoginAt int64

@@ -25,8 +25,8 @@ VALUES ('g', 'role:admin', 'role:super_admin', '1')
 ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`);
 
 -- 初始化超级管理员账户：admin / 12345678
-INSERT INTO `user` (`id`, `username`, `password`, `email`, `status`, `ctime`, `utime`)
-VALUES (1, 'admin', '$2a$10$6ocvB6VX93BKFT4HruyWEOFy1ePGbXbd37uBvtnZ7CHovY9N3WotK', 'admin@example.com', 1,
+INSERT INTO `user` (`id`, `username`, `password`, `email`, `status`, `source`, `ctime`, `utime`)
+VALUES (1, 'admin', '$2a$10$6ocvB6VX93BKFT4HruyWEOFy1ePGbXbd37uBvtnZ7CHovY9N3WotK', 'admin@example.com', 1, 'local',
         (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `password` = VALUES(`password`), `utime` = VALUES(`utime`);
 
@@ -49,9 +49,9 @@ VALUES (1, 1, (UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `tenant_id` = VALUES(`tenant_id`);
 
 -- 初始化 admin 用户的个人名片（UserProfile）
-INSERT INTO `user_profile` (`id`, `user_id`, `nickname`, `avatar`, `job_title`)
-VALUES (1, 1, '系统管理员', '', 'CEO')
-ON DUPLICATE KEY UPDATE `nickname` = VALUES(`nickname`);
+INSERT INTO `user_profile` (`id`, `user_id`, `nickname`, `avatar`, `job_title`, `phone`)
+VALUES (1, 1, 'root', '', '系统管理员', '')
+ON DUPLICATE KEY UPDATE `nickname` = VALUES(`nickname`), `job_title` = VALUES(`job_title`), `phone` = VALUES(`phone`);
 
 
 -- +goose StatementEnd

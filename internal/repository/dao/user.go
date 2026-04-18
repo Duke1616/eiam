@@ -75,6 +75,7 @@ type User struct {
 	Password    string `gorm:"type:varchar(255)"`
 	Email       string `gorm:"type:varchar(128)"`
 	Status      int    `gorm:"type:tinyint"`
+	Source      string `gorm:"type:varchar(32);index;comment:'身份来源: local, ldap等'"`
 	Ctime       int64  `gorm:"comment:'创建时间'"`
 	Utime       int64  `gorm:"comment:'更新时间'"`
 	LastLoginAt int64  `gorm:"comment:'最近登录时间'"`
@@ -326,7 +327,7 @@ func (dao *userDAO) BatchUpsertUsers(ctx context.Context, users []User) error {
 	}
 	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "username"}},
-		DoUpdates: clause.AssignmentColumns([]string{"email", "status", "utime"}),
+		DoUpdates: clause.AssignmentColumns([]string{"email", "status", "source", "utime"}),
 	}).Create(&users).Error
 }
 
@@ -335,7 +336,7 @@ func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profil
 		if len(profiles) > 0 {
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "user_id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title"}),
+				DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title", "phone"}),
 			}).Create(&profiles).Error; err != nil {
 				return err
 			}

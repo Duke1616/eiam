@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
@@ -31,6 +32,12 @@ func NewLdapService(repo repository.IUserRepository, conf ldapx.Config, cache ca
 }
 
 func (l *ldapService) Sync(ctx context.Context, users []domain.User) error {
+	now := time.Now().UnixMilli()
+	for i := range users {
+		users[i].Source = domain.SourceLdap
+		users[i].Ctime = now
+		users[i].Utime = now
+	}
 	return l.repo.BatchUpsert(ctx, users)
 }
 

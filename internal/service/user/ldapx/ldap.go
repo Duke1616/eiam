@@ -21,6 +21,7 @@ type Config struct {
 	MailAttribute        string `mapstructure:"mail_attribute" json:"mail_attribute,omitempty"`
 	DisplayNameAttribute string `mapstructure:"display_name_attribute" json:"display_name_attribute,omitempty"`
 	TitleAttribute       string `mapstructure:"title_attribute" json:"title_attribute,omitempty"`
+	PhoneAttribute       string `mapstructure:"phone_attribute" json:"phone_attribute,omitempty"`
 	WhenCreatedAttribute string `mapstructure:"when_created_attribute" json:"when_created_attribute,omitempty"`
 	UserFilter           string `mapstructure:"user_filter" json:"user_filter,omitempty"`
 	SyncUserFilter       string `mapstructure:"sync_user_filter" json:"sync_user_filter,omitempty"`
@@ -152,6 +153,8 @@ func (p *ldapProvider) buildDraftUser(entry *ldap.Entry) domain.User {
 			u.Profile.Nickname = val
 		} else if strings.EqualFold(name, p.conf.TitleAttribute) {
 			u.Profile.JobTitle = val
+		} else if strings.EqualFold(name, p.conf.PhoneAttribute) {
+			u.Profile.Phone = val
 		}
 	}
 	return u
@@ -163,6 +166,7 @@ func (p *ldapProvider) getRequiredAttributes() []string {
 		p.conf.UsernameAttribute,
 		p.conf.DisplayNameAttribute,
 		p.conf.TitleAttribute,
+		p.conf.PhoneAttribute,
 	}
 }
 

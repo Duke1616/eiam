@@ -90,6 +90,7 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 	if err != nil {
 		return domain.LoginResult{}, err
 	}
+	extUser.Source = domain.Source(providerName)
 
 	id, ok := extUser.GetPrimaryIdentity(providerName)
 	if !ok {
@@ -204,6 +205,10 @@ func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) 
 	_, err := s.repo.FindByUsername(ctx, u.Username)
 	if err == nil {
 		return 0, errs.ErrUserExist
+	}
+
+	if u.Source == "" {
+		u.Source = domain.SourceLocal
 	}
 
 	if u.Password != "" {
