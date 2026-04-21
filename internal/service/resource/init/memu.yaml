@@ -257,7 +257,7 @@
   children:
   - name: AlertWorkspace
     permission_code: "alert:workspace:view"
-    path: /alert/workspace
+    path: /alert/workspace/:id
     component: /pages/alert/workspace/index.vue
     meta:
       title: 工作空间
@@ -520,10 +520,10 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["system"]
-- name: IdentityGovernance
-  path: /identity
+- name: IAMIdentityGovernance
+  path: /iam/identity
   component: Layouts
-  redirect: /identity/user
+  redirect: /iam/identity/user
   meta:
     title: 身份管理
     icon: identity
@@ -533,7 +533,7 @@
   children:
   - name: UserGovernance
     permission_code: "iam:user:view"
-    path: /identity/user
+    path: /iam/identity/user
     component: /pages/iam/user/index.vue
     meta:
       title: 用户管理
@@ -543,7 +543,7 @@
       platforms: ["system"]
   - name: UserDetail
     permission_code: "iam:user:view"
-    path: /identity/user/detail/:id
+    path: /iam/identity/user/detail
     component: /pages/iam/user/detail.vue
     meta:
       title: 用户详情
@@ -553,7 +553,7 @@
       platforms: ["system"]
   - name: RoleGovernance
     permission_code: "iam:role:view"
-    path: /identity/role
+    path: /iam/identity/role
     component: /pages/iam/role/index.vue
     meta:
       title: 角色管理
@@ -561,9 +561,19 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
+  - name: RoleDetail
+    permission_code: "iam:role:view"
+    path: /iam/identity/role/detail
+    component: /pages/iam/role/detail.vue
+    meta:
+      title: 角色详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
   - name: TenantGovernance
     permission_code: "iam:tenant:view"
-    path: /identity/tenant
+    path: /iam/identity/tenant
     component: /pages/iam/tenant/index.vue
     meta:
       title: 租户管理
@@ -571,10 +581,10 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
-- name: PermissionGovernance
-  path: /iam
+- name: IAMPermissionGovernance
+  path: /iam/permission
   component: Layouts
-  redirect: /iam/authorization
+  redirect: /iam/permission/authorization
   meta:
     title: 权限管理
     icon: permission
@@ -584,7 +594,7 @@
   children:
   - name: AuthorizationManager
     permission_code: "iam:authorization:view"
-    path: /iam/authorization
+    path: /iam/permission/authorization
     component: /pages/iam/authorization/index.vue
     meta:
       title: 授权治理
@@ -594,7 +604,7 @@
       platforms: ["system"]
   - name: PolicyManager
     permission_code: "iam:policy:view"
-    path: /iam/policy
+    path: /iam/permission/policy
     component: /pages/iam/policy/index.vue
     meta:
       title: 策略管理
@@ -602,9 +612,29 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
+  - name: PolicyEdit
+    permission_code: "iam:policy:edit"
+    path: /iam/permission/policy/edit
+    component: /pages/iam/policy/edit.vue
+    meta:
+      title: 策略编辑
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
+  - name: PolicyDetail
+    permission_code: "iam:policy:view"
+    path: /iam/permission/policy/detail
+    component: /pages/iam/policy/detail.vue
+    meta:
+      title: 策略详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
   - name: PolicyCreation
     permission_code: "iam:policy:view"
-    path: /iam/policy/create
+    path: /iam/permission/policy/create
     component: /pages/iam/policy/create.vue
     meta:
       title: 创建策略

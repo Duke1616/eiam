@@ -49,6 +49,8 @@ type IPermissionService interface {
 	ListAuthorizations(ctx context.Context, query domain.AuthorizationQuery) ([]domain.Authorization, int64, error)
 	// SearchSubjects 全域搜索授权主体 (用户/角色)
 	SearchSubjects(ctx context.Context, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error)
+	// GetPolicySummary 获取策略的服务化摘要
+	GetPolicySummary(ctx context.Context, p domain.Policy) (domain.PolicySummary, error)
 }
 
 // AuthorizationProvider 授权关系查询提供者接口

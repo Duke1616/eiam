@@ -86,3 +86,27 @@ type BatchAttachPolicyRes struct {
 	Inserted int64 `json:"inserted"`
 	Ignored  int64 `json:"ignored"`
 }
+
+type RetriePolicySummaryRes struct {
+	Policy   Policy           `json:"policy"`
+	Services []ServiceSummary `json:"services"`
+}
+
+type ServiceSummary struct {
+	ServiceCode   string         `json:"service_code"`
+	ServiceName   string         `json:"service_name"`
+	Level         string         `json:"level"`
+	GrantedCount  int            `json:"granted_count"`
+	TotalCount    int            `json:"total_count"`
+	ResourceScope string         `json:"resource_scope"`
+	Condition     string         `json:"condition"`
+	Actions       []ActionDetail `json:"actions"`
+}
+
+type ActionDetail struct {
+	Code      string `json:"action"`
+	Name      string `json:"name"`
+	Group     string `json:"group"`
+	Resource  string `json:"resource"`  // 转换为易读格式的字符串
+	Condition string `json:"condition"` // 转换为易读格式的字符串
+}

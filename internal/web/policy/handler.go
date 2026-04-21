@@ -1,7 +1,12 @@
 package policy
 
 import (
+	"encoding/json"
+	"errors"
+	"strings"
+
 	"github.com/Duke1616/eiam/internal/domain"
+	permsvc "github.com/Duke1616/eiam/internal/service/permission"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/web/capability"
@@ -14,13 +19,15 @@ type Handler struct {
 	capability.IRegistry
 	svc     policysvc.IPolicyService
 	userSvc usersvc.IUserService
+	permSvc permsvc.IPermissionService
 }
 
-func NewHandler(svc policysvc.IPolicyService, userSvc usersvc.IUserService) *Handler {
+func NewHandler(svc policysvc.IPolicyService, userSvc usersvc.IUserService, permSvc permsvc.IPermissionService) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "policy", "策略管理"),
 		svc:       svc,
 		userSvc:   userSvc,
+		permSvc:   permSvc,
 	}
 }
 
@@ -40,7 +47,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list", h.Capability("策略列表", "view").
 		Handle(ginx.B[ListPolicyReq](h.ListPolicies)),
 	)
-
+	g.GET("/detail/:code", h.Capability("策略详情", "view").
+		Handle(ginx.W(h.GetPolicyDetail)),
+	)
 	g.POST("/attach", h.Capability("绑定策略", "attach").
 		Handle(ginx.B[AttachPolicyReq](h.AttachPolicy)),
 	)
@@ -100,7 +109,10 @@ func (h *Handler) CreatePolicy(ctx *ginx.Context, req CreatePolicyReq) (ginx.Res
 		}),
 	})
 	if err != nil {
-		return ginx.Result{Msg: "创建策略失败"}, err
+		if errors.Is(err, domain.ErrDuplicatePolicyCode) {
+			return ErrDuplicatePolicyCode, err
+		}
+		return ErrCreatePolicyFailed, err
 	}
 	return ginx.Result{Msg: "创建成功"}, nil
 }
@@ -115,7 +127,7 @@ func (h *Handler) UpdatePolicy(ctx *ginx.Context, req UpdatePolicyReq) (ginx.Res
 		}),
 	})
 	if err != nil {
-		return ginx.Result{Msg: "更新策略失败"}, err
+		return ErrUpdatePolicyFailed, err
 	}
 	return ginx.Result{Msg: "更新成功"}, nil
 }
@@ -123,7 +135,7 @@ func (h *Handler) UpdatePolicy(ctx *ginx.Context, req UpdatePolicyReq) (ginx.Res
 func (h *Handler) ListPolicies(ctx *ginx.Context, req ListPolicyReq) (ginx.Result, error) {
 	ps, total, err := h.svc.SearchPolicies(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword, domain.PolicyType(req.Type))
 	if err != nil {
-		return ginx.Result{Msg: "查询策略列表失败"}, err
+		return ErrListPolicyFailed, err
 	}
 
 	return ginx.Result{
@@ -139,7 +151,7 @@ func (h *Handler) ListPolicies(ctx *ginx.Context, req ListPolicyReq) (ginx.Resul
 func (h *Handler) AttachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
 	err := h.svc.AttachPolicyToRole(ctx.Request.Context(), req.RoleCode, req.PolicyCode)
 	if err != nil {
-		return ginx.Result{Msg: "绑定策略失败"}, err
+		return ErrAttachPolicyFailed, err
 	}
 	return ginx.Result{Msg: "绑定成功"}, nil
 }
@@ -147,7 +159,7 @@ func (h *Handler) AttachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Res
 func (h *Handler) DetachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
 	err := h.svc.DetachFromRole(ctx.Request.Context(), req.RoleCode, req.PolicyCode)
 	if err != nil {
-		return ginx.Result{Msg: "解绑策略失败"}, err
+		return ErrDetachPolicyFailed, err
 	}
 	return ginx.Result{Msg: "解绑成功"}, nil
 }
@@ -162,7 +174,7 @@ func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq)
 
 	res, err := h.svc.BatchAttachPolicies(ctx.Request.Context(), subjects, req.PolicyCodes)
 	if err != nil {
-		return ginx.Result{Msg: "批量绑定策略失败"}, err
+		return ErrBatchAttachPolicyFailed, err
 	}
 
 	return ginx.Result{
@@ -171,6 +183,67 @@ func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq)
 			Total:    res.Total,
 			Inserted: res.Inserted,
 			Ignored:  res.Ignored,
+		},
+	}, nil
+}
+
+func (h *Handler) GetPolicyDetail(ctx *ginx.Context) (ginx.Result, error) {
+	code, err := ctx.Param("code").AsString()
+	if err != nil {
+		return ErrInvalidPolicyCode, err
+	}
+
+	// 1. 获取策略基本信息
+	p, err := h.svc.GetPolicy(ctx.Request.Context(), code)
+	if err != nil {
+		return ErrGetPolicyFailed, err
+	}
+
+	// 2. 获取权限服务维度的摘要分析
+	summary, err := h.permSvc.GetPolicySummary(ctx.Request.Context(), p)
+	if err != nil {
+		return ErrGetSummaryFailed, err
+	}
+
+	return ginx.Result{
+		Data: RetriePolicySummaryRes{
+			Policy: h.toVO(p),
+			Services: slice.Map(summary.Services, func(idx int, src domain.PolicyServiceSummary) ServiceSummary {
+				return ServiceSummary{
+					ServiceCode:   src.ServiceCode,
+					ServiceName:   src.ServiceName,
+					Level:         string(src.Level),
+					GrantedCount:  src.GrantedCount,
+					TotalCount:    src.TotalCount,
+					ResourceScope: src.ResourceScope,
+					Condition: func() string {
+						if len(src.Conditions) == 0 {
+							return "-"
+						}
+						b, _ := json.Marshal(src.Conditions)
+						return string(b)
+					}(),
+					Actions: slice.Map(src.Actions, func(idx int, pct domain.GrantedAction) ActionDetail {
+						// 格式化资源
+						resStr := strings.Join(pct.Resource, ", ")
+
+						// 格式化条件
+						condStr := "-"
+						if len(pct.Condition) > 0 {
+							b, _ := json.Marshal(pct.Condition)
+							condStr = string(b)
+						}
+
+						return ActionDetail{
+							Code:      pct.Code,
+							Name:      pct.Name,
+							Group:     pct.Group,
+							Resource:  resStr,
+							Condition: condStr,
+						}
+					}),
+				}
+			}),
 		},
 	}, nil
 }

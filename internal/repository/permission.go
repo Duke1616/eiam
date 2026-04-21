@@ -37,6 +37,10 @@ type IPermissionRepository interface {
 	SyncResourceBindings(ctx context.Context, allURNs []string, mappings map[string][]string) error
 	// ListCasbinRules 直接查询 casbin_rule 表 (用于业务化列表展现)
 	ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]dao.CasbinRule, int64, error)
+	// FindByActions 根据一组 Action 标识查询权限项，支持通配符 *
+	FindByActions(ctx context.Context, actions []string) ([]domain.Permission, error)
+	// CountByService 按服务分组统计权限点总数
+	CountByService(ctx context.Context) (map[string]int64, error)
 }
 
 type PermissionRepository struct {
@@ -212,4 +216,28 @@ func (r *PermissionRepository) SyncResourceBindings(ctx context.Context, allURNs
 
 func (r *PermissionRepository) ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]dao.CasbinRule, int64, error) {
 	return r.dao.ListCasbinRules(ctx, tid, offset, limit, v0Prefix, v1Prefix, keyword)
+}
+
+func (r *PermissionRepository) FindByActions(ctx context.Context, actions []string) ([]domain.Permission, error) {
+	perms, err := r.dao.FindByActions(ctx, actions)
+	if err != nil {
+		return nil, err
+	}
+
+	return slice.Map(perms, func(i int, src dao.Permission) domain.Permission {
+		return r.toDomain(src)
+	}), nil
+}
+
+func (r *PermissionRepository) CountByService(ctx context.Context) (map[string]int64, error) {
+	counts, err := r.dao.CountByService(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]int64, len(counts))
+	for _, c := range counts {
+		res[c.Service] = c.Count
+	}
+	return res, nil
 }

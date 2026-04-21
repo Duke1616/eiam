@@ -13,9 +13,9 @@ import (
 // Policy 权限策略持久化实体
 type Policy struct {
 	Id       int64                               `gorm:"type:bigint;primaryKey;autoIncrement;comment:'策略ID'"`
-	TenantId int64                               `gorm:"type:bigint;not null;default:0;index:idx_tenant_policy;comment:'租户ID，0为系统全局策略';eiam:'shared'"`
+	TenantId int64                               `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_tenant_policy_code;index:idx_tenant_policy;comment:'租户ID，0为系统全局策略'" eiam:"shared:type=1"`
 	Name     string                              `gorm:"type:varchar(255);not null;comment:'策略显示名称'"`
-	Code     string                              `gorm:"type:varchar(255);not null;uniqueIndex:uniq_policy_code;comment:'策略唯一标识码'"`
+	Code     string                              `gorm:"type:varchar(255);not null;uniqueIndex:uniq_tenant_policy_code;comment:'策略唯一标识码'"`
 	Desc     string                              `gorm:"type:varchar(512);not null;default:'';comment:'策略描述信息'"`
 	Type     uint8                               `gorm:"type:tinyint;not null;default:1;comment:'策略类型: 1-系统预设, 2-自定义'"`
 	Document sqlx.JSONColumn[[]domain.Statement] `gorm:"type:json;not null;comment:'策略语句文档的内容'"`
@@ -26,7 +26,7 @@ type Policy struct {
 // PolicyAssignment 策略分配关联表 (支持用户和角色统一授权)
 type PolicyAssignment struct {
 	Id         int64  `gorm:"primaryKey;autoIncrement"`
-	TenantId   int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID';eiam:'shared'"`
+	TenantId   int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID'" eiam:"shared"`
 	SubType    string `gorm:"type:varchar(20);not null;uniqueIndex:uniq_subject_policy;comment:'主体类型: user, role'"`
 	SubCode    string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
 	PolicyCode string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'策略代码'"`
@@ -312,16 +312,17 @@ func (d *policyDAO) CountAssignmentsByPolicyCodes(ctx context.Context, codes []s
 	}
 
 	type resultStruct struct {
-		PolicyCode string
-		Count      int64
+		PolicyCode string `gorm:"column:policy_code"`
+		Count      int64  `gorm:"column:count"`
 	}
 
 	var rs []resultStruct
+	// 使用 Find 替代 Scan，确保经过 GORM 插件（如多租户隔离）的处理
 	err := d.db.WithContext(ctx).Model(&PolicyAssignment{}).
-		Where("policy_code IN ?", codes).
 		Select("policy_code, COUNT(*) as count").
+		Where("policy_code IN ?", codes).
 		Group("policy_code").
-		Scan(&rs).Error
+		Find(&rs).Error
 
 	if err != nil {
 		return nil, err

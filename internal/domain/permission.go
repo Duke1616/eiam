@@ -65,6 +65,7 @@ type Permission struct {
 	Code    string   `json:"code"`    // 逻辑唯一标识：如 "iam:user:view"
 	Name    string   `json:"name"`    // 显示名：如 "查看用户"
 	Group   string   `json:"group"`   // 所属分组：如 "用户管理"
+	Desc    string   `json:"desc"`    // 业务描述信息
 	Needs   []string `json:"needs"`   // 依赖能力项
 
 	// Bindings 权限项包含的物理资源映射 (全局通用，不分租户)

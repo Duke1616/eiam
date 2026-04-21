@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -26,7 +27,7 @@ type PermissionBinding struct {
 	Id          int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'映射ID'"`
 	PermId      int64  `gorm:"type:bigint;not null;index:idx_perm_id;comment:'权限能力ID'"`
 	PermCode    string `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'权限能力码'"`
-	TenantId    int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'租户标识';eiam:'shared'"`
+	TenantId    int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'租户标识'" eiam:"shared"`
 	ResourceURN string `gorm:"type:varchar(256);not null;uniqueIndex:uniq_idx_perm_res_tenant;comment:'资源唯一标识'"`
 }
 
@@ -66,6 +67,15 @@ type IPermissionDAO interface {
 	SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error
 	// ListCasbinRules 查询 Casbin 关系规则 (带分页)
 	ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]CasbinRule, int64, error)
+	// FindByActions 根据一组 Action 标识查询权限项，支持通配符 *
+	FindByActions(ctx context.Context, actions []string) ([]Permission, error)
+	// CountByService 按服务分组统计权限点总数
+	CountByService(ctx context.Context) ([]ServiceCount, error)
+}
+
+type ServiceCount struct {
+	Service string
+	Count   int64
 }
 
 type PermissionDAO struct {
@@ -201,4 +211,38 @@ func (d *PermissionDAO) ListCasbinRules(ctx context.Context, tid, offset, limit 
 
 	err := db.Limit(int(limit)).Offset(int(offset)).Order("id DESC").Find(&res).Error
 	return res, total, err
+}
+
+func (d *PermissionDAO) FindByActions(ctx context.Context, actions []string) ([]Permission, error) {
+	db := d.db.WithContext(ctx).Model(&Permission{})
+	query := d.db.WithContext(ctx)
+
+	hasWildcard := false
+	for _, action := range actions {
+		if strings.HasSuffix(action, "*") {
+			hasWildcard = true
+			prefix := strings.TrimSuffix(action, "*")
+			query = query.Or("code LIKE ?", prefix+"%")
+		}
+	}
+
+	if hasWildcard {
+		query = query.Or("code IN ?", actions)
+		db = db.Where(query)
+	} else {
+		db = db.Where("code IN ?", actions)
+	}
+
+	var res []Permission
+	err := db.Find(&res).Error
+	return res, err
+}
+
+func (d *PermissionDAO) CountByService(ctx context.Context) ([]ServiceCount, error) {
+	var res []ServiceCount
+	err := d.db.WithContext(ctx).Model(&Permission{}).
+		Select("service, count(*) as count").
+		Group("service").
+		Scan(&res).Error
+	return res, err
 }

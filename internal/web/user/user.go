@@ -57,7 +57,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/update", h.Capability("修改用户", "edit").
 		Handle(ginx.B[UpdateUserReq](h.Update)),
 	)
-	g.GET("/detail/:id", h.Capability("用户详情", "get").
+	// 用户详情：统一入口，智能识别 id 或 username (query 传参)
+	g.GET("/detail", h.Capability("用户详情", "get").
 		Handle(ginx.W(h.Detail)),
 	)
 	g.DELETE("/delete/:id", h.Capability("删除用户", "delete").
@@ -66,7 +67,6 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list/attached/role", h.Capability("角色关联用户列表", "view").
 		Handle(ginx.B[ListRoleUsersRequest](h.ListAttachedRole)),
 	)
-
 	// LDAP 管理接口
 	g.POST("/ldap/search", h.Capability("搜索 LDAP", "ldap_search").
 		Handle(ginx.B[SearchLdapUser](h.SearchLdapUser)),
@@ -234,28 +234,47 @@ func (h *Handler) Update(ctx *ginx.Context, req UpdateUserReq) (ginx.Result, err
 }
 
 func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
-	id, err := ctx.Param("id").AsInt64()
+	// 1. 优雅地解析用户实体 (支持 ID 或 Username)
+	u, err := h.resolveUser(ctx)
 	if err != nil {
 		return ErrUserNotFound, err
 	}
 
-	u, err := h.svc.GetById(ctx.Request.Context(), id)
-	if err != nil {
-		return ErrUserNotFound, err
+	// 2. 统一地渲染视图结果
+	return h.renderDetail(ctx, u)
+}
+
+// resolveUser 高效解析用户标识符
+func (h *Handler) resolveUser(ctx *ginx.Context) (domain.User, error) {
+	// 逻辑：ID 优先 (ID 是物理主键，查询速度最快)
+	if id, err := ctx.Query("id").AsInt64(); err == nil && id != 0 {
+		return h.svc.GetById(ctx.Request.Context(), id)
 	}
 
+	// 降级：使用 Username (支持 username 或 code 参数名)
+	if username, err := ctx.Query("username").AsString(); err == nil && username != "" {
+		return h.svc.GetByUsername(ctx.Request.Context(), username)
+	}
+
+	return domain.User{}, fmt.Errorf("未找到该用户信息")
+}
+
+// renderDetail 渲染详情结果，支持系统租户装饰器 (IsMember)
+func (h *Handler) renderDetail(ctx *ginx.Context, u domain.User) (ginx.Result, error) {
 	tid := ctxutil.GetTenantID(ctx).Int64()
+
 	// 1. 普通租户视角：直接返回基础 User VO
 	if tid != ctxutil.SystemTenantID {
 		return ginx.Result{Data: ToUserVO(u)}, nil
 	}
 
-	// 2. 网络中心/系统租户视角：返回带装饰的 UserMemberVO
+	// 2. 系统租户视角：返回带装饰的 UserMemberVO
 	memberMap, err := h.tenantSvc.FindMembershipsByUserIds(ctx.Request.Context(), []int64{u.ID})
 	isMember := false
 	if err == nil {
 		_, isMember = memberMap[u.ID]
 	}
+
 	return ginx.Result{
 		Data: UserMemberVO{
 			User:     ToUserVO(u),

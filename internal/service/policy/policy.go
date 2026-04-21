@@ -57,11 +57,28 @@ func NewPolicyService(repo repository.IPolicyRepository) IPolicyService {
 }
 
 func (s *policyService) CreatePolicy(ctx context.Context, p domain.Policy) (int64, error) {
+	// 防止当前租户自定义策略与当前租户已有策略，或与系统的公共预置策略（Type 1）冲突
+	_, err := s.repo.GetPolicyByCode(ctx, p.Code)
+	if err == nil {
+		return 0, domain.ErrDuplicatePolicyCode
+	}
+
 	return s.repo.CreatePolicy(ctx, p)
 }
 
 func (s *policyService) GetPolicy(ctx context.Context, code string) (domain.Policy, error) {
-	return s.repo.GetPolicyByCode(ctx, code)
+	p, err := s.repo.GetPolicyByCode(ctx, code)
+	if err != nil {
+		return domain.Policy{}, err
+	}
+
+	// 填充授权数量统计
+	ps := []domain.Policy{p}
+	if err = s.repo.FillAssignmentCounts(ctx, ps); err != nil {
+		return domain.Policy{}, err
+	}
+
+	return ps[0], nil
 }
 
 func (s *policyService) ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error) {
@@ -137,7 +154,17 @@ func (s *policyService) GetAttachedWithPagination(ctx context.Context, subType, 
 }
 
 func (s *policyService) ListAttachedPolicies(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error) {
-	return s.repo.GetAttachedWithPagination(ctx, subType, subCode, offset, limit, keyword, policyType)
+	ps, total, err := s.repo.GetAttachedWithPagination(ctx, subType, subCode, offset, limit, keyword, policyType)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 填充授权数量统计
+	if err = s.repo.FillAssignmentCounts(ctx, ps); err != nil {
+		return nil, 0, err
+	}
+
+	return ps, total, nil
 }
 
 func (s *policyService) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error) {

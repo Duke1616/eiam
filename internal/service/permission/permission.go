@@ -374,6 +374,7 @@ func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole
 	return s.enforcer.AddGroupingPolicy(childSub, parentSub, tid)
 }
 
+// GetRolesForUser 获取用户当前拥有的所有角色清单 (含继承关系)
 func (s *permissionService) GetRolesForUser(ctx context.Context, username string) ([]string, error) {
 	tid := ctxutil.GetTenantID(ctx).String()
 
@@ -631,4 +632,94 @@ func (s *permissionService) hydratePolicyMetadata(ctx context.Context, assignmen
 		auth.FormatGovernance(domain.EntityMetadata{}, v1Meta) // 主体元数据为空，因为我们知道类型
 	}
 	return nil
+}
+
+func (s *permissionService) GetPolicySummary(ctx context.Context, p domain.Policy) (domain.PolicySummary, error) {
+	// 1. 并行获取三组基础数据
+	perms, serviceTotal, svcMetas, err := s.fetchPolicySummaryData(ctx, p.CollectActions())
+	if err != nil {
+		return domain.PolicySummary{}, err
+	}
+
+	// 2. 构建索引
+	svcNameMap := slice.ToMap(svcMetas, func(s domain.Service) string { return s.Code })
+	svcGroups := lo.GroupBy(perms, func(p domain.Permission) string { return p.Service })
+
+	// 3. 声明式组装：Map → 服务级摘要切片
+	summaries := lo.MapToSlice(svcGroups, func(svcCode string, hitPerms []domain.Permission) domain.PolicyServiceSummary {
+		scope := p.ResolveResourceScope(svcCode)
+		total := serviceTotal[svcCode]
+		hitCount := int64(len(hitPerms))
+
+		level := domain.AccessLevelPartial
+		if hitCount >= total && scope == "*" {
+			level = domain.AccessLevelAll
+		}
+
+		svcName := svcCode
+		if meta, ok := svcNameMap[svcCode]; ok {
+			svcName = meta.Name
+		}
+
+		return domain.PolicyServiceSummary{
+			ServiceCode:   svcCode,
+			ServiceName:   svcName,
+			Level:         level,
+			GrantedCount:  int(hitCount),
+			TotalCount:    int(total),
+			ResourceScope: scope,
+			// 反向映射：将权限点追溯到其 Statement 的边界条件
+			Actions: lo.FilterMap(hitPerms, func(perm domain.Permission, _ int) (domain.GrantedAction, bool) {
+				stmt, ok := p.FindGrantingStatement(perm.Code)
+				if !ok {
+					return domain.GrantedAction{}, false
+				}
+				return domain.GrantedAction{
+					Code:      perm.Code,
+					Name:      perm.Name,
+					Group:     perm.Group,
+					Resource:  stmt.Resource,
+					Condition: stmt.Condition,
+				}, true
+			}),
+		}
+	})
+
+	return domain.PolicySummary{Policy: p, Services: summaries}, nil
+}
+
+// fetchPolicySummaryData 并行获取策略摘要分析所需的三组基础数据
+func (s *permissionService) fetchPolicySummaryData(ctx context.Context, actions []string) (
+	[]domain.Permission, map[string]int64, []domain.Service, error,
+) {
+	var (
+		perms        []domain.Permission
+		serviceTotal map[string]int64
+		svcMetas     []domain.Service
+		eg           errgroup.Group
+	)
+
+	eg.Go(func() error {
+		var err error
+		perms, err = s.permRepo.FindByActions(ctx, lo.Uniq(actions))
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		serviceTotal, err = s.permRepo.CountByService(ctx)
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		svcMetas, err = s.resourceSvc.ListServices(ctx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return perms, serviceTotal, svcMetas, nil
 }

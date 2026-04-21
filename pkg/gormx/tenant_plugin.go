@@ -17,10 +17,20 @@ const (
 	ignretnt     = "gormx:ignore_tenant"
 )
 
+// SharedConfig 共享规则配置
+type SharedConfig struct {
+	IsShared  bool
+	Condition string
+}
+
 // TenantPlugin 提供多租户自动隔离的核心插件
 type TenantPlugin struct {
-	// cache 用于存储模型是否共享的判定结果，Key 为表名，Value 为 bool
+	// cache 用于存储模型配置的缓存，Key 为表名，Value 为 SharedConfig
 	cache sync.Map
+}
+
+func NewTenantPlugin() *TenantPlugin {
+	return &TenantPlugin{}
 }
 
 func (p *TenantPlugin) Name() string { return "tenant_plugin" }
@@ -43,7 +53,7 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 		return
 	}
 
-	tid := ctxutil.GetTenantID(db.Statement.Context).Int64()
+	tid := ctxutil.GetTenantID(db.Statement.Context)
 	if tid == 0 {
 		return
 	}
@@ -57,16 +67,17 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < rv.Len(); i++ {
-			p.setTenantField(db.Statement.Context, field, rv.Index(i), tid)
+			p.setTenantField(db.Statement.Context, field, rv.Index(i), tid.Int64())
 		}
 	case reflect.Struct:
-		p.setTenantField(db.Statement.Context, field, rv, tid)
+		p.setTenantField(db.Statement.Context, field, rv, tid.Int64())
 	case reflect.Ptr:
-		p.setTenantField(db.Statement.Context, field, rv.Elem(), tid)
+		p.setTenantField(db.Statement.Context, field, rv.Elem(), tid.Int64())
+	default:
 	}
 }
 
-// setTenantField 安全设置字段值
+// setTenantField 反射设值安全边界
 func (p *TenantPlugin) setTenantField(ctx context.Context, field *schema.Field, value reflect.Value, tid int64) {
 	for value.Kind() == reflect.Ptr || value.Kind() == reflect.Interface {
 		if value.IsNil() {
@@ -84,66 +95,110 @@ func (p *TenantPlugin) setTenantField(ctx context.Context, field *schema.Field, 
 	}
 }
 
-// handleQuery 查询时的租户条件
+// handleQuery 查询时的智能租户隔离条件
 func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	if p.shouldSkip(db) {
 		return
 	}
 
 	tid := ctxutil.GetTenantID(db.Statement.Context)
-	if tid != 0 {
-		if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
-			// 利用插件内部缓存探测结果
-			if p.isShared(db.Statement.Schema) {
-				if tid.Int64() == ctxutil.SystemTenantID {
-					db.Where(fmt.Sprintf("%s = ?", tenantColumn), ctxutil.SystemTenantID)
-				} else {
-					db.Where(fmt.Sprintf("%s IN (?, ?)", tenantColumn), tid.Int64(), ctxutil.SystemTenantID)
-				}
-			} else {
-				db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid.Int64())
-			}
-		}
+	if tid == 0 {
+		return // 忽略无租户上下文的请求
+	}
+
+	if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; !ok {
+		return // 该表无 tenant_id 字段，不作隔离
+	}
+
+	conf := p.getSharedConfig(db.Statement.Schema)
+	p.injectQueryPolicy(db, tid.Int64(), conf)
+}
+
+// injectQueryPolicy 根据实体配置，动态织入数据访问边界
+func (p *TenantPlugin) injectQueryPolicy(db *gorm.DB, currentTid int64, conf SharedConfig) {
+	// 1. 普通隔离：表不支持共享，严格限制在当前租户内
+	if !conf.IsShared {
+		db.Where(fmt.Sprintf("%s = ?", tenantColumn), currentTid)
+		return
+	}
+
+	// 2. 系统租户视角：系统租户管理自己的数据（跨租户管理通过 IgnoreTenant 提权）
+	if currentTid == ctxutil.SystemTenantID {
+		db.Where(fmt.Sprintf("%s = ?", tenantColumn), ctxutil.SystemTenantID)
+		return
+	}
+
+	// 3. 租户视角视阈混合：自己的私有资产 + 系统的受限共享资产
+	if conf.Condition != "" {
+		db.Where(
+			fmt.Sprintf("(%s = ?) OR (%s = ? AND %s)", tenantColumn, tenantColumn, conf.Condition),
+			currentTid, ctxutil.SystemTenantID,
+		)
+	} else {
+		db.Where(fmt.Sprintf("%s IN (?, ?)", tenantColumn), currentTid, ctxutil.SystemTenantID)
 	}
 }
 
-// isShared 探测该模型是否标记为 eiam:"shared"
-func (p *TenantPlugin) isShared(sch *schema.Schema) bool {
-	// 1. 尝试从缓存读取 (Key 使用表名，因为 Schema 是单例)
-	if val, ok := p.cache.Load(sch.Table); ok {
-		return val.(bool)
-	}
-
-	// 2. 缓存未命中，执行探测逻辑
-	isShared := false
-	if field, ok := sch.FieldsByDBName[tenantColumn]; ok {
-		tag := strings.ToLower(string(field.Tag))
-		// 只要标签中包含 eiam 和 shared 关键字即判定为共享字段，提升对引号格式的包容度
-		if strings.Contains(tag, "eiam") && strings.Contains(tag, "shared") {
-			isShared = true
-		}
-	}
-
-	// 3. 结果存入缓存
-	p.cache.Store(sch.Table, isShared)
-	return isShared
-}
-
-// handleStrict 更新/删除时的租户条件
+// handleStrict 更新与删除时，严格限定租户边界 (防越权操作)
 func (p *TenantPlugin) handleStrict(db *gorm.DB) {
 	if p.shouldSkip(db) {
 		return
 	}
 
 	tid := ctxutil.GetTenantID(db.Statement.Context)
-	if tid != 0 {
-		if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
-			db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid)
-		}
+	if tid == 0 {
+		return
+	}
+
+	if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; ok {
+		db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid.Int64())
 	}
 }
 
-// shouldSkip 卫语句
+// getSharedConfig 提取并缓存模型的共享规则
+func (p *TenantPlugin) getSharedConfig(sch *schema.Schema) SharedConfig {
+	if val, ok := p.cache.Load(sch.Table); ok {
+		return val.(SharedConfig)
+	}
+
+	conf := SharedConfig{}
+	if field, ok := sch.FieldsByDBName[tenantColumn]; ok {
+		eiamTag := field.Tag.Get("eiam")
+		if eiamTag != "" {
+			conf = p.parseEiamTag(eiamTag)
+		} else {
+			conf = p.fallbackLegacyTag(field.Tag)
+		}
+	}
+
+	p.cache.Store(sch.Table, conf)
+	return conf
+}
+
+// parseEiamTag 解析优雅的顶层标识符 e.g. eiam:"shared:type=1"
+func (p *TenantPlugin) parseEiamTag(tag string) SharedConfig {
+	conf := SharedConfig{}
+	parts := strings.SplitN(tag, ":", 2)
+	if parts[0] == "shared" {
+		conf.IsShared = true
+		if len(parts) > 1 {
+			conf.Condition = parts[1]
+		}
+	}
+	return conf
+}
+
+// fallbackLegacyTag 向下兼容旧版的 gorm 内嵌注释 e.g. gorm:"...;eiam:'shared'"
+func (p *TenantPlugin) fallbackLegacyTag(tag reflect.StructTag) SharedConfig {
+	conf := SharedConfig{}
+	tagStr := strings.ToLower(string(tag))
+	if strings.Contains(tagStr, "eiam") && strings.Contains(tagStr, "shared") {
+		conf.IsShared = true
+	}
+	return conf
+}
+
+// shouldSkip 资源守卫：校验是否越权或跳过拦截
 func (p *TenantPlugin) shouldSkip(db *gorm.DB) bool {
 	if val, ok := db.Get(ignretnt); ok && val.(bool) {
 		return true
@@ -151,13 +206,9 @@ func (p *TenantPlugin) shouldSkip(db *gorm.DB) bool {
 	return db.Statement.Schema == nil
 }
 
-// IgnoreTenant 跳过租户隔离
+// IgnoreTenant 系统提权：跳过租户隔离
 func IgnoreTenant() func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Set(ignretnt, true)
 	}
-}
-
-func NewTenantPlugin() *TenantPlugin {
-	return &TenantPlugin{}
 }
