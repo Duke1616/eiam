@@ -92,8 +92,6 @@ func (d *RoleDAO) CountByKeyword(ctx context.Context, keyword string) (int64, er
 	var total int64
 	db := d.db.WithContext(ctx).Model(&Role{})
 
-	db.Where("type != ?", domain.RoleTypeSystem)
-
 	if keyword != "" {
 		kw := "%" + keyword + "%"
 		db = db.Where("name LIKE ? OR code LIKE ?", kw, kw)
@@ -106,8 +104,6 @@ func (d *RoleDAO) CountByKeyword(ctx context.Context, keyword string) (int64, er
 func (d *RoleDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]Role, error) {
 	var roles []Role
 	db := d.db.WithContext(ctx).Model(&Role{})
-
-	db.Where("type != ?", domain.RoleTypeSystem)
 
 	if keyword != "" {
 		kw := "%" + keyword + "%"

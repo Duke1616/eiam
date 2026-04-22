@@ -228,10 +228,11 @@ func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, err
 		Data: RetrieveUsers[UserMemberVO]{
 			Total: total,
 			Users: slice.Map(users, func(idx int, src domain.User) UserMemberVO {
-				_, ok := memberMap[src.ID]
+				m, ok := memberMap[src.ID]
+				isMember := ok && m.TenantID == currentTid
 				return UserMemberVO{
 					User:     ToUserVO(src),
-					IsMember: &ok,
+					IsMember: &isMember,
 				}
 			}),
 		},
@@ -282,12 +283,10 @@ func (h *Handler) renderDetail(ctx *ginx.Context, u domain.User) (ginx.Result, e
 	}
 
 	// 2. 系统租户视角：返回带装饰的 UserMemberVO
-	memberMap, err := h.tenantSvc.FindMembershipsByUserIds(ctx.Request.Context(), []int64{u.ID})
-	isMember := false
-	if err == nil {
-		_, isMember = memberMap[u.ID]
-	}
+	//  对于单用户的检查，使用 CheckUserTenantAccess 更精准，避免了 FindMembershipsByUserIds 中 Map 会覆盖多租户记录的问题
+	isMember, _ := h.tenantSvc.CheckUserTenantAccess(ctx.Request.Context(), u.ID, tid)
 
+	fmt.Println(isMember)
 	return ginx.Result{
 		Data: UserMemberVO{
 			User:     ToUserVO(u),

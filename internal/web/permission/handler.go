@@ -238,7 +238,6 @@ func (h *Handler) ListAuthorizations(ctx *ginx.Context, req AuthorizationQueryRe
 }
 
 func (h *Handler) SearchSubjects(ctx *ginx.Context, req SearchSubjectsReq) (ginx.Result, error) {
-	// 获取当前租户 ID 
 	tid := ctxutil.GetTenantID(ctx).Int64()
 
 	subjects, total, err := h.svc.SearchSubjects(ctx.Request.Context(), tid, req.Keyword, req.SubType, req.Offset, req.Limit)
