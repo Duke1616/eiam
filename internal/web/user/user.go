@@ -231,8 +231,9 @@ func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, err
 				m, ok := memberMap[src.ID]
 				isMember := ok && m.TenantID == currentTid
 				return UserMemberVO{
-					User:     ToUserVO(src),
-					IsMember: &isMember,
+					User:          ToUserVO(src),
+					IsMember:      &isMember,
+					IsSystemSpace: currentTid == ctxutil.SystemTenantID,
 				}
 			}),
 		},
@@ -263,8 +264,9 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 
 	return ginx.Result{
 		Data: UserMemberVO{
-			User:     ToUserVO(u),
-			IsMember: &isMember,
+			User:          ToUserVO(u),
+			IsMember:      &isMember,
+			IsSystemSpace: tid == ctxutil.SystemTenantID,
 		},
 	}, nil
 }

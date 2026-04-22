@@ -44,7 +44,8 @@ type User struct {
 // UserMemberVO 组合了用户基础信息与当前租户的成员状态
 type UserMemberVO struct {
 	User
-	IsMember *bool `json:"is_member,omitempty"`
+	IsMember      *bool `json:"is_member,omitempty"`
+	IsSystemSpace bool  `json:"is_system_space,omitempty"`
 }
 
 type Identity struct {
