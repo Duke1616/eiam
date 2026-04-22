@@ -116,15 +116,15 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 
 // injectQueryPolicy 根据实体配置，动态织入数据访问边界
 func (p *TenantPlugin) injectQueryPolicy(db *gorm.DB, currentTid int64, conf SharedConfig) {
-	// 1. 普通隔离：表不支持共享，严格限制在当前租户内
-	if !conf.IsShared {
-		db.Where(fmt.Sprintf("%s = ?", tenantColumn), currentTid)
+	// 1. 系统租户视角：拥有全局穿透权，不进行自动隔离。
+	// 这允许管理员在治理模式下，通过代码显式指定的 tid 来查询任何租户数据。
+	if currentTid == ctxutil.SystemTenantID {
 		return
 	}
 
-	// 2. 系统租户视角：系统租户管理自己的数据（跨租户管理通过 IgnoreTenant 提权）
-	if currentTid == ctxutil.SystemTenantID {
-		db.Where(fmt.Sprintf("%s = ?", tenantColumn), ctxutil.SystemTenantID)
+	// 2. 普通隔离：表不支持共享，严格限制在当前租户内
+	if !conf.IsShared {
+		db.Where(fmt.Sprintf("%s = ?", tenantColumn), currentTid)
 		return
 	}
 
@@ -146,7 +146,8 @@ func (p *TenantPlugin) handleStrict(db *gorm.DB) {
 	}
 
 	tid := ctxutil.GetTenantID(db.Statement.Context)
-	if tid == 0 {
+	// 系统租户豁免严格校验，允许超管跨租户执行写操作
+	if tid == 0 || tid.Int64() == ctxutil.SystemTenantID {
 		return
 	}
 

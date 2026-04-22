@@ -8,6 +8,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/casbin/casbin/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 // ITenantService 租户业务接口
@@ -36,17 +37,23 @@ type ITenantService interface {
 	FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error)
 	// BatchInitPersonalTenant 批量为用户初始化个人空间
 	BatchInitPersonalTenant(ctx context.Context, users []domain.User) error
+	// ListMembers 获取租户下成员列表
+	ListMembers(ctx context.Context, tenantID int64, offset, limit int64, keyword string) ([]domain.User, int64, error)
+	// AssignUser 分配用户到租户空间
+	AssignUser(ctx context.Context, tenantID int64, userID int64) error
 }
 
 type tenantService struct {
 	repo     repository.ITenantRepository
+	userRepo repository.IUserRepository
 	roleSvc  role.IRoleService      // 注入角色服务：用于初始化系统固有角色
 	enforcer *casbin.SyncedEnforcer // 直接操作引擎，打破循环依赖
 }
 
-func NewTenantService(r repository.ITenantRepository, roleSvc role.IRoleService, enforcer *casbin.SyncedEnforcer) ITenantService {
+func NewTenantService(r repository.ITenantRepository, userRepo repository.IUserRepository, roleSvc role.IRoleService, enforcer *casbin.SyncedEnforcer) ITenantService {
 	return &tenantService{
 		repo:     r,
+		userRepo: userRepo,
 		roleSvc:  roleSvc,
 		enforcer: enforcer,
 	}
@@ -203,4 +210,36 @@ func (s *tenantService) FindMembershipsByUserIds(ctx context.Context, userIds []
 	}
 
 	return res, nil
+}
+
+func (s *tenantService) ListMembers(ctx context.Context, tenantID int64, offset, limit int64, keyword string) ([]domain.User, int64, error) {
+	var (
+		users []domain.User
+		total int64
+	)
+	eg, _ := errgroup.WithContext(ctx)
+
+	// 1. 并发查询成员详情列表 (userRepo.List 内部已处理租户隔离与搜索)
+	eg.Go(func() error {
+		var err error
+		users, err = s.userRepo.List(ctx, tenantID, offset, limit, keyword)
+		return err
+	})
+
+	// 2. 并发查询成员总数
+	eg.Go(func() error {
+		var err error
+		total, err = s.userRepo.Count(ctx, tenantID, keyword)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, 0, err
+	}
+
+	return users, total, nil
+}
+
+func (s *tenantService) AssignUser(ctx context.Context, tenantID int64, userID int64) error {
+	return s.repo.AddMembership(ctx, userID, tenantID)
 }

@@ -2,6 +2,7 @@ package permission
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -58,7 +59,7 @@ func NewPermissionService(
 	}
 }
 
-func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error) {
+func (s *permissionService) SearchSubjects(ctx context.Context, tid int64, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error) {
 	// 委托给注册中心处理路由与聚合
 	p := s.registry.Route(subType)
 
@@ -71,12 +72,12 @@ func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, 
 	// 并行执行计数与搜索，两者互不依赖
 	eg.Go(func() error {
 		var err error
-		total, err = p.CountSubjects(ctx, keyword)
+		total, err = p.CountSubjects(ctx, tid, keyword)
 		return err
 	})
 	eg.Go(func() error {
 		var err error
-		subjects, err = p.SearchSubjects(ctx, keyword, offset, limit)
+		subjects, err = p.SearchSubjects(ctx, tid, keyword, offset, limit)
 		return err
 	})
 
@@ -332,46 +333,145 @@ func (s *permissionService) BindResourcesToPermission(ctx context.Context, permI
 	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
 }
 
-func (s *permissionService) AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error) {
+func (s *permissionService) AssignRoleToUser(ctx context.Context, username string, roleCode string) error {
 	// 前置校验角色是否存在且合法
 	if _, err := s.roleSvc.GetByCode(ctx, roleCode); err != nil {
-		return false, err
+		return err
 	}
 
 	tid := ctxutil.GetTenantID(ctx).String()
-	return s.enforcer.AddGroupingPolicy(
+	_, err := s.enforcer.AddGroupingPolicy(
 		domain.UserSubject(username),
 		domain.RoleSubject(roleCode),
 		tid,
 	)
+	return err
 }
 
-func (s *permissionService) AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error) {
-	// 双重验证，严禁为不存在的角色创建继承关系
-	if _, err := s.roleSvc.GetByCode(ctx, childRole); err != nil {
-		return false, err
+func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) error {
+	tid := ctxutil.GetTenantID(ctx).String()
+	rules := make([][]string, 0, len(usernames))
+	for _, username := range usernames {
+		rules = append(rules, []string{
+			domain.UserSubject(username),
+			domain.RoleSubject(roleCode),
+			tid,
+		})
 	}
-	if _, err := s.roleSvc.GetByCode(ctx, parentRole); err != nil {
-		return false, err
+	_, err := s.enforcer.AddGroupingPolicies(rules)
+	return err
+}
+
+func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error {
+	// 1. 验证角色合法性，严禁为不存在的角色创建继承关系
+	if _, err := s.roleSvc.GetByCode(ctx, roleCode); err != nil {
+		return err
+	}
+	if _, err := s.roleSvc.GetByCode(ctx, parentRoleCode); err != nil {
+		return err
 	}
 
 	tid := ctxutil.GetTenantID(ctx).String()
-	// 环路检测 (基于马甲标识)
-	childSub := domain.RoleSubject(childRole)
-	parentSub := domain.RoleSubject(parentRole)
+	childSub := domain.RoleSubject(roleCode)
+	parentSub := domain.RoleSubject(parentRoleCode)
 
+	// 2. 环路检测：防止 A 继承 B，而 B 已经是 A 的子角色
 	ancestors, err := s.enforcer.GetImplicitRolesForUser(parentSub, tid)
 	if err != nil {
-		return false, err
+		return err
 	}
-
 	for _, ancestor := range ancestors {
 		if ancestor == childSub {
-			return false, errs.ErrRoleCycleInheritance
+			return errs.ErrRoleCycleInheritance
 		}
 	}
 
-	return s.enforcer.AddGroupingPolicy(childSub, parentSub, tid)
+	_, err = s.enforcer.AddGroupingPolicy(childSub, parentSub, tid)
+	return err
+}
+
+func (s *permissionService) RemoveRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error {
+	// 1. 获取角色详情以核实类型
+	child, err := s.roleSvc.GetByCode(ctx, roleCode)
+	if err != nil {
+		return err
+	}
+	parent, err := s.roleSvc.GetByCode(ctx, parentRoleCode)
+	if err != nil {
+		return err
+	}
+
+	// 2. 强校验：如果两者都是系统预设角色，则严禁移除关系
+	if child.Type == domain.RoleTypeSystem && parent.Type == domain.RoleTypeSystem {
+		return errs.ErrImmutableInheritance
+	}
+
+	tid := ctxutil.GetTenantID(ctx).String()
+	_, err = s.enforcer.RemoveGroupingPolicy(
+		domain.RoleSubject(roleCode),
+		domain.RoleSubject(parentRoleCode),
+		tid,
+	)
+	return err
+}
+
+func (s *permissionService) GetParentRoles(ctx context.Context, roleCode string) ([]domain.InheritanceInfo, error) {
+	tid := ctxutil.GetTenantID(ctx).String()
+	sub := domain.RoleSubject(roleCode)
+
+	// 查询本角色详情以获取其类型
+	currentRole, err := s.roleSvc.GetByCode(ctx, roleCode)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. 获取直接直接父角色 (第一层)
+	directParents, err := s.enforcer.GetRolesForUser(sub, tid)
+	if err != nil {
+		return nil, err
+	}
+	directMap := lo.SliceToMap(directParents, func(item string) (string, bool) {
+		return item, true
+	})
+
+	// 2. 获取隐含的所有父角色 (递归全量)
+	allParents, err := s.enforcer.GetImplicitRolesForUser(sub, tid)
+	if err != nil {
+		return nil, err
+	}
+
+	// 提前拉取所有父角色的详细信息，用于判定 Type
+	parentCodes := lo.Map(allParents, func(p string, _ int) string {
+		return domain.ExtractRoleCode(p)
+	})
+	parentTypeMap := make(map[string]uint8)
+	for _, pc := range parentCodes {
+		if pr, err := s.roleSvc.GetByCode(ctx, pc); err == nil {
+			parentTypeMap[pc] = pr.Type
+		}
+	}
+
+	// 3. 组装并去重
+	var infos []domain.InheritanceInfo
+	seen := make(map[string]bool)
+	for _, p := range allParents {
+		if p == sub || seen[p] {
+			continue
+		}
+		seen[p] = true
+		pc := domain.ExtractRoleCode(p)
+
+		// 判定逻辑：如果本角色和父角色都是系统角色 (Type=1)，则标记为不可变
+		isImmutable := currentRole.Type == domain.RoleTypeSystem && parentTypeMap[pc] == domain.RoleTypeSystem
+
+		infos = append(infos, domain.InheritanceInfo{
+			Code:        pc,
+			IsDirect:    directMap[p],
+			IsImmutable: isImmutable,
+		})
+	}
+
+	return infos, nil
 }
 
 // GetRolesForUser 获取用户当前拥有的所有角色清单 (含继承关系)
@@ -386,14 +486,12 @@ func (s *permissionService) GetRolesForUser(ctx context.Context, username string
 	return lo.Uniq(roles), nil
 }
 
-func (s *permissionService) AssignPolicyToUser(ctx context.Context, username string, policyCode string) (bool, error) {
-	err := s.policySvc.AttachPolicyToUser(ctx, username, policyCode)
-	return err == nil, err
+func (s *permissionService) AssignPolicyToUser(ctx context.Context, username string, policyCode string) error {
+	return s.policySvc.AttachPolicyToUser(ctx, username, policyCode)
 }
 
-func (s *permissionService) AssignPolicyToRole(ctx context.Context, roleCode, policyCode string) (bool, error) {
-	err := s.policySvc.AttachPolicyToRole(ctx, roleCode, policyCode)
-	return err == nil, err
+func (s *permissionService) AssignPolicyToRole(ctx context.Context, roleCode, policyCode string) error {
+	return s.policySvc.AttachPolicyToRole(ctx, roleCode, policyCode)
 }
 
 func (s *permissionService) GetImplicitSubjectsForUser(ctx context.Context, username string) ([]string, error) {
@@ -635,57 +733,117 @@ func (s *permissionService) hydratePolicyMetadata(ctx context.Context, assignmen
 }
 
 func (s *permissionService) GetPolicySummary(ctx context.Context, p domain.Policy) (domain.PolicySummary, error) {
-	// 1. 并行获取三组基础数据
-	perms, serviceTotal, svcMetas, err := s.fetchPolicySummaryData(ctx, p.CollectActions())
+	// 针对单条策略，复用批量逻辑以保持行为一致且易于维护
+	res, err := s.GetPoliciesSummary(ctx, []domain.Policy{p})
 	if err != nil {
 		return domain.PolicySummary{}, err
 	}
+	if len(res) == 0 {
+		return domain.PolicySummary{}, nil
+	}
+	return res[0], nil
+}
 
-	// 2. 构建索引
-	svcNameMap := slice.ToMap(svcMetas, func(s domain.Service) string { return s.Code })
-	svcGroups := lo.GroupBy(perms, func(p domain.Permission) string { return p.Service })
+func (s *permissionService) GetPoliciesSummary(ctx context.Context, policies []domain.Policy) ([]domain.PolicySummary, error) {
+	if len(policies) == 0 {
+		return []domain.PolicySummary{}, nil
+	}
 
-	// 3. 声明式组装：Map → 服务级摘要切片
-	summaries := lo.MapToSlice(svcGroups, func(svcCode string, hitPerms []domain.Permission) domain.PolicyServiceSummary {
+	// 1. 提取所有涉及的 Action 以便批量拉取元数据
+	var allActions []string
+	for _, p := range policies {
+		allActions = append(allActions, p.CollectActions()...)
+	}
+
+	// 2. 并行获取三组核心底座数据 (仅执行一次)
+	perms, serviceTotal, svcMetas, err := s.fetchPolicySummaryData(ctx, allActions)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. 预构建索引字典 (Code -> Name)
+	svcNameMap := lo.SliceToMap(svcMetas, func(s domain.Service) (string, string) {
+		return s.Code, s.Name
+	})
+	permMap := lo.SliceToMap(perms, func(p domain.Permission) (string, domain.Permission) { return p.Code, p })
+
+	// 4. 迭代组装每个 Policy 的摘要结果
+	results := make([]domain.PolicySummary, 0, len(policies))
+	for _, p := range policies {
+		results = append(results, s.assemblePolicySummary(p, permMap, serviceTotal, svcNameMap))
+	}
+
+	return results, nil
+}
+
+// assemblePolicySummary 内存级组装单个策略摘要
+func (s *permissionService) assemblePolicySummary(
+	p domain.Policy,
+	permMap map[string]domain.Permission, // permMap 包含本次批次涉及的所有权限
+	serviceTotal map[string]int64,
+	svcNameMap map[string]string) domain.PolicySummary {
+
+	// 1. 获取所有命中的权限点及其对应的效果
+	type analyzedPerm struct {
+		perm   domain.Permission
+		effect domain.Effect
+	}
+	var analyzed []analyzedPerm
+	for _, perm := range permMap {
+		if stmt, ok := p.FindApplicableStatement(perm.Code); ok {
+			analyzed = append(analyzed, analyzedPerm{perm: perm, effect: stmt.Effect})
+		}
+	}
+
+	// 2. 按 (服务ID + 效果) 进行二级聚合
+	// 这样同一个服务（如 IAM）的 ALLOW 和 DENY 会被拆分成两组
+	groups := lo.GroupBy(analyzed, func(ap analyzedPerm) string {
+		return fmt.Sprintf("%s:%s", ap.perm.Service, ap.effect)
+	})
+
+	// 3. 构建服务摘要列表
+	summaries := lo.MapToSlice(groups, func(_ string, aps []analyzedPerm) domain.PolicyServiceSummary {
+		svcCode := aps[0].perm.Service
+		effect := aps[0].effect
+
 		scope := p.ResolveResourceScope(svcCode)
 		total := serviceTotal[svcCode]
-		hitCount := int64(len(hitPerms))
+		count := int64(len(aps))
 
 		level := domain.AccessLevelPartial
-		if hitCount >= total && scope == "*" {
+		// 只有在 ALLOW 且 覆盖全量资源时才标记为 ALL 访问
+		if effect == domain.Allow && count >= total && scope == "*" {
 			level = domain.AccessLevelAll
 		}
 
 		svcName := svcCode
-		if meta, ok := svcNameMap[svcCode]; ok {
-			svcName = meta.Name
+		if name, ok := svcNameMap[svcCode]; ok {
+			svcName = name
 		}
 
 		return domain.PolicyServiceSummary{
 			ServiceCode:   svcCode,
 			ServiceName:   svcName,
+			Effect:        effect,
 			Level:         level,
-			GrantedCount:  int(hitCount),
+			GrantedCount:  int(count),
 			TotalCount:    int(total),
 			ResourceScope: scope,
-			// 反向映射：将权限点追溯到其 Statement 的边界条件
-			Actions: lo.FilterMap(hitPerms, func(perm domain.Permission, _ int) (domain.GrantedAction, bool) {
-				stmt, ok := p.FindGrantingStatement(perm.Code)
-				if !ok {
-					return domain.GrantedAction{}, false
-				}
+			Actions: lo.Map(aps, func(ap analyzedPerm, _ int) domain.GrantedAction {
+				stmt, _ := p.FindApplicableStatement(ap.perm.Code)
 				return domain.GrantedAction{
-					Code:      perm.Code,
-					Name:      perm.Name,
-					Group:     perm.Group,
+					Code:      ap.perm.Code,
+					Name:      ap.perm.Name,
+					Group:     ap.perm.Group,
+					Effect:    ap.effect,
 					Resource:  stmt.Resource,
 					Condition: stmt.Condition,
-				}, true
+				}
 			}),
 		}
 	})
 
-	return domain.PolicySummary{Policy: p, Services: summaries}, nil
+	return domain.PolicySummary{Policy: p, Services: summaries}
 }
 
 // fetchPolicySummaryData 并行获取策略摘要分析所需的三组基础数据
@@ -693,15 +851,20 @@ func (s *permissionService) fetchPolicySummaryData(ctx context.Context, actions 
 	[]domain.Permission, map[string]int64, []domain.Service, error,
 ) {
 	var (
+		eg           errgroup.Group
 		perms        []domain.Permission
 		serviceTotal map[string]int64
 		svcMetas     []domain.Service
-		eg           errgroup.Group
 	)
 
 	eg.Go(func() error {
 		var err error
-		perms, err = s.permRepo.FindByActions(ctx, lo.Uniq(actions))
+		// 优化：如果包含通配符 "*"，则拉取全量权限点以进行完整分析
+		if lo.Contains(actions, "*") {
+			perms, err = s.permRepo.ListAllPermissions(ctx)
+		} else {
+			perms, err = s.permRepo.FindByActions(ctx, lo.Uniq(actions))
+		}
 		return err
 	})
 

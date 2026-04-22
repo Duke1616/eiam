@@ -27,9 +27,9 @@ type IUserService interface {
 	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error)
 
 	List(ctx context.Context, tid, offset, limit int64, keyword string) ([]domain.User, int64, error)
-	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
+	Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.User, error)
 	// CountSearch 根据关键词获取符合条件的用户总数
-	CountSearch(ctx context.Context, keyword string) (int64, error)
+	CountSearch(ctx context.Context, tid int64, keyword string) (int64, error)
 	Update(ctx context.Context, u domain.User) (int64, error)
 	UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error
 	// Delete 删除用户
@@ -288,15 +288,15 @@ func (s *userService) List(ctx context.Context, tid, offset, limit int64, keywor
 	return users, total, nil
 }
 
-func (s *userService) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
+func (s *userService) Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.User, error) {
 	if limit <= 0 {
 		return []domain.User{}, nil
 	}
-	return s.repo.Search(ctx, keyword, offset, limit)
+	return s.repo.Search(ctx, tid, keyword, offset, limit)
 }
 
-func (s *userService) CountSearch(ctx context.Context, keyword string) (int64, error) {
-	return s.repo.CountSearch(ctx, keyword)
+func (s *userService) CountSearch(ctx context.Context, tid int64, keyword string) (int64, error) {
+	return s.repo.CountSearch(ctx, tid, keyword)
 }
 
 func (s *userService) Update(ctx context.Context, u domain.User) (int64, error) {

@@ -581,6 +581,16 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
+  - name: TenantDetail
+    permission_code: "iam:tenant:view"
+    path: /iam/identity/tenant/detail
+    component: /pages/iam/tenant/detail.vue
+    meta:
+      title: 租户详情
+      icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
 - name: IAMPermissionGovernance
   path: /iam/permission
   component: Layouts

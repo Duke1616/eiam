@@ -28,10 +28,11 @@ func InitSearchSubjectProviders(
 func NewRoleAdapter(roleSvc role.IRoleService) searcher.SubjectProvider {
 	return searcher.NewSubjectAdapter(
 		domain.SubjectTypeRole,
-		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error) {
+		func(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.Role, error) {
+			// NOTE: 角色搜索按需求维持全量/插件自动过滤逻辑，不显式锁定 tid
 			return roleSvc.Search(ctx, keyword, offset, limit)
 		},
-		func(ctx context.Context, keyword string) (int64, error) {
+		func(ctx context.Context, tid int64, keyword string) (int64, error) {
 			return roleSvc.CountByKeyword(ctx, keyword)
 		},
 		func(src domain.Role) searcher.Subject {
@@ -43,11 +44,12 @@ func NewRoleAdapter(roleSvc role.IRoleService) searcher.SubjectProvider {
 func NewUserAdapter(userSvc user.IUserService) searcher.SubjectProvider {
 	return searcher.NewSubjectAdapter(
 		domain.SubjectTypeUser,
-		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
-			return userSvc.Search(ctx, keyword, offset, limit)
+		func(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.User, error) {
+			// NOTE: 用户搜索需严格遵循空间成员隔离逻辑，显式透传 tid
+			return userSvc.Search(ctx, tid, keyword, offset, limit)
 		},
-		func(ctx context.Context, keyword string) (int64, error) {
-			return userSvc.CountSearch(ctx, keyword)
+		func(ctx context.Context, tid int64, keyword string) (int64, error) {
+			return userSvc.CountSearch(ctx, tid, keyword)
 		},
 		func(src domain.User) searcher.Subject {
 			return searcher.Subject{Type: domain.SubjectTypeUser, ID: src.Username, Name: src.Profile.Nickname}

@@ -1,28 +1,23 @@
 -- +goose Up
 -- +goose StatementBegin
--- 录入两大核心角色：super_admin (全局超级管理员)、admin (租户管理员)
--- 注意：tenant_id = 1 代表系统预置资源，所有其它租户将通过插件自动继承这些资源。
+-- 录入两大核心角色：super_admin (系统极权，Type=2 隐藏)、admin (租户管理员，Type=1 共享)
+-- 注意：tenant_id = 1 代表系统预置资源。
 INSERT INTO `role` (`tenant_id`, `code`, `name`, `type`, `desc`, `inline_policies`, `ctime`, `utime`)
 VALUES
-    (1, 'super_admin', '系统全局超级管理员', 1,
-     '拥有系统所有权限，不受任何限制',
+    (1, 'super_admin', '系统超级管理员', 2,
+     '平台最高管理权限，拥有跨租户治理、全局系统配置及底层基础设施的完全控制权。',
      '[{"name":"ROOT全量授权","code":"FullAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
      (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000)),
     (1, 'admin', '租户管理员', 1,
-     '租户内最高权限，但受限于全局敏感操作',
-     '[{"name":"敏感权限熔断策略","code":"AdminStandard","type":1,"statement":[{"effect":"Deny","action":["iam:tenant:*","iam:permission:global:*"],"resource":["*"]}]}]',
+     '租户内最高管理权限，负责本租户内的资源管理、身份授权及安全治理，受限于平台全局合规性策略。',
+     '[{"name":"全量授权","code":"AllAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]},{"name":"敏感权限熔断策略","code":"AdminStandard","type":1,"statement":[{"effect":"Deny","action":["iam:tenant:*","iam:permission:global:*"],"resource":["*"]}]}]',
      (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
     ON DUPLICATE KEY UPDATE
                          `name`            = VALUES(`name`),
+                         `type`            = VALUES(`type`),
                          `desc`            = VALUES(`desc`),
                          `inline_policies` = VALUES(`inline_policies`),
                          `utime`           = VALUES(`utime`);
-
--- 建立继承关系：租户管理员继承全局超管能力
--- 使用 domain '1' 作为系统级继承域
-INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`)
-VALUES ('g', 'role:admin', 'role:super_admin', '1')
-ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`);
 
 -- 初始化超级管理员账户：admin / 12345678
 INSERT INTO `user` (`id`, `username`, `password`, `email`, `status`, `source`, `ctime`, `utime`)

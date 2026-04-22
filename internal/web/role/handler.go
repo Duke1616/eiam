@@ -1,9 +1,13 @@
 package role
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
 	rolesvc "github.com/Duke1616/eiam/internal/service/role"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
@@ -54,6 +58,23 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	// 角色关系授权 (Relation)
 	g.POST("/assign", h.Capability("角色分配", "assign").
 		Handle(ginx.BS[AssignRoleRequest](h.AssignRole)),
+	)
+
+	g.POST("/batch_assign", h.Capability("批量分配角色", "batch_assign").
+		Handle(ginx.B[BatchAssignRoleRequest](h.BatchAssignRole)),
+	)
+
+	g.POST("/analysis/inline", h.Capability("分析内联策略", "analysis").
+		Handle(ginx.B[RoleAnalysisReq](h.AnalyzeInlinePolicies)),
+	)
+	g.POST("/add_parent", h.Capability("添加父角色", "add_parent").
+		Handle(ginx.B[RoleInheritanceReq](h.AddParentRole)),
+	)
+	g.POST("/remove_parent", h.Capability("移除父角色", "remove_parent").
+		Handle(ginx.B[RoleInheritanceReq](h.RemoveParentRole)),
+	)
+	g.POST("/parents", h.Capability("获取父角色", "view_parents").
+		Handle(ginx.B[GetParentRolesReq](h.GetParentRoles)),
 	)
 
 	// 查询当前用户的角色 (供 User Context 使用)
@@ -166,7 +187,69 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 	if err != nil {
 		return ErrRoleNotFound, err
 	}
+
 	return ginx.Result{Data: h.toVo(r)}, nil
+}
+
+func (h *Handler) AnalyzeInlinePolicies(ctx *ginx.Context, req RoleAnalysisReq) (ginx.Result, error) {
+	// 1. 获取角色及其内联策略
+	r, err := h.svc.GetByCode(ctx.Request.Context(), req.RoleCode)
+	if err != nil {
+		return ErrRoleNotFound, err
+	}
+
+	// 2. 批量计算内联策略的摘要分析
+	vo := h.toVo(r)
+	summaries, err := h.permSvc.GetPoliciesSummary(ctx.Request.Context(), r.InlinePolicies)
+	if err != nil {
+		return ErrGetRoleAnalysisFailed, err
+	}
+
+	for i, s := range summaries {
+		vo.InlinePolicies[i].Services = h.toServiceSummaryVOs(s.Services)
+	}
+
+	return ginx.Result{
+		Data: RoleAnalysisRes{
+			InlinePolicies: vo.InlinePolicies,
+		},
+	}, nil
+}
+
+func (h *Handler) AddParentRole(ctx *ginx.Context, req RoleInheritanceReq) (ginx.Result, error) {
+	err := h.permSvc.AddRoleInheritance(ctx.Request.Context(), req.RoleCode, req.ParentRoleCode)
+	if err != nil {
+		return ginx.Result{Code: 50101, Msg: "添加父角色失败"}, err
+	}
+	return ginx.Result{Msg: "添加成功"}, nil
+}
+
+func (h *Handler) RemoveParentRole(ctx *ginx.Context, req RoleInheritanceReq) (ginx.Result, error) {
+	err := h.permSvc.RemoveRoleInheritance(ctx.Request.Context(), req.RoleCode, req.ParentRoleCode)
+	if err != nil {
+		if errors.Is(err, errs.ErrImmutableInheritance) {
+			return ErrImmutableInheritance, err
+		}
+		return ginx.Result{Code: 50102, Msg: "移除父角色失败"}, err
+	}
+	return ginx.Result{Msg: "移除成功"}, nil
+}
+
+func (h *Handler) GetParentRoles(ctx *ginx.Context, req GetParentRolesReq) (ginx.Result, error) {
+	infos, err := h.permSvc.GetParentRoles(ctx.Request.Context(), req.RoleCode)
+	if err != nil {
+		return ginx.Result{Code: 50103, Msg: "获取父角色失败"}, err
+	}
+
+	return ginx.Result{
+		Data: slice.Map(infos, func(idx int, src domain.InheritanceInfo) RoleInheritanceInfo {
+			return RoleInheritanceInfo{
+				Code:        src.Code,
+				IsDirect:    src.IsDirect,
+				IsImmutable: src.IsImmutable,
+			}
+		}),
+	}, nil
 }
 
 func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess session.Session) (ginx.Result, error) { // 1. 获取当前用户和租户上下文
@@ -175,11 +258,19 @@ func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess sess
 		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
 	}
 
-	ok, err := h.permSvc.AssignRoleToUser(ctx.Request.Context(), username, req.RoleCode)
-	if err != nil || !ok {
+	err := h.permSvc.AssignRoleToUser(ctx.Request.Context(), username, req.RoleCode)
+	if err != nil {
 		return ErrRoleAssignFailed, err
 	}
 	return ginx.Result{Msg: "分配成功"}, nil
+}
+
+func (h *Handler) BatchAssignRole(ctx *ginx.Context, req BatchAssignRoleRequest) (ginx.Result, error) {
+	err := h.permSvc.AssignUsersToRole(ctx.Request.Context(), req.RoleCode, req.Usernames)
+	if err != nil {
+		return ErrRoleAssignFailed, err
+	}
+	return ginx.Result{Msg: "批量分配成功"}, nil
 }
 
 func (h *Handler) GetMyRoles(ctx *ginx.Context, req any, sess session.Session) (ginx.Result, error) {
@@ -204,17 +295,68 @@ func (h *Handler) toVo(src domain.Role) Role {
 		Desc: src.Desc,
 		Type: src.Type,
 		InlinePolicies: slice.Map(src.InlinePolicies, func(idx int, src domain.Policy) Policy {
-			return Policy{
-				Name: src.Name,
-				Code: src.Code,
-				Statement: slice.Map(src.Statement, func(idx int, src domain.Statement) Statement {
-					return Statement{
-						Effect:   string(src.Effect),
-						Action:   src.Action,
-						Resource: src.Resource,
+			return h.toPolicyVO(src)
+		}),
+	}
+}
+
+func (h *Handler) toPolicyVO(p domain.Policy) Policy {
+	return Policy{
+		Name: p.Name,
+		Code: p.Code,
+		Statement: slice.Map(p.Statement, func(idx int, s domain.Statement) Statement {
+			return Statement{
+				Effect:   string(s.Effect),
+				Action:   s.Action,
+				Resource: s.Resource,
+				Condition: slice.Map(s.Condition, func(idx int, c domain.Condition) Condition {
+					return Condition{
+						Operator: c.Operator,
+						Key:      c.Key,
+						Value:    c.Value,
 					}
 				}),
 			}
 		}),
 	}
+}
+
+func (h *Handler) toServiceSummaryVOs(summaries []domain.PolicyServiceSummary) []ServiceSummary {
+	return slice.Map(summaries, func(idx int, src domain.PolicyServiceSummary) ServiceSummary {
+		return ServiceSummary{
+			ServiceCode:   src.ServiceCode,
+			ServiceName:   src.ServiceName,
+			Effect:        string(src.Effect),
+			Level:         string(src.Level),
+			GrantedCount:  src.GrantedCount,
+			TotalCount:    src.TotalCount,
+			ResourceScope: src.ResourceScope,
+			Condition: func() string {
+				if len(src.Conditions) == 0 {
+					return "-"
+				}
+				b, _ := json.Marshal(src.Conditions)
+				return string(b)
+			}(),
+			Actions: slice.Map(src.Actions, func(idx int, pct domain.GrantedAction) ActionDetail {
+				// 格式化资源
+				resStr := strings.Join(pct.Resource, ", ")
+
+				// 格式化条件
+				condStr := "-"
+				if len(pct.Condition) > 0 {
+					b, _ := json.Marshal(pct.Condition)
+					condStr = string(b)
+				}
+
+				return ActionDetail{
+					Code:      pct.Code,
+					Name:      pct.Name,
+					Group:     pct.Group,
+					Resource:  resStr,
+					Condition: condStr,
+				}
+			}),
+		}
+	})
 }

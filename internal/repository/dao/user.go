@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -20,6 +19,8 @@ type IUserDAO interface {
 
 	// FindById 根据 ID 获取基础用户对象
 	FindById(ctx context.Context, id int64) (User, error)
+	// FindByIds 批量根据 ID 获取基础用户对象
+	FindByIds(ctx context.Context, ids []int64) ([]User, error)
 	// FindByUsername 根据用户名获取基础用户对象
 	FindByUsername(ctx context.Context, username string) (User, error)
 
@@ -45,9 +46,9 @@ type IUserDAO interface {
 	// Count 统计用户总数
 	Count(ctx context.Context, tid int64, keyword string) (int64, error)
 	// Search 模糊搜索当前租户下的成员用户
-	Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error)
-	// CountSearch 统计模糊搜索结果总数
-	CountSearch(ctx context.Context, keyword string) (int64, error)
+	Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]User, error)
+	// CountSearch 统计搜索结果总数
+	CountSearch(ctx context.Context, tid int64, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// FindUsersByUsernames 批量根据用户名获取用户
@@ -147,6 +148,15 @@ func (dao *userDAO) FindById(ctx context.Context, id int64) (User, error) {
 	return u, err
 }
 
+func (dao *userDAO) FindByIds(ctx context.Context, ids []int64) ([]User, error) {
+	var users []User
+	if len(ids) == 0 {
+		return users, nil
+	}
+	err := dao.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error
+	return users, err
+}
+
 func (dao *userDAO) FindByUsername(ctx context.Context, username string) (User, error) {
 	var u User
 	err := dao.db.WithContext(ctx).Where("username = ?", username).First(&u).Error
@@ -221,8 +231,8 @@ func (dao *userDAO) List(ctx context.Context, tid, offset, limit int64, keyword 
 	var us []User
 	db := dao.db.WithContext(ctx).Model(&User{})
 
-	// 1. 租户隔离
-	if tid != ctxutil.SystemTenantID {
+	// 1. 租户隔离：只要指定了 Tid（包括系统租户），就说明是在租户视图下
+	if tid > 0 {
 		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
 		db = db.Where("id IN (?)", subQuery)
 	}
@@ -241,8 +251,8 @@ func (dao *userDAO) Count(ctx context.Context, tid int64, keyword string) (int64
 	var total int64
 	db := dao.db.WithContext(ctx).Model(&User{})
 
-	// 1. 租户隔离
-	if tid != ctxutil.SystemTenantID {
+	// 1. 租户隔离：只要指定了 Tid（包括系统租户），就说明是在租户视图下
+	if tid > 0 {
 		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
 		db = db.Where("id IN (?)", subQuery)
 	}
@@ -257,7 +267,7 @@ func (dao *userDAO) Count(ctx context.Context, tid int64, keyword string) (int64
 	return total, err
 }
 
-func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, error) {
+func (dao *userDAO) CountSearch(ctx context.Context, tid int64, keyword string) (int64, error) {
 	var total int64
 	db := dao.db.WithContext(ctx).Model(&User{})
 	if keyword != "" {
@@ -265,20 +275,31 @@ func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, err
 		db = db.Where("username LIKE ?", kw)
 	}
 
-	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-	err := db.Where("id IN (?)", subQuery).Count(&total).Error
+	// 强制锁定租户
+	if tid > 0 {
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+		db = db.Where("id IN (?)", subQuery)
+	}
+
+	err := db.Count(&total).Error
 	return total, err
 }
 
-func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error) {
+func (dao *userDAO) Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]User, error) {
 	var us []User
 	db := dao.db.WithContext(ctx).Model(&User{})
 	if keyword != "" {
 		kw := "%" + keyword + "%"
 		db = db.Where("username LIKE ?", kw)
 	}
-	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-	err := db.Where("id IN (?)", subQuery).Offset(int(offset)).Limit(int(limit)).Find(&us).Error
+
+	// 强制锁定租户
+	if tid > 0 {
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+		db = db.Where("id IN (?)", subQuery)
+	}
+
+	err := db.Offset(int(offset)).Limit(int(limit)).Find(&us).Error
 	return us, err
 }
 

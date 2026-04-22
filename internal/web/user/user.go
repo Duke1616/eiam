@@ -190,15 +190,22 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 }
 
 func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, error) {
-	tid := ctxutil.GetTenantID(ctx).Int64()
+	currentTid := ctxutil.GetTenantID(ctx).Int64()
 
-	users, total, err := h.svc.List(ctx.Request.Context(), tid, req.Offset, req.Limit, req.Keyword)
-	if err != nil {
-		return ErrUserListFailed, err
+	// 1. 视角决策：系统管理员在全局页面使用上帝视角 (queryTid=0)，普通管理员锁定当前空间
+	queryTid := currentTid
+	if currentTid == ctxutil.SystemTenantID {
+		queryTid = 0
 	}
 
-	// 1. 普通租户视角：直接返回基础视图（卫语句优先返回）
-	if tid != ctxutil.SystemTenantID {
+	// 2. 调用服务层获取数据
+	users, total, err := h.svc.List(ctx.Request.Context(), queryTid, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
+		return ginx.Result{}, err
+	}
+
+	// 3. 视图装饰：如果不是系统管理员，直接返回基础用户信息
+	if currentTid != ctxutil.SystemTenantID {
 		return ginx.Result{
 			Data: RetrieveUsers[User]{
 				Total: total,
@@ -209,17 +216,23 @@ func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, err
 		}, nil
 	}
 
-	// 2. 网络中心/系统租户（超管视角）：批量装饰 IsMember 标记
+	// 4. 超管特权装饰：批量标识这些用户中，哪些已经入驻了当前管理空间（或已入驻任意空间）
 	userIDs := slice.Map(users, func(idx int, src domain.User) int64 {
 		return src.ID
 	})
+
+	// 这里的 FindMembershipsByUserIds 会返回用户与租户的关联关系
 	memberMap, _ := h.tenantSvc.FindMembershipsByUserIds(ctx.Request.Context(), userIDs)
+
 	return ginx.Result{
 		Data: RetrieveUsers[UserMemberVO]{
 			Total: total,
 			Users: slice.Map(users, func(idx int, src domain.User) UserMemberVO {
 				_, ok := memberMap[src.ID]
-				return UserMemberVO{User: ToUserVO(src), IsMember: &ok}
+				return UserMemberVO{
+					User:     ToUserVO(src),
+					IsMember: &ok,
+				}
 			}),
 		},
 	}, nil

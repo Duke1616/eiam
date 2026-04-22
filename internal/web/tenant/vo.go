@@ -61,3 +61,32 @@ func ToTenantVO(t domain.Tenant) TenantVO {
 		Status: t.Status,
 	}
 }
+
+type ListMembersReq struct {
+	TenantID int64  `json:"tenant_id"`
+	Offset   int64  `json:"offset"`
+	Limit    int64  `json:"limit"`
+	Keyword  string `json:"keyword"`
+}
+
+type ListMembersRes struct {
+	Total   int64      `json:"total"`
+	Members []MemberVO `json:"members"`
+}
+
+type MemberVO struct {
+	ID          int64  `json:"id"`
+	Username    string `json:"username"`
+	Nickname    string `json:"nickname"`
+	Avatar      string `json:"avatar"`
+	Email       string `json:"email"`
+	Status      int    `json:"status"`
+	JobTitle    string `json:"job_title"`
+	LastLoginAt int64  `json:"last_login_at"`
+	Ctime       int64  `json:"ctime"`
+}
+
+type AssignUserReq struct {
+	TenantID int64 `json:"tenant_id" binding:"required"`
+	UserID   int64 `json:"user_id" binding:"required"`
+}

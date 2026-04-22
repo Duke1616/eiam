@@ -32,9 +32,12 @@ type ITenantDAO interface {
 	InsertMembership(ctx context.Context, m Membership) error
 	// BatchInsertMemberships 批量插入用户与租户的关联映射
 	BatchInsertMemberships(ctx context.Context, ms []Membership) error
+	// AddMembership 插入单条成员关联逻辑
+	AddMembership(ctx context.Context, userID, tenantID int64) error
+	// DeleteMembership 移除用户与租户的关联映射
+	DeleteMembership(ctx context.Context, tenantID, userID int64) error
 	// GetMembership 精确查询特定租户下特定用户的入驻信息
 	GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error)
-
 	// GetMembershipByUserId 查询用户在当前操作语境下的入驻信息
 	GetMembershipByUserId(ctx context.Context, userId int64) (Membership, error)
 	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
@@ -44,7 +47,6 @@ type ITenantDAO interface {
 	// FindTenantIDsByUserId 查询指定用户所属的所有租户 ID 列表
 	FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error)
 	// GetAttachedTenantsWithFilter 分页模糊查询关联用户的租户
-	// tid 用于权限辅助过滤，由上层 Service 根据登录态注入
 	GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]Tenant, int64, error)
 }
 
@@ -100,8 +102,10 @@ func (d *TenantDAO) AddMembership(ctx context.Context, userID, tenantID int64) e
 	return d.db.WithContext(ctx).Create(&Membership{UserID: userID, TenantID: tenantID}).Error
 }
 
-func (d *TenantDAO) BatchAddMemberships(ctx context.Context, ms []Membership) error {
-	return d.db.WithContext(ctx).Create(&ms).Error
+func (d *TenantDAO) DeleteMembership(ctx context.Context, tenantID, userID int64) error {
+	return d.db.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
+		Delete(&Membership{}).Error
 }
 
 func (d *TenantDAO) GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error) {
@@ -112,7 +116,6 @@ func (d *TenantDAO) GetMembership(ctx context.Context, tenantId, userId int64) (
 
 func (d *TenantDAO) GetMembershipByUserId(ctx context.Context, userId int64) (Membership, error) {
 	var m Membership
-	// 注意：此处不显式传 tenant_id，交给 GORM 拦截器全权处理
 	err := d.db.WithContext(ctx).Where("user_id = ?", userId).First(&m).Error
 	return m, err
 }
@@ -163,7 +166,6 @@ func (d *TenantDAO) Delete(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Delete(&Tenant{}, id).Error
 }
 
-// FindTenantIDsByUserId 查询用户入驻的所有租户 ID（走 membership 索引）
 func (d *TenantDAO) FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error) {
 	var ms []Membership
 	err := d.db.WithContext(ctx).Select("tenant_id").Where("user_id = ?", userId).Find(&ms).Error
@@ -178,7 +180,6 @@ func (d *TenantDAO) FindTenantIDsByUserId(ctx context.Context, userId int64) ([]
 	return ids, nil
 }
 
-// FindTenantsByIDs 按 ID 列表批量查租户信息
 func (d *TenantDAO) FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error) {
 	var ts []Tenant
 	err := d.db.WithContext(ctx).Where("id IN ?", ids).Find(&ts).Error
@@ -191,17 +192,14 @@ func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, ti
 		total int64
 	)
 
-	// 1. 构造子查询：从 membership 中找出该用户入驻的所有租户 ID
-	subQuery := d.db.Model(&Membership{}).
+	subQuery := d.db.WithContext(ctx).Model(&Membership{}).
 		Select("tenant_id").
 		Where("user_id = ?", userID)
 
-	// 2. 租户隔离：如果是非系统中心租户，强制限制子查询范围
 	if tid != ctxutil.SystemTenantID {
 		subQuery = subQuery.Where("tenant_id = ?", tid)
 	}
 
-	// 3. 主查询：基于子查询结果筛选租户
 	query := d.db.WithContext(ctx).Model(&Tenant{}).
 		Where("id IN (?)", subQuery)
 

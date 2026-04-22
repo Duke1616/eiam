@@ -128,6 +128,25 @@ func (p Policy) FindGrantingStatement(code string) (Statement, bool) {
 	return Statement{}, false
 }
 
+// FindApplicableStatement 查找第一条命中的语句，遵循 Deny 优先原则
+func (p Policy) FindApplicableStatement(code string) (Statement, bool) {
+	// 优先查找拒绝语句 (Deny 优先级最高)
+	for _, stmt := range p.Statement {
+		if stmt.Effect == Deny && stmt.MatchesAction(code) {
+			return stmt, true
+		}
+	}
+
+	// 其次查找允许语句
+	for _, stmt := range p.Statement {
+		if stmt.Effect == Allow && stmt.MatchesAction(code) {
+			return stmt, true
+		}
+	}
+
+	return Statement{}, false
+}
+
 // ResolveResourceScope 判定策略对指定服务的资源作用域
 // 返回 "*" 表示全局资源，"SPECIFIC" 表示限定资源
 func (p Policy) ResolveResourceScope(serviceCode string) string {
@@ -153,6 +172,7 @@ type PolicySummary struct {
 type PolicyServiceSummary struct {
 	ServiceCode   string
 	ServiceName   string
+	Effect        Effect
 	Level         AccessLevel
 	GrantedCount  int
 	TotalCount    int
@@ -166,6 +186,7 @@ type GrantedAction struct {
 	Code      string
 	Name      string
 	Group     string
+	Effect    Effect
 	Resource  []string
 	Condition []Condition
 }

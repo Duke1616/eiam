@@ -20,6 +20,8 @@ var (
 	ErrGetUserFailed         = ginx.Result{Code: 4010506, Msg: "获取用户信息失败"}
 	ErrGetUserRoleCodeFailed = ginx.Result{Code: 4010507, Msg: "获取用户角色代码失败"}
 	ErrGetRoleDetailFailed   = ginx.Result{Code: 4010508, Msg: "获取角色详情失败"}
+	ErrGetRoleAnalysisFailed = ginx.Result{Code: 4010509, Msg: "获取角色权限分析失败"}
+	ErrImmutableInheritance  = ginx.Result{Code: 4010510, Msg: "系统级继承关系严禁移除"}
 
 	ErrUnauthenticated = user.ErrUnauthenticated
 )

@@ -33,24 +33,32 @@ type IPermissionService interface {
 	// --- 3. 关系管理 (Relation) ---
 
 	// AssignRoleToUser 绑定用户与角色
-	AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error)
-	// AssignRoleInheritance 设置角色继承关系，让 childRole 自动拥有 parentRole 的所有能力
-	AssignRoleInheritance(ctx context.Context, childRole string, parentRole string) (bool, error)
+	AssignRoleToUser(ctx context.Context, username string, roleCode string) error
 	// GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
 	GetRolesForUser(ctx context.Context, username string) ([]string, error)
+	// AssignUsersToRole 批量将用户分配给角色
+	AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) error
+	// AddRoleInheritance 建立角色继承关系 (roleCode 继承 parentRoleCode)
+	AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error
+	// RemoveRoleInheritance 移除角色继承关系
+	RemoveRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error
+	// GetParentRoles 获取指定角色的直接父角色
+	GetParentRoles(ctx context.Context, roleCode string) ([]domain.InheritanceInfo, error)
 
 	// AssignPolicyToUser 直接给用户绑定特定的策略
-	AssignPolicyToUser(ctx context.Context, username string, policyCode string) (bool, error)
+	AssignPolicyToUser(ctx context.Context, username string, policyCode string) error
 	// AssignPolicyToRole 给角色挂载特定的策略
-	AssignPolicyToRole(ctx context.Context, roleCode, policyCode string) (bool, error)
+	AssignPolicyToRole(ctx context.Context, roleCode, policyCode string) error
 	// GetImplicitSubjectsForUser 解析用户的有效身份图谱 (递归获取所有相关的 Role 和 Policy ID)
 	GetImplicitSubjectsForUser(ctx context.Context, username string) ([]string, error)
 	// ListAuthorizations 获取授权关系列表 (聚合显示)
 	ListAuthorizations(ctx context.Context, query domain.AuthorizationQuery) ([]domain.Authorization, int64, error)
-	// SearchSubjects 全域搜索授权主体 (用户/角色)
-	SearchSubjects(ctx context.Context, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error)
+	// SearchSubjects 搜索主体 (用户/组/角色)
+	SearchSubjects(ctx context.Context, tid int64, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error)
 	// GetPolicySummary 获取策略的服务化摘要
 	GetPolicySummary(ctx context.Context, p domain.Policy) (domain.PolicySummary, error)
+	// GetPoliciesSummary 批量获取策略的服务化摘要 (性能优化版)
+	GetPoliciesSummary(ctx context.Context, policies []domain.Policy) ([]domain.PolicySummary, error)
 }
 
 // AuthorizationProvider 授权关系查询提供者接口

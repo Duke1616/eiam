@@ -38,6 +38,14 @@ func RoleSubject(code string) string {
 	return PrefixRole + code
 }
 
+func ExtractRoleCode(s string) string {
+	return strings.TrimPrefix(s, PrefixRole)
+}
+
+func ExtractUserCode(s string) string {
+	return strings.TrimPrefix(s, PrefixUser)
+}
+
 // Subject 权限主体解析结果
 type Subject struct {
 	Type string // user, role, policy

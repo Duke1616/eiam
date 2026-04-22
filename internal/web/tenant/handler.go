@@ -9,6 +9,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
@@ -65,6 +66,50 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list/attached/user", h.Capability("查询用户所属租户", "view_user_tenants").
 		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId)),
 	)
+	// 租户成员管理
+	g.POST("/members", h.Capability("查看租户成员", "view_members").
+		Handle(ginx.B[ListMembersReq](h.ListMembers)),
+	)
+	g.POST("/assign", h.Capability("加入租户", "assign").
+		Handle(ginx.B[AssignUserReq](h.AssignUser)),
+	)
+}
+
+func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Result, error) {
+	users, total, err := h.svc.ListMembers(ctx.Context, req.TenantID, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
+		return ErrTenantGet, err
+	}
+
+	return ginx.Result{
+		Data: ListMembersRes{
+			Total: total,
+			Members: slice.Map(users, func(idx int, u domain.User) MemberVO {
+				return MemberVO{
+					ID:          u.ID,
+					Username:    u.Username,
+					Nickname:    u.Profile.Nickname,
+					Avatar:      u.Profile.Avatar,
+					Email:       u.Email,
+					Status:      int(u.Status),
+					JobTitle:    u.Profile.JobTitle,
+					LastLoginAt: u.LastLoginAt,
+					Ctime:       u.Ctime,
+				}
+			}),
+		},
+	}, nil
+}
+
+func (h *Handler) AssignUser(ctx *ginx.Context, req AssignUserReq) (ginx.Result, error) {
+	err := h.svc.AssignUser(ctx.Context, req.TenantID, req.UserID)
+	if err != nil {
+		return ErrTenantUpdate, err
+	}
+
+	return ginx.Result{
+		Msg: "分配用户到租户成功",
+	}, nil
 }
 
 // CreateTenant 允许用户主动创建一个属于自己的企业/工作空间
@@ -81,7 +126,7 @@ func (h *Handler) CreateTenant(ctx *ginx.Context, req CreateTenantReq, sess sess
 
 	// 初始化租户权限：给创建者分配 admin 角色
 	newCtx := ctxutil.WithTenantID(ctx.Context, tenantId)
-	_, err = h.permSvc.AssignRoleToUser(newCtx, username, "admin")
+	err = h.permSvc.AssignRoleToUser(newCtx, username, "admin")
 	if err != nil {
 		fmt.Printf("租户创建者授权失败: %v\n", err)
 	}

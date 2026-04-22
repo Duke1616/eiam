@@ -13,4 +13,6 @@ var (
 	ErrInvalidUser        = errors.New("账号或密码错误")
 	ErrProviderNotFound   = errors.New("未找到指定的身份源适配器")
 	ErrTenantAccessDenied = errors.New("无权访问该租户空间")
+
+	ErrImmutableInheritance = errors.New("系统级继承关系严禁移除")
 )

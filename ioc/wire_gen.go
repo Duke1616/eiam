@@ -49,7 +49,7 @@ func InitApp() (*App, error) {
 	iPolicyService := policy.NewPolicyService(iPolicyRepository)
 	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService)
 	syncedEnforcer := InitCasbin(db)
-	iTenantService := tenant.NewTenantService(iTenantRepository, iRoleService, syncedEnforcer)
+	iTenantService := tenant.NewTenantService(iTenantRepository, iUserRepository, iRoleService, syncedEnforcer)
 	config := InitLdapConfig()
 	v2 := InitIdentityProviders(config)
 	iUserService := user.NewUserService(iUserRepository, iTenantService, v2)

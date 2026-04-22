@@ -23,3 +23,10 @@ type Role struct {
 	// AssumeRolePolicy 信任策略文档：定义“谁能扮演该角色”
 	AssumeRolePolicy Policy
 }
+
+// InheritanceInfo 角色继承元数据 (用于多层展示)
+type InheritanceInfo struct {
+	Code        string
+	IsDirect    bool
+	IsImmutable bool // 是否不可变 (系统级强依赖关系)
+}

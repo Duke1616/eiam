@@ -12,7 +12,7 @@ import (
 // Role 角色持久化实体
 type Role struct {
 	Id             int64                            `gorm:"type:bigint;primaryKey;autoIncrement;comment:'角色ID'"`
-	TenantId       int64                            `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_idx_tenant_role_code,priority:1;comment:'租户ID，0为系统全局角色'" eiam:"shared"`
+	TenantId       int64                            `gorm:"type:bigint;not null;default:0;uniqueIndex:uniq_idx_tenant_role_code,priority:1;comment:'租户ID 1 为系统全局角色'" eiam:"shared:type=1"`
 	Name           string                           `gorm:"type:varchar(255);not null;comment:'角色名称'"`
 	Code           string                           `gorm:"type:varchar(255);not null;uniqueIndex:uniq_idx_tenant_role_code,priority:2;comment:'角色标识码'"`
 	Desc           string                           `gorm:"type:varchar(512);not null;default:'';comment:'角色描述信息'"`

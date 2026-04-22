@@ -18,6 +18,8 @@ type IUserRepository interface {
 	Create(ctx context.Context, u domain.User) (int64, error)
 	// FindById 根据 ID 查找用户 (含全量关联信息)
 	FindById(ctx context.Context, id int64) (domain.User, error)
+	// FindByIds 批量根据 ID 获取基础用户对象
+	FindByIds(ctx context.Context, ids []int64) ([]domain.User, error)
 	// FindByUsername 根据用户名查找用户
 	FindByUsername(ctx context.Context, username string) (domain.User, error)
 
@@ -33,9 +35,9 @@ type IUserRepository interface {
 	// Count 统计搜索结果总数
 	Count(ctx context.Context, tid int64, keyword string) (int64, error)
 	// Search 根据关键字模糊搜索当前租户成员用户
-	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
+	Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.User, error)
 	// CountSearch 根据关键字统计当前租户成员搜索结果总数
-	CountSearch(ctx context.Context, keyword string) (int64, error)
+	CountSearch(ctx context.Context, tid int64, keyword string) (int64, error)
 	// GetAttachedUsersWithFilter 分页获取关联角色的用户详情，支持关键词过滤
 	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	// UpdateLastLoginAt 更新最近登录时间
@@ -85,6 +87,14 @@ func (repo *userRepository) FindById(ctx context.Context, id int64) (domain.User
 		return domain.User{}, err
 	}
 	return repo.fullHydration(ctx, u)
+}
+
+func (repo *userRepository) FindByIds(ctx context.Context, ids []int64) ([]domain.User, error) {
+	users, err := repo.dao.FindByIds(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return repo.batchHydration(ctx, users)
 }
 
 func (repo *userRepository) FindByUsername(ctx context.Context, username string) (domain.User, error) {
@@ -167,8 +177,8 @@ func (repo *userRepository) Count(ctx context.Context, tid int64, keyword string
 	return repo.dao.Count(ctx, tid, keyword)
 }
 
-func (repo *userRepository) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
-	users, err := repo.dao.Search(ctx, keyword, offset, limit)
+func (repo *userRepository) Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.User, error) {
+	users, err := repo.dao.Search(ctx, tid, keyword, offset, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -176,8 +186,8 @@ func (repo *userRepository) Search(ctx context.Context, keyword string, offset, 
 	return repo.batchHydration(ctx, users)
 }
 
-func (repo *userRepository) CountSearch(ctx context.Context, keyword string) (int64, error) {
-	return repo.dao.CountSearch(ctx, keyword)
+func (repo *userRepository) CountSearch(ctx context.Context, tid int64, keyword string) (int64, error) {
+	return repo.dao.CountSearch(ctx, tid, keyword)
 }
 
 func (repo *userRepository) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]domain.User, int64, error) {

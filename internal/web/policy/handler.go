@@ -63,6 +63,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user_policies").
 		Handle(ginx.B[ListUserPoliciesReq](h.GetPoliciesByUserId)),
 	)
+	// 查询特定角色的关联策略 (管理侧使用)
+	g.POST("/list/attached/role", h.Capability("查询角色策略", "view_role_policies").
+		Handle(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
+	)
 }
 
 func (h *Handler) GetPoliciesByUserId(ctx *ginx.Context, req ListUserPoliciesReq) (ginx.Result, error) {
@@ -84,6 +88,32 @@ func (h *Handler) GetPoliciesByUserId(ctx *ginx.Context, req ListUserPoliciesReq
 
 	// 2. 分页获取该用户关联的策略
 	ps, total, err := h.svc.ListAttachedPolicies(ctx.Request.Context(), domain.SubjectTypeUser, u.Username, req.Offset, req.Limit, req.Keyword, domain.PolicyType(req.Type))
+	if err != nil {
+		return ErrGetAttachedFailed, err
+	}
+
+	return ginx.Result{
+		Data: ListPolicyRes{
+			Total: total,
+			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+				return h.toVO(src)
+			}),
+		},
+	}, nil
+}
+
+func (h *Handler) GetPoliciesByRoleCode(ctx *ginx.Context, req ListRolePoliciesReq) (ginx.Result, error) {
+	if req.RoleCode == "" {
+		return ErrInvalidRoleCode, nil
+	}
+
+	// 设置默认分页
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+
+	// 分页获取该角色关联的策略
+	ps, total, err := h.svc.ListAttachedPolicies(ctx.Request.Context(), domain.SubjectTypeRole, req.RoleCode, req.Offset, req.Limit, req.Keyword, domain.PolicyType(req.Type))
 	if err != nil {
 		return ErrGetAttachedFailed, err
 	}
@@ -212,6 +242,7 @@ func (h *Handler) GetPolicyDetail(ctx *ginx.Context) (ginx.Result, error) {
 				return ServiceSummary{
 					ServiceCode:   src.ServiceCode,
 					ServiceName:   src.ServiceName,
+					Effect:        string(src.Effect),
 					Level:         string(src.Level),
 					GrantedCount:  src.GrantedCount,
 					TotalCount:    src.TotalCount,
