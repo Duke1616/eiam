@@ -248,14 +248,25 @@ func (h *Handler) Update(ctx *ginx.Context, req UpdateUserReq) (ginx.Result, err
 }
 
 func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+
 	// 1. 优雅地解析用户实体 (支持 ID 或 Username)
 	u, err := h.resolveUser(ctx)
 	if err != nil {
 		return ErrUserNotFound, err
 	}
 
-	// 2. 统一地渲染视图结果
-	return h.renderDetail(ctx, u)
+	isMember, err := h.tenantSvc.CheckUserTenantAccess(ctx.Request.Context(), u.ID, tid)
+	if err != nil {
+		return ginx.Result{}, err
+	}
+
+	return ginx.Result{
+		Data: UserMemberVO{
+			User:     ToUserVO(u),
+			IsMember: &isMember,
+		},
+	}, nil
 }
 
 // resolveUser 高效解析用户标识符
@@ -271,28 +282,6 @@ func (h *Handler) resolveUser(ctx *ginx.Context) (domain.User, error) {
 	}
 
 	return domain.User{}, fmt.Errorf("未找到该用户信息")
-}
-
-// renderDetail 渲染详情结果，支持系统租户装饰器 (IsMember)
-func (h *Handler) renderDetail(ctx *ginx.Context, u domain.User) (ginx.Result, error) {
-	tid := ctxutil.GetTenantID(ctx).Int64()
-
-	// 1. 普通租户视角：直接返回基础 User VO
-	if tid != ctxutil.SystemTenantID {
-		return ginx.Result{Data: ToUserVO(u)}, nil
-	}
-
-	// 2. 系统租户视角：返回带装饰的 UserMemberVO
-	//  对于单用户的检查，使用 CheckUserTenantAccess 更精准，避免了 FindMembershipsByUserIds 中 Map 会覆盖多租户记录的问题
-	isMember, _ := h.tenantSvc.CheckUserTenantAccess(ctx.Request.Context(), u.ID, tid)
-
-	fmt.Println(isMember)
-	return ginx.Result{
-		Data: UserMemberVO{
-			User:     ToUserVO(u),
-			IsMember: &isMember,
-		},
-	}, nil
 }
 
 func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
