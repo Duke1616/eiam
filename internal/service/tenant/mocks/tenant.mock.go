@@ -41,6 +41,82 @@ func (m *MockITenantService) EXPECT() *MockITenantServiceMockRecorder {
 	return m.recorder
 }
 
+// AssignUser mocks base method.
+func (m *MockITenantService) AssignUser(ctx context.Context, userID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AssignUser", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AssignUser indicates an expected call of AssignUser.
+func (mr *MockITenantServiceMockRecorder) AssignUser(ctx, userID any) *MockITenantServiceAssignUserCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignUser", reflect.TypeOf((*MockITenantService)(nil).AssignUser), ctx, userID)
+	return &MockITenantServiceAssignUserCall{Call: call}
+}
+
+// MockITenantServiceAssignUserCall wrap *gomock.Call
+type MockITenantServiceAssignUserCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceAssignUserCall) Return(arg0 error) *MockITenantServiceAssignUserCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceAssignUserCall) Do(f func(context.Context, int64) error) *MockITenantServiceAssignUserCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceAssignUserCall) DoAndReturn(f func(context.Context, int64) error) *MockITenantServiceAssignUserCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// BatchInitPersonalTenant mocks base method.
+func (m *MockITenantService) BatchInitPersonalTenant(ctx context.Context, users []domain.User) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchInitPersonalTenant", ctx, users)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchInitPersonalTenant indicates an expected call of BatchInitPersonalTenant.
+func (mr *MockITenantServiceMockRecorder) BatchInitPersonalTenant(ctx, users any) *MockITenantServiceBatchInitPersonalTenantCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchInitPersonalTenant", reflect.TypeOf((*MockITenantService)(nil).BatchInitPersonalTenant), ctx, users)
+	return &MockITenantServiceBatchInitPersonalTenantCall{Call: call}
+}
+
+// MockITenantServiceBatchInitPersonalTenantCall wrap *gomock.Call
+type MockITenantServiceBatchInitPersonalTenantCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceBatchInitPersonalTenantCall) Return(arg0 error) *MockITenantServiceBatchInitPersonalTenantCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceBatchInitPersonalTenantCall) Do(f func(context.Context, []domain.User) error) *MockITenantServiceBatchInitPersonalTenantCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceBatchInitPersonalTenantCall) DoAndReturn(f func(context.Context, []domain.User) error) *MockITenantServiceBatchInitPersonalTenantCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // CheckUserTenantAccess mocks base method.
 func (m *MockITenantService) CheckUserTenantAccess(ctx context.Context, userId, tenantId int64) (bool, error) {
 	m.ctrl.T.Helper()
@@ -81,18 +157,18 @@ func (c *MockITenantServiceCheckUserTenantAccessCall) DoAndReturn(f func(context
 }
 
 // CreateTenant mocks base method.
-func (m *MockITenantService) CreateTenant(ctx context.Context, name, code string, ownerId int64) (int64, error) {
+func (m *MockITenantService) CreateTenant(ctx context.Context, name, code, username string, userID int64) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTenant", ctx, name, code, ownerId)
+	ret := m.ctrl.Call(m, "CreateTenant", ctx, name, code, username, userID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateTenant indicates an expected call of CreateTenant.
-func (mr *MockITenantServiceMockRecorder) CreateTenant(ctx, name, code, ownerId any) *MockITenantServiceCreateTenantCall {
+func (mr *MockITenantServiceMockRecorder) CreateTenant(ctx, name, code, username, userID any) *MockITenantServiceCreateTenantCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTenant", reflect.TypeOf((*MockITenantService)(nil).CreateTenant), ctx, name, code, ownerId)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTenant", reflect.TypeOf((*MockITenantService)(nil).CreateTenant), ctx, name, code, username, userID)
 	return &MockITenantServiceCreateTenantCall{Call: call}
 }
 
@@ -108,13 +184,169 @@ func (c *MockITenantServiceCreateTenantCall) Return(arg0 int64, arg1 error) *Moc
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockITenantServiceCreateTenantCall) Do(f func(context.Context, string, string, int64) (int64, error)) *MockITenantServiceCreateTenantCall {
+func (c *MockITenantServiceCreateTenantCall) Do(f func(context.Context, string, string, string, int64) (int64, error)) *MockITenantServiceCreateTenantCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockITenantServiceCreateTenantCall) DoAndReturn(f func(context.Context, string, string, int64) (int64, error)) *MockITenantServiceCreateTenantCall {
+func (c *MockITenantServiceCreateTenantCall) DoAndReturn(f func(context.Context, string, string, string, int64) (int64, error)) *MockITenantServiceCreateTenantCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Delete mocks base method.
+func (m *MockITenantService) Delete(ctx context.Context, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockITenantServiceMockRecorder) Delete(ctx, id any) *MockITenantServiceDeleteCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockITenantService)(nil).Delete), ctx, id)
+	return &MockITenantServiceDeleteCall{Call: call}
+}
+
+// MockITenantServiceDeleteCall wrap *gomock.Call
+type MockITenantServiceDeleteCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceDeleteCall) Return(arg0 error) *MockITenantServiceDeleteCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceDeleteCall) Do(f func(context.Context, int64) error) *MockITenantServiceDeleteCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceDeleteCall) DoAndReturn(f func(context.Context, int64) error) *MockITenantServiceDeleteCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// FindMembershipsByUserIds mocks base method.
+func (m *MockITenantService) FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindMembershipsByUserIds", ctx, userIds)
+	ret0, _ := ret[0].(map[int64]domain.Membership)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindMembershipsByUserIds indicates an expected call of FindMembershipsByUserIds.
+func (mr *MockITenantServiceMockRecorder) FindMembershipsByUserIds(ctx, userIds any) *MockITenantServiceFindMembershipsByUserIdsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindMembershipsByUserIds", reflect.TypeOf((*MockITenantService)(nil).FindMembershipsByUserIds), ctx, userIds)
+	return &MockITenantServiceFindMembershipsByUserIdsCall{Call: call}
+}
+
+// MockITenantServiceFindMembershipsByUserIdsCall wrap *gomock.Call
+type MockITenantServiceFindMembershipsByUserIdsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceFindMembershipsByUserIdsCall) Return(arg0 map[int64]domain.Membership, arg1 error) *MockITenantServiceFindMembershipsByUserIdsCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceFindMembershipsByUserIdsCall) Do(f func(context.Context, []int64) (map[int64]domain.Membership, error)) *MockITenantServiceFindMembershipsByUserIdsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceFindMembershipsByUserIdsCall) DoAndReturn(f func(context.Context, []int64) (map[int64]domain.Membership, error)) *MockITenantServiceFindMembershipsByUserIdsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetAttachedTenantsWithFilter mocks base method.
+func (m *MockITenantService) GetAttachedTenantsWithFilter(ctx context.Context, userId, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAttachedTenantsWithFilter", ctx, userId, tid, offset, limit, keyword)
+	ret0, _ := ret[0].([]domain.Tenant)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetAttachedTenantsWithFilter indicates an expected call of GetAttachedTenantsWithFilter.
+func (mr *MockITenantServiceMockRecorder) GetAttachedTenantsWithFilter(ctx, userId, tid, offset, limit, keyword any) *MockITenantServiceGetAttachedTenantsWithFilterCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAttachedTenantsWithFilter", reflect.TypeOf((*MockITenantService)(nil).GetAttachedTenantsWithFilter), ctx, userId, tid, offset, limit, keyword)
+	return &MockITenantServiceGetAttachedTenantsWithFilterCall{Call: call}
+}
+
+// MockITenantServiceGetAttachedTenantsWithFilterCall wrap *gomock.Call
+type MockITenantServiceGetAttachedTenantsWithFilterCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceGetAttachedTenantsWithFilterCall) Return(arg0 []domain.Tenant, arg1 int64, arg2 error) *MockITenantServiceGetAttachedTenantsWithFilterCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceGetAttachedTenantsWithFilterCall) Do(f func(context.Context, int64, int64, int64, int64, string) ([]domain.Tenant, int64, error)) *MockITenantServiceGetAttachedTenantsWithFilterCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceGetAttachedTenantsWithFilterCall) DoAndReturn(f func(context.Context, int64, int64, int64, int64, string) ([]domain.Tenant, int64, error)) *MockITenantServiceGetAttachedTenantsWithFilterCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetByID mocks base method.
+func (m *MockITenantService) GetByID(ctx context.Context, id int64) (domain.Tenant, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(domain.Tenant)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockITenantServiceMockRecorder) GetByID(ctx, id any) *MockITenantServiceGetByIDCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockITenantService)(nil).GetByID), ctx, id)
+	return &MockITenantServiceGetByIDCall{Call: call}
+}
+
+// MockITenantServiceGetByIDCall wrap *gomock.Call
+type MockITenantServiceGetByIDCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceGetByIDCall) Return(arg0 domain.Tenant, arg1 error) *MockITenantServiceGetByIDCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceGetByIDCall) Do(f func(context.Context, int64) (domain.Tenant, error)) *MockITenantServiceGetByIDCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceGetByIDCall) DoAndReturn(f func(context.Context, int64) (domain.Tenant, error)) *MockITenantServiceGetByIDCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -193,6 +425,124 @@ func (c *MockITenantServiceInitPersonalTenantCall) Do(f func(context.Context, in
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockITenantServiceInitPersonalTenantCall) DoAndReturn(f func(context.Context, int64, string) (int64, error)) *MockITenantServiceInitPersonalTenantCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// List mocks base method.
+func (m *MockITenantService) List(ctx context.Context, offset, limit int64) ([]domain.Tenant, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, offset, limit)
+	ret0, _ := ret[0].([]domain.Tenant)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// List indicates an expected call of List.
+func (mr *MockITenantServiceMockRecorder) List(ctx, offset, limit any) *MockITenantServiceListCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockITenantService)(nil).List), ctx, offset, limit)
+	return &MockITenantServiceListCall{Call: call}
+}
+
+// MockITenantServiceListCall wrap *gomock.Call
+type MockITenantServiceListCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceListCall) Return(arg0 []domain.Tenant, arg1 int64, arg2 error) *MockITenantServiceListCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceListCall) Do(f func(context.Context, int64, int64) ([]domain.Tenant, int64, error)) *MockITenantServiceListCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceListCall) DoAndReturn(f func(context.Context, int64, int64) ([]domain.Tenant, int64, error)) *MockITenantServiceListCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// ListMembers mocks base method.
+func (m *MockITenantService) ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListMembers", ctx, offset, limit, keyword)
+	ret0, _ := ret[0].([]domain.User)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListMembers indicates an expected call of ListMembers.
+func (mr *MockITenantServiceMockRecorder) ListMembers(ctx, offset, limit, keyword any) *MockITenantServiceListMembersCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMembers", reflect.TypeOf((*MockITenantService)(nil).ListMembers), ctx, offset, limit, keyword)
+	return &MockITenantServiceListMembersCall{Call: call}
+}
+
+// MockITenantServiceListMembersCall wrap *gomock.Call
+type MockITenantServiceListMembersCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceListMembersCall) Return(arg0 []domain.User, arg1 int64, arg2 error) *MockITenantServiceListMembersCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceListMembersCall) Do(f func(context.Context, int64, int64, string) ([]domain.User, int64, error)) *MockITenantServiceListMembersCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceListMembersCall) DoAndReturn(f func(context.Context, int64, int64, string) ([]domain.User, int64, error)) *MockITenantServiceListMembersCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Update mocks base method.
+func (m *MockITenantService) Update(ctx context.Context, t domain.Tenant) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Update", ctx, t)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Update indicates an expected call of Update.
+func (mr *MockITenantServiceMockRecorder) Update(ctx, t any) *MockITenantServiceUpdateCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockITenantService)(nil).Update), ctx, t)
+	return &MockITenantServiceUpdateCall{Call: call}
+}
+
+// MockITenantServiceUpdateCall wrap *gomock.Call
+type MockITenantServiceUpdateCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockITenantServiceUpdateCall) Return(arg0 error) *MockITenantServiceUpdateCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockITenantServiceUpdateCall) Do(f func(context.Context, domain.Tenant) error) *MockITenantServiceUpdateCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockITenantServiceUpdateCall) DoAndReturn(f func(context.Context, domain.Tenant) error) *MockITenantServiceUpdateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

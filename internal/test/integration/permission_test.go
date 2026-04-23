@@ -99,7 +99,7 @@ func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
 	})
 
 	// 3. 建立 Casbin 层面的继承关系 (admin 继承 super_admin)
-	_, _ = s.permSvc.AssignRoleInheritance(sysCtx, "admin", "super_admin")
+	_, _ = s.permSvc.AddRoleInheritance(sysCtx, "admin", "super_admin")
 }
 
 func (s *PermissionSuite) TestCheckAPI() {
@@ -212,8 +212,8 @@ func (s *PermissionSuite) TestRoleCycleDetection() {
 	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "A"})
 	_, _ = s.roleSvc.Create(ctx, domain.Role{Code: "B"})
 
-	_, _ = s.permSvc.AssignRoleInheritance(ctx, "A", "B")
-	ok, err := s.permSvc.AssignRoleInheritance(ctx, "B", "A")
+	_, _ = s.permSvc.AddRoleInheritance(ctx, "A", "B")
+	ok, err := s.permSvc.AddRoleInheritance(ctx, "B", "A")
 
 	assert.ErrorIs(s.T(), err, errs.ErrRoleCycleInheritance)
 	assert.False(s.T(), ok)

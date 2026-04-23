@@ -33,15 +33,15 @@ type IPermissionService interface {
 	// --- 3. 关系管理 (Relation) ---
 
 	// AssignRoleToUser 绑定用户与角色
-	AssignRoleToUser(ctx context.Context, username string, roleCode string) error
+	AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error)
 	// GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
 	GetRolesForUser(ctx context.Context, username string) ([]string, error)
 	// AssignUsersToRole 批量将用户分配给角色
-	AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) error
+	AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) (bool, error)
 	// AddRoleInheritance 建立角色继承关系 (roleCode 继承 parentRoleCode)
-	AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error
+	AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) (bool, error)
 	// RemoveRoleInheritance 移除角色继承关系
-	RemoveRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error
+	RemoveRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) (bool, error)
 	// GetParentRoles 获取指定角色的直接父角色
 	GetParentRoles(ctx context.Context, roleCode string) ([]domain.InheritanceInfo, error)
 

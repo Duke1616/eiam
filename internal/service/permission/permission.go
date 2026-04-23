@@ -335,23 +335,22 @@ func (s *permissionService) BindResourcesToPermission(ctx context.Context, permI
 	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
 }
 
-func (s *permissionService) AssignRoleToUser(ctx context.Context, username string, roleCode string) error {
+func (s *permissionService) AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error) {
 	// 前置校验角色是否存在且合法
 	if _, err := s.roleSvc.GetByCode(ctx, roleCode); err != nil {
-		return err
+		return false, err
 	}
 
 	tid := ctxutil.GetTenantID(ctx).String()
-	_, err := s.enforcer.AddGroupingPolicy(
+	return s.enforcer.AddGroupingPolicy(
 		domain.UserSubject(username),
 		domain.RoleSubject(roleCode),
 		tid,
 		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	)
-	return err
 }
 
-func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) error {
+func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) (bool, error) {
 	tid := ctxutil.GetTenantID(ctx).String()
 	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
 	rules := make([][]string, 0, len(usernames))
@@ -363,17 +362,16 @@ func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode stri
 			now,
 		})
 	}
-	_, err := s.enforcer.AddGroupingPolicies(rules)
-	return err
+	return s.enforcer.AddGroupingPolicies(rules)
 }
 
-func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error {
+func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) (bool, error) {
 	// 1. 验证角色合法性，严禁为不存在的角色创建继承关系
 	if _, err := s.roleSvc.GetByCode(ctx, roleCode); err != nil {
-		return err
+		return false, err
 	}
 	if _, err := s.roleSvc.GetByCode(ctx, parentRoleCode); err != nil {
-		return err
+		return false, err
 	}
 
 	tid := ctxutil.GetTenantID(ctx).String()
@@ -383,41 +381,39 @@ func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode str
 	// 2. 环路检测：防止 A 继承 B，而 B 已经是 A 的子角色
 	ancestors, err := s.enforcer.GetImplicitRolesForUser(parentSub, tid)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, ancestor := range ancestors {
 		if ancestor == childSub {
-			return errs.ErrRoleCycleInheritance
+			return false, errs.ErrRoleCycleInheritance
 		}
 	}
 
-	_, err = s.enforcer.AddGroupingPolicy(childSub, parentSub, tid, strconv.FormatInt(time.Now().UnixMilli(), 10))
-	return err
+	return s.enforcer.AddGroupingPolicy(childSub, parentSub, tid, strconv.FormatInt(time.Now().UnixMilli(), 10))
 }
 
-func (s *permissionService) RemoveRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) error {
+func (s *permissionService) RemoveRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) (bool, error) {
 	// 1. 获取角色详情以核实类型
 	child, err := s.roleSvc.GetByCode(ctx, roleCode)
 	if err != nil {
-		return err
+		return false, err
 	}
 	parent, err := s.roleSvc.GetByCode(ctx, parentRoleCode)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// 2. 强校验：如果两者都是系统预设角色，则严禁移除关系
 	if child.Type == domain.RoleTypeSystem && parent.Type == domain.RoleTypeSystem {
-		return errs.ErrImmutableInheritance
+		return false, errs.ErrImmutableInheritance
 	}
 
 	tid := ctxutil.GetTenantID(ctx).String()
-	_, err = s.enforcer.RemoveGroupingPolicy(
+	return s.enforcer.RemoveGroupingPolicy(
 		domain.RoleSubject(roleCode),
 		domain.RoleSubject(parentRoleCode),
 		tid,
 	)
-	return err
 }
 
 func (s *permissionService) GetParentRoles(ctx context.Context, roleCode string) ([]domain.InheritanceInfo, error) {

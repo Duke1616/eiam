@@ -217,7 +217,7 @@ func (h *Handler) AnalyzeInlinePolicies(ctx *ginx.Context, req RoleAnalysisReq) 
 }
 
 func (h *Handler) AddParentRole(ctx *ginx.Context, req RoleInheritanceReq) (ginx.Result, error) {
-	err := h.permSvc.AddRoleInheritance(ctx.Request.Context(), req.RoleCode, req.ParentRoleCode)
+	_, err := h.permSvc.AddRoleInheritance(ctx.Request.Context(), req.RoleCode, req.ParentRoleCode)
 	if err != nil {
 		return ginx.Result{Code: 50101, Msg: "添加父角色失败"}, err
 	}
@@ -225,7 +225,7 @@ func (h *Handler) AddParentRole(ctx *ginx.Context, req RoleInheritanceReq) (ginx
 }
 
 func (h *Handler) RemoveParentRole(ctx *ginx.Context, req RoleInheritanceReq) (ginx.Result, error) {
-	err := h.permSvc.RemoveRoleInheritance(ctx.Request.Context(), req.RoleCode, req.ParentRoleCode)
+	_, err := h.permSvc.RemoveRoleInheritance(ctx.Request.Context(), req.RoleCode, req.ParentRoleCode)
 	if err != nil {
 		if errors.Is(err, errs.ErrImmutableInheritance) {
 			return ErrImmutableInheritance, err
@@ -258,7 +258,7 @@ func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess sess
 		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
 	}
 
-	err := h.permSvc.AssignRoleToUser(ctx.Request.Context(), username, req.RoleCode)
+	_, err := h.permSvc.AssignRoleToUser(ctx.Request.Context(), username, req.RoleCode)
 	if err != nil {
 		return ErrRoleAssignFailed, err
 	}
@@ -266,7 +266,7 @@ func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess sess
 }
 
 func (h *Handler) BatchAssignRole(ctx *ginx.Context, req BatchAssignRoleRequest) (ginx.Result, error) {
-	err := h.permSvc.AssignUsersToRole(ctx.Request.Context(), req.RoleCode, req.Usernames)
+	_, err := h.permSvc.AssignUsersToRole(ctx.Request.Context(), req.RoleCode, req.Usernames)
 	if err != nil {
 		return ErrRoleAssignFailed, err
 	}

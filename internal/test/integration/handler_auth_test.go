@@ -117,7 +117,7 @@ func (s *HandlerAuthTestSuite) ensureAdminRole(ctx context.Context) {
 			},
 		},
 	})
-	_, _ = s.permSvc.AssignRoleInheritance(ctx, "admin", "super_admin")
+	_, _ = s.permSvc.AddRoleInheritance(ctx, "admin", "super_admin")
 }
 
 func (s *HandlerAuthTestSuite) clearAll() {

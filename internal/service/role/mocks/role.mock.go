@@ -41,6 +41,45 @@ func (m *MockIRoleService) EXPECT() *MockIRoleServiceMockRecorder {
 	return m.recorder
 }
 
+// CountByKeyword mocks base method.
+func (m *MockIRoleService) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountByKeyword", ctx, keyword)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountByKeyword indicates an expected call of CountByKeyword.
+func (mr *MockIRoleServiceMockRecorder) CountByKeyword(ctx, keyword any) *MockIRoleServiceCountByKeywordCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountByKeyword", reflect.TypeOf((*MockIRoleService)(nil).CountByKeyword), ctx, keyword)
+	return &MockIRoleServiceCountByKeywordCall{Call: call}
+}
+
+// MockIRoleServiceCountByKeywordCall wrap *gomock.Call
+type MockIRoleServiceCountByKeywordCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockIRoleServiceCountByKeywordCall) Return(arg0 int64, arg1 error) *MockIRoleServiceCountByKeywordCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockIRoleServiceCountByKeywordCall) Do(f func(context.Context, string) (int64, error)) *MockIRoleServiceCountByKeywordCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockIRoleServiceCountByKeywordCall) DoAndReturn(f func(context.Context, string) (int64, error)) *MockIRoleServiceCountByKeywordCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // Create mocks base method.
 func (m *MockIRoleService) Create(ctx context.Context, r domain.Role) (int64, error) {
 	m.ctrl.T.Helper()
@@ -80,19 +119,57 @@ func (c *MockIRoleServiceCreateCall) DoAndReturn(f func(context.Context, domain.
 	return c
 }
 
-// GetByCode mocks base method.
-func (m *MockIRoleService) GetByCode(ctx context.Context, tenantId int64, code string) (domain.Role, error) {
+// Delete mocks base method.
+func (m *MockIRoleService) Delete(ctx context.Context, id int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByCode", ctx, tenantId, code)
+	ret := m.ctrl.Call(m, "Delete", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockIRoleServiceMockRecorder) Delete(ctx, id any) *MockIRoleServiceDeleteCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockIRoleService)(nil).Delete), ctx, id)
+	return &MockIRoleServiceDeleteCall{Call: call}
+}
+
+// MockIRoleServiceDeleteCall wrap *gomock.Call
+type MockIRoleServiceDeleteCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockIRoleServiceDeleteCall) Return(arg0 error) *MockIRoleServiceDeleteCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockIRoleServiceDeleteCall) Do(f func(context.Context, int64) error) *MockIRoleServiceDeleteCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockIRoleServiceDeleteCall) DoAndReturn(f func(context.Context, int64) error) *MockIRoleServiceDeleteCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetByCode mocks base method.
+func (m *MockIRoleService) GetByCode(ctx context.Context, code string) (domain.Role, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByCode", ctx, code)
 	ret0, _ := ret[0].(domain.Role)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetByCode indicates an expected call of GetByCode.
-func (mr *MockIRoleServiceMockRecorder) GetByCode(ctx, tenantId, code any) *MockIRoleServiceGetByCodeCall {
+func (mr *MockIRoleServiceMockRecorder) GetByCode(ctx, code any) *MockIRoleServiceGetByCodeCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByCode", reflect.TypeOf((*MockIRoleService)(nil).GetByCode), ctx, tenantId, code)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByCode", reflect.TypeOf((*MockIRoleService)(nil).GetByCode), ctx, code)
 	return &MockIRoleServiceGetByCodeCall{Call: call}
 }
 
@@ -108,21 +185,21 @@ func (c *MockIRoleServiceGetByCodeCall) Return(arg0 domain.Role, arg1 error) *Mo
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIRoleServiceGetByCodeCall) Do(f func(context.Context, int64, string) (domain.Role, error)) *MockIRoleServiceGetByCodeCall {
+func (c *MockIRoleServiceGetByCodeCall) Do(f func(context.Context, string) (domain.Role, error)) *MockIRoleServiceGetByCodeCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIRoleServiceGetByCodeCall) DoAndReturn(f func(context.Context, int64, string) (domain.Role, error)) *MockIRoleServiceGetByCodeCall {
+func (c *MockIRoleServiceGetByCodeCall) DoAndReturn(f func(context.Context, string) (domain.Role, error)) *MockIRoleServiceGetByCodeCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // List mocks base method.
-func (m *MockIRoleService) List(ctx context.Context, tenantId, offset, limit int64) ([]domain.Role, int64, error) {
+func (m *MockIRoleService) List(ctx context.Context, offset, limit int64) ([]domain.Role, int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", ctx, tenantId, offset, limit)
+	ret := m.ctrl.Call(m, "List", ctx, offset, limit)
 	ret0, _ := ret[0].([]domain.Role)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
@@ -130,9 +207,9 @@ func (m *MockIRoleService) List(ctx context.Context, tenantId, offset, limit int
 }
 
 // List indicates an expected call of List.
-func (mr *MockIRoleServiceMockRecorder) List(ctx, tenantId, offset, limit any) *MockIRoleServiceListCall {
+func (mr *MockIRoleServiceMockRecorder) List(ctx, offset, limit any) *MockIRoleServiceListCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockIRoleService)(nil).List), ctx, tenantId, offset, limit)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockIRoleService)(nil).List), ctx, offset, limit)
 	return &MockIRoleServiceListCall{Call: call}
 }
 
@@ -148,30 +225,70 @@ func (c *MockIRoleServiceListCall) Return(arg0 []domain.Role, arg1 int64, arg2 e
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIRoleServiceListCall) Do(f func(context.Context, int64, int64, int64) ([]domain.Role, int64, error)) *MockIRoleServiceListCall {
+func (c *MockIRoleServiceListCall) Do(f func(context.Context, int64, int64) ([]domain.Role, int64, error)) *MockIRoleServiceListCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIRoleServiceListCall) DoAndReturn(f func(context.Context, int64, int64, int64) ([]domain.Role, int64, error)) *MockIRoleServiceListCall {
+func (c *MockIRoleServiceListCall) DoAndReturn(f func(context.Context, int64, int64) ([]domain.Role, int64, error)) *MockIRoleServiceListCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// ListAttachedRoles mocks base method.
+func (m *MockIRoleService) ListAttachedRoles(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAttachedRoles", ctx, username, offset, limit, keyword)
+	ret0, _ := ret[0].([]domain.Role)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListAttachedRoles indicates an expected call of ListAttachedRoles.
+func (mr *MockIRoleServiceMockRecorder) ListAttachedRoles(ctx, username, offset, limit, keyword any) *MockIRoleServiceListAttachedRolesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAttachedRoles", reflect.TypeOf((*MockIRoleService)(nil).ListAttachedRoles), ctx, username, offset, limit, keyword)
+	return &MockIRoleServiceListAttachedRolesCall{Call: call}
+}
+
+// MockIRoleServiceListAttachedRolesCall wrap *gomock.Call
+type MockIRoleServiceListAttachedRolesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockIRoleServiceListAttachedRolesCall) Return(arg0 []domain.Role, arg1 int64, arg2 error) *MockIRoleServiceListAttachedRolesCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockIRoleServiceListAttachedRolesCall) Do(f func(context.Context, string, int64, int64, string) ([]domain.Role, int64, error)) *MockIRoleServiceListAttachedRolesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockIRoleServiceListAttachedRolesCall) DoAndReturn(f func(context.Context, string, int64, int64, string) ([]domain.Role, int64, error)) *MockIRoleServiceListAttachedRolesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListByIncludeCodes mocks base method.
-func (m *MockIRoleService) ListByIncludeCodes(ctx context.Context, tenantId int64, codes []string) ([]domain.Role, error) {
+func (m *MockIRoleService) ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListByIncludeCodes", ctx, tenantId, codes)
+	ret := m.ctrl.Call(m, "ListByIncludeCodes", ctx, codes)
 	ret0, _ := ret[0].([]domain.Role)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListByIncludeCodes indicates an expected call of ListByIncludeCodes.
-func (mr *MockIRoleServiceMockRecorder) ListByIncludeCodes(ctx, tenantId, codes any) *MockIRoleServiceListByIncludeCodesCall {
+func (mr *MockIRoleServiceMockRecorder) ListByIncludeCodes(ctx, codes any) *MockIRoleServiceListByIncludeCodesCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByIncludeCodes", reflect.TypeOf((*MockIRoleService)(nil).ListByIncludeCodes), ctx, tenantId, codes)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByIncludeCodes", reflect.TypeOf((*MockIRoleService)(nil).ListByIncludeCodes), ctx, codes)
 	return &MockIRoleServiceListByIncludeCodesCall{Call: call}
 }
 
@@ -187,13 +304,52 @@ func (c *MockIRoleServiceListByIncludeCodesCall) Return(arg0 []domain.Role, arg1
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIRoleServiceListByIncludeCodesCall) Do(f func(context.Context, int64, []string) ([]domain.Role, error)) *MockIRoleServiceListByIncludeCodesCall {
+func (c *MockIRoleServiceListByIncludeCodesCall) Do(f func(context.Context, []string) ([]domain.Role, error)) *MockIRoleServiceListByIncludeCodesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIRoleServiceListByIncludeCodesCall) DoAndReturn(f func(context.Context, int64, []string) ([]domain.Role, error)) *MockIRoleServiceListByIncludeCodesCall {
+func (c *MockIRoleServiceListByIncludeCodesCall) DoAndReturn(f func(context.Context, []string) ([]domain.Role, error)) *MockIRoleServiceListByIncludeCodesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Search mocks base method.
+func (m *MockIRoleService) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Search", ctx, keyword, offset, limit)
+	ret0, _ := ret[0].([]domain.Role)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Search indicates an expected call of Search.
+func (mr *MockIRoleServiceMockRecorder) Search(ctx, keyword, offset, limit any) *MockIRoleServiceSearchCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockIRoleService)(nil).Search), ctx, keyword, offset, limit)
+	return &MockIRoleServiceSearchCall{Call: call}
+}
+
+// MockIRoleServiceSearchCall wrap *gomock.Call
+type MockIRoleServiceSearchCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockIRoleServiceSearchCall) Return(arg0 []domain.Role, arg1 error) *MockIRoleServiceSearchCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockIRoleServiceSearchCall) Do(f func(context.Context, string, int64, int64) ([]domain.Role, error)) *MockIRoleServiceSearchCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockIRoleServiceSearchCall) DoAndReturn(f func(context.Context, string, int64, int64) ([]domain.Role, error)) *MockIRoleServiceSearchCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -237,40 +393,40 @@ func (c *MockIRoleServiceUpdateCall) DoAndReturn(f func(context.Context, domain.
 	return c
 }
 
-// UpdatePolicies mocks base method.
-func (m *MockIRoleService) UpdatePolicies(ctx context.Context, tenantId int64, roleCode string, policies []domain.Policy) error {
+// UpdateInlinePolicies mocks base method.
+func (m *MockIRoleService) UpdateInlinePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdatePolicies", ctx, tenantId, roleCode, policies)
+	ret := m.ctrl.Call(m, "UpdateInlinePolicies", ctx, roleCode, policies)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdatePolicies indicates an expected call of UpdatePolicies.
-func (mr *MockIRoleServiceMockRecorder) UpdatePolicies(ctx, tenantId, roleCode, policies any) *MockIRoleServiceUpdatePoliciesCall {
+// UpdateInlinePolicies indicates an expected call of UpdateInlinePolicies.
+func (mr *MockIRoleServiceMockRecorder) UpdateInlinePolicies(ctx, roleCode, policies any) *MockIRoleServiceUpdateInlinePoliciesCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePolicies", reflect.TypeOf((*MockIRoleService)(nil).UpdatePolicies), ctx, tenantId, roleCode, policies)
-	return &MockIRoleServiceUpdatePoliciesCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateInlinePolicies", reflect.TypeOf((*MockIRoleService)(nil).UpdateInlinePolicies), ctx, roleCode, policies)
+	return &MockIRoleServiceUpdateInlinePoliciesCall{Call: call}
 }
 
-// MockIRoleServiceUpdatePoliciesCall wrap *gomock.Call
-type MockIRoleServiceUpdatePoliciesCall struct {
+// MockIRoleServiceUpdateInlinePoliciesCall wrap *gomock.Call
+type MockIRoleServiceUpdateInlinePoliciesCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockIRoleServiceUpdatePoliciesCall) Return(arg0 error) *MockIRoleServiceUpdatePoliciesCall {
+func (c *MockIRoleServiceUpdateInlinePoliciesCall) Return(arg0 error) *MockIRoleServiceUpdateInlinePoliciesCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIRoleServiceUpdatePoliciesCall) Do(f func(context.Context, int64, string, []domain.Policy) error) *MockIRoleServiceUpdatePoliciesCall {
+func (c *MockIRoleServiceUpdateInlinePoliciesCall) Do(f func(context.Context, string, []domain.Policy) error) *MockIRoleServiceUpdateInlinePoliciesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIRoleServiceUpdatePoliciesCall) DoAndReturn(f func(context.Context, int64, string, []domain.Policy) error) *MockIRoleServiceUpdatePoliciesCall {
+func (c *MockIRoleServiceUpdateInlinePoliciesCall) DoAndReturn(f func(context.Context, string, []domain.Policy) error) *MockIRoleServiceUpdateInlinePoliciesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

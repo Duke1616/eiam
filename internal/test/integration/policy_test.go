@@ -81,7 +81,7 @@ func (s *PolicyTestSuite) ensureAdminRole(ctx context.Context) {
 		Code: "admin",
 		Name: "租户管理员",
 	})
-	_, _ = s.permSvc.AssignRoleInheritance(ctx, "admin", "super_admin")
+	_, _ = s.permSvc.AddRoleInheritance(ctx, "admin", "super_admin")
 }
 
 func (s *PolicyTestSuite) TestManagedPolicyAuthorization() {

@@ -35,6 +35,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		dao.NewPermissionDAO,
 		dao.NewPolicyDAO,
 		dao.NewServiceDAO,
+		dao.NewUserDAO,
 
 		// Repositories
 		repository.NewTenantRepository,
@@ -43,6 +44,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		repository.NewPermissionRepository,
 		repository.NewPolicyRepository,
 		repository.NewServiceRepository,
+		repository.NewUserRepository,
 
 		// Services
 		role.NewRoleService,

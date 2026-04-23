@@ -76,8 +76,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 }
 
 func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Result, error) {
-	newCtx := ctxutil.WithTenantID(ctx.Context, req.TenantID)
-	users, total, err := h.svc.ListMembers(newCtx, req.Offset, req.Limit, req.Keyword)
+	users, total, err := h.svc.ListMembers(ctx.Context, req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ErrTenantGet, err
 	}
@@ -128,7 +127,7 @@ func (h *Handler) CreateTenant(ctx *ginx.Context, req CreateTenantReq, sess sess
 
 	// 初始化租户权限：给创建者分配 admin 角色
 	newCtx := ctxutil.WithTenantID(ctx.Context, tenantId)
-	err = h.permSvc.AssignRoleToUser(newCtx, username, "admin")
+	_, err = h.permSvc.AssignRoleToUser(newCtx, username, "admin")
 	if err != nil {
 		fmt.Printf("租户创建者授权失败: %v\n", err)
 	}
