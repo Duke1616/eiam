@@ -85,6 +85,7 @@ func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
 	_, _ = s.roleSvc.Create(sysCtx, domain.Role{
 		Code: "super_admin",
 		Name: "全量管理员",
+		Type: domain.RoleTypeSystem,
 		InlinePolicies: []domain.Policy{
 			{
 				Code:      "root_allow_all",
@@ -96,6 +97,7 @@ func (s *PermissionSuite) ensureAdminRole(ctx context.Context) {
 	_, _ = s.roleSvc.Create(sysCtx, domain.Role{
 		Code: "admin",
 		Name: "租户管理员",
+		Type: domain.RoleTypeSystem,
 	})
 
 	// 3. 建立 Casbin 层面的继承关系 (admin 继承 super_admin)

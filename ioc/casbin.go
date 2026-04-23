@@ -30,7 +30,7 @@ g = _, _, _
 e = some(where (p.eft == allow))
 
 [matchers]
-m = g(r.sub, p.sub, "ANY", "ANY") && r.obj == p.obj`
+m = g(r.sub, p.sub, "ANY") && r.obj == p.obj`
 )
 
 func InitCasbin(db *gorm.DB) *casbin.SyncedEnforcer {
