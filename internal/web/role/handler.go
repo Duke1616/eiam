@@ -297,6 +297,8 @@ func (h *Handler) toVo(src domain.Role) Role {
 		InlinePolicies: slice.Map(src.InlinePolicies, func(idx int, src domain.Policy) Policy {
 			return h.toPolicyVO(src)
 		}),
+		Ctime: src.Ctime,
+		Utime: src.Utime,
 	}
 }
 

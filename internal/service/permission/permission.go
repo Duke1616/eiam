@@ -3,8 +3,10 @@ package permission
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Duke1616/eiam/internal/pkg/searcher"
 	"github.com/Duke1616/eiam/internal/repository/dao"
@@ -344,18 +346,21 @@ func (s *permissionService) AssignRoleToUser(ctx context.Context, username strin
 		domain.UserSubject(username),
 		domain.RoleSubject(roleCode),
 		tid,
+		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	)
 	return err
 }
 
 func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) error {
 	tid := ctxutil.GetTenantID(ctx).String()
+	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
 	rules := make([][]string, 0, len(usernames))
 	for _, username := range usernames {
 		rules = append(rules, []string{
 			domain.UserSubject(username),
 			domain.RoleSubject(roleCode),
 			tid,
+			now,
 		})
 	}
 	_, err := s.enforcer.AddGroupingPolicies(rules)
@@ -386,7 +391,7 @@ func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode str
 		}
 	}
 
-	_, err = s.enforcer.AddGroupingPolicy(childSub, parentSub, tid)
+	_, err = s.enforcer.AddGroupingPolicy(childSub, parentSub, tid, strconv.FormatInt(time.Now().UnixMilli(), 10))
 	return err
 }
 

@@ -42,6 +42,7 @@ type TenantVO struct {
 	Code   string `json:"code"`
 	Domain string `json:"domain"`
 	Status int    `json:"status"`
+	Ctime  int64  `json:"ctime"`
 }
 
 func ToTenantVOs(tenants []domain.Tenant) []TenantVO {
@@ -59,6 +60,7 @@ func ToTenantVO(t domain.Tenant) TenantVO {
 		Code:   t.Code,
 		Domain: t.Domain,
 		Status: t.Status,
+		Ctime:  t.Ctime,
 	}
 }
 

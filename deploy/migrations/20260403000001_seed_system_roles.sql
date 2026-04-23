@@ -7,11 +7,11 @@ VALUES
     (1, 'super_admin', '系统超级管理员', 2,
      '平台最高管理权限，拥有跨租户治理、全局系统配置及底层基础设施的完全控制权。',
      '[{"name":"ROOT全量授权","code":"FullAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
-     (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000)),
+     FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000)),
     (1, 'admin', '租户管理员', 1,
      '租户内最高管理权限，负责本租户内的资源管理、身份授权及安全治理，受限于平台全局合规性策略。',
      '[{"name":"全量授权","code":"AllAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]},{"name":"敏感权限熔断策略","code":"AdminStandard","type":1,"statement":[{"effect":"Deny","action":["iam:tenant:*","iam:permission:global:*"],"resource":["*"]}]}]',
-     (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
+     FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
     ON DUPLICATE KEY UPDATE
                          `name`            = VALUES(`name`),
                          `type`            = VALUES(`type`),
@@ -22,25 +22,25 @@ VALUES
 -- 初始化超级管理员账户：admin / 12345678
 INSERT INTO `user` (`id`, `username`, `password`, `email`, `status`, `source`, `ctime`, `utime`)
 VALUES (1, 'admin', '$2a$10$6ocvB6VX93BKFT4HruyWEOFy1ePGbXbd37uBvtnZ7CHovY9N3WotK', 'admin@example.com', 1, 'local',
-        (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
+        FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `password` = VALUES(`password`), `utime` = VALUES(`utime`);
 
--- 授予 admin 用户 super_admin 角色 (Domain 使用 '1')
-INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`)
-VALUES ('g', 'user:admin', 'role:super_admin', '1')
-ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`);
+-- 授予 admin 用户 super_admin 角色 (Domain 使用 '1'，v3 记录授权时间)
+INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`, `v3`)
+VALUES ('g', 'user:admin', 'role:super_admin', '1', FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`), `v3` = VALUES(`v3`);
 
 -- 初始化超级管理员的默认治理空间 (物理 ID 1)
 INSERT INTO `tenant` (`id`, `name`, `code`, `domain`, `status`, `ctime`, `utime`)
 VALUES (1, '系统根管理空间', 'system-root', 'localhost', 1,
-        (UNIX_TIMESTAMP(NOW(3)) * 1000), (UNIX_TIMESTAMP(NOW(3)) * 1000))
+        FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `code` = VALUES(`code`), `utime` = VALUES(`utime`);
 
 
 -- 将超级管理员 admin 入驻到该空间中
 -- 使得 admin 登录后能默认拥有 ID 为 1 的上下文
 INSERT INTO `membership` (`tenant_id`, `user_id`, `ctime`)
-VALUES (1, 1, (UNIX_TIMESTAMP(NOW(3)) * 1000))
+VALUES (1, 1, FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `tenant_id` = VALUES(`tenant_id`);
 
 -- 初始化 admin 用户的个人名片（UserProfile）

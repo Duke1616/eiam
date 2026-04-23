@@ -140,6 +140,8 @@ func (r *RoleRepository) toDomain(role dao.Role) domain.Role {
 		Desc:           role.Desc,
 		Type:           role.Type,
 		InlinePolicies: role.InlinePolicies.Val,
+		Ctime:          role.Ctime,
+		Utime:          role.Utime,
 	}
 }
 

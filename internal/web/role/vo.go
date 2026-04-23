@@ -42,6 +42,8 @@ type Role struct {
 	Desc           string   `json:"desc"`
 	Type           uint8    `json:"type"`
 	InlinePolicies []Policy `json:"inline_policies"`
+	Ctime          int64    `json:"ctime"`
+	Utime          int64    `json:"utime"`
 }
 
 type Policy struct {

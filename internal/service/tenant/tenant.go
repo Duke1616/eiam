@@ -2,6 +2,8 @@ package tenant
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
@@ -82,6 +84,7 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code, username s
 		domain.UserSubject(username),
 		domain.RoleSubject("admin"),
 		ctxutil.ContextID(tenantID).String(),
+		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	)
 
 	return tenantID, err
@@ -109,6 +112,7 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 		domain.UserSubject(username),
 		domain.RoleSubject("admin"),
 		ctxutil.ContextID(tenantID).String(),
+		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	)
 
 	return tenantID, err

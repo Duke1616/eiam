@@ -219,15 +219,21 @@ func (d *policyDAO) GetAttachedPoliciesWithFilter(ctx context.Context, subType, 
 		total int64
 	)
 
-	// 1. 构造子查询：从 policy_assignment 中找出关联的策略代码
-	// 使用 Model(&PolicyAssignment{}) 让 GORM 自动处理表名映射
-	subQuery := d.db.Model(&PolicyAssignment{}).
+	// 1. 构造关联子查询：获取主体关联该策略的时间 (ctime)
+	subQueryExpr := d.db.Model(&PolicyAssignment{}).
+		Select("CAST(ctime AS SIGNED)").
+		Where("policy_assignment.policy_code = policy.code").
+		Where("policy_assignment.sub_type = ? AND policy_assignment.sub_code = ?", subType, subCode)
+
+	// 2. 构造过滤子查询：获取该主体关联的所有策略代码
+	filterSubQuery := d.db.Model(&PolicyAssignment{}).
 		Select("policy_code").
 		Where("sub_type = ? AND sub_code = ?", subType, subCode)
 
-	// 2. 主查询：基于子查询结果筛选策略详情
+	// 3. 主查询：注入子查询字段并执行过滤
 	query := d.db.WithContext(ctx).Model(&Policy{}).
-		Where("code IN (?)", subQuery)
+		Select("*, (?) AS ctime", subQueryExpr).
+		Where("code IN (?)", filterSubQuery)
 
 	if keyword != "" {
 		query = query.Where("(name LIKE ? OR code LIKE ?)", "%"+keyword+"%", "%"+keyword+"%")
@@ -241,7 +247,10 @@ func (d *policyDAO) GetAttachedPoliciesWithFilter(ctx context.Context, subType, 
 		return nil, 0, err
 	}
 
-	err = query.Offset(int(offset)).Limit(int(limit)).Find(&ps).Error
+	// 按照授权时间 (ctime) 倒序排列
+	err = query.Offset(int(offset)).Limit(int(limit)).
+		Order("ctime DESC").Find(&ps).Error
+
 	return ps, total, err
 }
 

@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"time"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"gorm.io/gorm"
@@ -81,25 +82,42 @@ func (m Membership) TableName() string {
 }
 
 func (d *TenantDAO) Create(ctx context.Context, t Tenant) (int64, error) {
+	now := time.Now().UnixMilli()
+	t.Ctime = now
+	t.Utime = now
 	err := d.db.WithContext(ctx).Create(&t).Error
 	return t.ID, err
 }
 
 func (d *TenantDAO) BatchCreate(ctx context.Context, ts []Tenant) ([]Tenant, error) {
+	now := time.Now().UnixMilli()
+	for i := range ts {
+		ts[i].Ctime = now
+		ts[i].Utime = now
+	}
 	err := d.db.WithContext(ctx).Create(&ts).Error
 	return ts, err
 }
 
 func (d *TenantDAO) InsertMembership(ctx context.Context, m Membership) error {
+	m.Ctime = time.Now().UnixMilli()
 	return d.db.WithContext(ctx).Create(&m).Error
 }
 
 func (d *TenantDAO) BatchInsertMemberships(ctx context.Context, ms []Membership) error {
+	now := time.Now().UnixMilli()
+	for i := range ms {
+		ms[i].Ctime = now
+	}
 	return d.db.WithContext(ctx).Create(&ms).Error
 }
 
 func (d *TenantDAO) AddMembership(ctx context.Context, userID, tenantID int64) error {
-	return d.db.WithContext(ctx).Create(&Membership{UserID: userID, TenantID: tenantID}).Error
+	return d.db.WithContext(ctx).Create(&Membership{
+		UserID:   userID,
+		TenantID: tenantID,
+		Ctime:    time.Now().UnixMilli(),
+	}).Error
 }
 
 func (d *TenantDAO) DeleteMembership(ctx context.Context, tenantID, userID int64) error {
@@ -159,6 +177,7 @@ func (d *TenantDAO) Update(ctx context.Context, t Tenant) error {
 		"code":   t.Code,
 		"domain": t.Domain,
 		"status": t.Status,
+		"utime":  time.Now().UnixMilli(),
 	}).Error
 }
 
@@ -192,17 +211,32 @@ func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, ti
 		total int64
 	)
 
+	// 1. 构造内部关联子查询：获取该用户入驻该租户的时间
+	subQueryExpr := d.db.Model(&Membership{}).
+		Select("CAST(ctime AS SIGNED)").
+		Where("membership.tenant_id = tenant.id").
+		Where("membership.user_id = ?", userID)
+
+	// 2. 将子查询注入主查询：直接覆盖到 tenant 的 ctime 字段中
+	query := d.db.WithContext(ctx).Model(&Tenant{}).
+		Select("*, (?) AS ctime", subQueryExpr)
+
+	// 构造子查询，用于过滤出该用户有关联记录的租户 ID
 	subQuery := d.db.WithContext(ctx).Model(&Membership{}).
 		Select("tenant_id").
 		Where("user_id = ?", userID)
 
+	// 业务隔离逻辑：
+	// 1. 如果是普通租户管理员，只能查询该用户在“当前租户”下的入驻记录。
+	// 2. 如果是系统全局管理员 (SystemTenantID)，则允许跨租户查看该用户加入的所有空间。
 	if tid != ctxutil.SystemTenantID {
 		subQuery = subQuery.Where("tenant_id = ?", tid)
 	}
 
-	query := d.db.WithContext(ctx).Model(&Tenant{}).
-		Where("id IN (?)", subQuery)
+	// 将子查询结果作为过滤条件
+	query = query.Where("id IN (?)", subQuery)
 
+	// 支持按租户名称或编码进行模糊搜索
 	if keyword != "" {
 		kw := "%" + keyword + "%"
 		query = query.Where("(name LIKE ? OR code LIKE ?)", kw, kw)
@@ -213,6 +247,7 @@ func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, ti
 		return nil, 0, err
 	}
 
+	// 按照“关联时间 (ctime)”倒序排列，确保用户最近加入的租户排在最前面
 	err = query.Offset(int(offset)).Limit(int(limit)).
 		Order("ctime DESC").Find(&ts).Error
 

@@ -13,6 +13,8 @@ type Role struct {
 	Name     string // 角色显示名称
 	Desc     string // 描述
 	Type     uint8  // 角色类型: 1-系统预设, 2-租户自定义
+	Ctime    int64
+	Utime    int64
 
 	// InlinePolicies 内联权限策略：该角色特有的权限声明
 	InlinePolicies []Policy

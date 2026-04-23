@@ -147,15 +147,22 @@ func (d *RoleDAO) GetAttachedRolesWithFilter(ctx context.Context, username strin
 		total int64
 	)
 
-	// 1. 构造子查询：从 casbin_rule 中找出该租户下关联该主体的所有角色代码
-	// NOTE: Casbin 中 v0 (Subject) 通常存为 user:username，v1 (Object) 存为 role:code
-	subQuery := d.db.Table("casbin_rule").
+	// 1. 构造内部关联子查询：从 casbin_rule 中获取该主体关联该角色的时间 (存放在 v3)
+	// 使用 CAST 将字符串转换为整数，处理可能存在的小数点问题
+	subQueryExpr := d.db.Table("casbin_rule").
+		Select("CAST(v3 AS SIGNED)").
+		Where("REPLACE(casbin_rule.v1, ?, '') = role.code", domain.PrefixRole).
+		Where("ptype = 'g' AND v0 = ? AND v2 = ?", domain.UserSubject(username), tid)
+
+	// 2. 构造过滤子查询：找出该主体关联的所有角色代码
+	filterSubQuery := d.db.Table("casbin_rule").
 		Select("REPLACE(v1, ?, '')", domain.PrefixRole).
 		Where("ptype = 'g' AND v0 = ? AND v2 = ?", domain.UserSubject(username), tid)
 
-	// 2. 主查询：基于子查询结果筛选角色映射，并支持关键词过滤
+	// 3. 主查询：注入子查询字段并执行过滤
 	query := d.db.WithContext(ctx).Model(&Role{}).
-		Where("code IN (?)", subQuery)
+		Select("*, (?) AS ctime", subQueryExpr).
+		Where("code IN (?)", filterSubQuery)
 
 	if keyword != "" {
 		kw := "%" + keyword + "%"
@@ -167,6 +174,8 @@ func (d *RoleDAO) GetAttachedRolesWithFilter(ctx context.Context, username strin
 		return nil, 0, err
 	}
 
+	// 按照角色关联时间 (ctime) 倒序排列
+	// 注意：v3 存的是字符串，在数据库层面进行排序
 	err = query.Offset(int(offset)).Limit(int(limit)).
 		Order("ctime DESC").Find(&rs).Error
 

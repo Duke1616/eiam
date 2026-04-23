@@ -330,15 +330,21 @@ func (dao *userDAO) GetAttachedUsersWithFilter(ctx context.Context, roleCode str
 
 	tid := ctxutil.GetTenantID(ctx).Int64()
 
-	// 1. 构造子查询：从 casbin_rule 中找出该租户下关联该角色的所有用户标识
-	// NOTE: v0 是 user:username, v1 是 role:roleCode
-	subQuery := dao.db.Table("casbin_rule").
+	// 1. 构造内部关联子查询：从 casbin_rule 中获取该角色关联该用户的时间 (存放在 v3)
+	subQueryExpr := dao.db.Table("casbin_rule").
+		Select("CAST(v3 AS SIGNED)").
+		Where("REPLACE(casbin_rule.v0, ?, '') = user.username", domain.PrefixUser).
+		Where("ptype = 'g' AND v1 = ? AND v2 = ?", domain.RoleSubject(roleCode), tid)
+
+	// 2. 构造过滤子查询：找出该租户下关联该角色的所有用户标识 (v0)
+	filterSubQuery := dao.db.Table("casbin_rule").
 		Select("REPLACE(v0, ?, '')", domain.PrefixUser).
 		Where("ptype = 'g' AND v1 = ? AND v2 = ?", domain.RoleSubject(roleCode), tid)
 
-	// 2. 主查询：基于子查询结果筛选用户，并支持关键词过滤
+	// 3. 主查询：注入关联时间并过滤
 	query := dao.db.WithContext(ctx).Model(&User{}).
-		Where("username IN (?)", subQuery)
+		Select("*, (?) AS ctime", subQueryExpr).
+		Where("username IN (?)", filterSubQuery)
 
 	if keyword != "" {
 		kw := "%" + keyword + "%"
@@ -350,6 +356,7 @@ func (dao *userDAO) GetAttachedUsersWithFilter(ctx context.Context, roleCode str
 		return nil, 0, err
 	}
 
+	// 按照授权时间 (ctime) 倒序排列
 	err = query.Offset(int(offset)).Limit(int(limit)).
 		Order("ctime DESC").Find(&us).Error
 
@@ -359,6 +366,13 @@ func (dao *userDAO) GetAttachedUsersWithFilter(ctx context.Context, roleCode str
 func (dao *userDAO) BatchUpsertUsers(ctx context.Context, users []User) error {
 	if len(users) == 0 {
 		return nil
+	}
+	now := time.Now().UnixMilli()
+	for i := range users {
+		if users[i].Ctime == 0 {
+			users[i].Ctime = now
+		}
+		users[i].Utime = now
 	}
 	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "username"}},
