@@ -65,3 +65,19 @@ func WithTenantID(ctx context.Context, tid int64) context.Context {
 func WithUserID(ctx context.Context, uid int64) context.Context {
 	return With(ctx, UserIDKey, uid)
 }
+
+type privateOnlyKey struct{}
+
+// WithPrivateOnly 标记该 Context 下的查询仅返回私有资产，忽略共享资源
+func WithPrivateOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, privateOnlyKey{}, true)
+}
+
+// IsPrivateOnly 检查是否处于“仅限私有资产”模式
+func IsPrivateOnly(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	val, _ := ctx.Value(privateOnlyKey{}).(bool)
+	return val
+}

@@ -38,9 +38,9 @@ type ITenantService interface {
 	// BatchInitPersonalTenant 批量为用户初始化个人空间
 	BatchInitPersonalTenant(ctx context.Context, users []domain.User) error
 	// ListMembers 获取租户下成员列表
-	ListMembers(ctx context.Context, tenantID int64, offset, limit int64, keyword string) ([]domain.User, int64, error)
+	ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	// AssignUser 分配用户到租户空间
-	AssignUser(ctx context.Context, tenantID int64, userID int64) error
+	AssignUser(ctx context.Context, userID int64) error
 }
 
 type tenantService struct {
@@ -212,24 +212,24 @@ func (s *tenantService) FindMembershipsByUserIds(ctx context.Context, userIds []
 	return res, nil
 }
 
-func (s *tenantService) ListMembers(ctx context.Context, tenantID int64, offset, limit int64, keyword string) ([]domain.User, int64, error) {
+func (s *tenantService) ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, int64, error) {
 	var (
 		users []domain.User
 		total int64
 	)
 	eg, _ := errgroup.WithContext(ctx)
 
-	// 1. 并发查询成员详情列表 (userRepo.List 内部已处理租户隔离与搜索)
+	// 1. 并发查询成员详情列表 (userRepo.List 内部已通过 GORM 插件处理租户隔离)
 	eg.Go(func() error {
 		var err error
-		users, err = s.userRepo.List(ctx, tenantID, offset, limit, keyword)
+		users, err = s.userRepo.List(ctx, offset, limit, keyword)
 		return err
 	})
 
 	// 2. 并发查询成员总数
 	eg.Go(func() error {
 		var err error
-		total, err = s.userRepo.Count(ctx, tenantID, keyword)
+		total, err = s.userRepo.Count(ctx, keyword)
 		return err
 	})
 
@@ -240,6 +240,7 @@ func (s *tenantService) ListMembers(ctx context.Context, tenantID int64, offset,
 	return users, total, nil
 }
 
-func (s *tenantService) AssignUser(ctx context.Context, tenantID int64, userID int64) error {
+func (s *tenantService) AssignUser(ctx context.Context, userID int64) error {
+	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	return s.repo.AddMembership(ctx, userID, tenantID)
 }

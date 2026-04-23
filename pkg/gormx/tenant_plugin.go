@@ -95,30 +95,52 @@ func (p *TenantPlugin) setTenantField(ctx context.Context, field *schema.Field, 
 	}
 }
 
+const injectedKey = "eiam:tenant_injected"
+
 // handleQuery 查询时的智能租户隔离条件
 func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	if p.shouldSkip(db) {
 		return
 	}
 
-	tid := ctxutil.GetTenantID(db.Statement.Context)
-	if tid == 0 {
-		return // 忽略无租户上下文的请求
+	// 1. 防重复注入拦截
+	if _, ok := db.InstanceGet(injectedKey); ok {
+		return
 	}
 
 	if _, ok := db.Statement.Schema.FieldsByDBName[tenantColumn]; !ok {
 		return // 该表无 tenant_id 字段，不作隔离
 	}
 
+	tid := ctxutil.GetTenantID(db.Statement.Context)
 	conf := p.getSharedConfig(db.Statement.Schema)
-	p.injectQueryPolicy(db, tid.Int64(), conf)
+
+	// 2. 标计为已处理，防止子查询或复用 Statement 时重复叠加
+	db.InstanceSet(injectedKey, true)
+
+	// 3. 核心判定规则：
+	// 如果是系统租户且当前模型未标记为“共享资源 (IsShared)”，则认为是在操作基础库，执行上帝视角豁免。
+	if tid.Int64() == ctxutil.SystemTenantID && !conf.IsShared {
+		return
+	}
+
+	// 4. 如果开启了私有模式，强制不应用 shared 配置，只查当前租户
+	if tid != 0 && ctxutil.IsPrivateOnly(db.Statement.Context) {
+		db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid.Int64())
+		return
+	}
+
+	// 5. 如果已指定了 tid（或者是系统租户查共享资源），则执行策略注入
+	if tid != 0 {
+		p.injectQueryPolicy(db, tid.Int64(), conf)
+	}
 }
 
 // injectQueryPolicy 根据实体配置，动态织入数据访问边界
 func (p *TenantPlugin) injectQueryPolicy(db *gorm.DB, currentTid int64, conf SharedConfig) {
-	// 1. 系统租户视角：拥有全局穿透权，不进行自动隔离。
-	// 这允许管理员在治理模式下，通过代码显式指定的 tid 来查询任何租户数据。
+	// 1. 系统主空间简化隔离 (解决超管查策略列表看到全量的 Bug)
 	if currentTid == ctxutil.SystemTenantID {
+		db.Where(fmt.Sprintf("%s = ?", tenantColumn), ctxutil.SystemTenantID)
 		return
 	}
 
@@ -135,7 +157,8 @@ func (p *TenantPlugin) injectQueryPolicy(db *gorm.DB, currentTid int64, conf Sha
 			currentTid, ctxutil.SystemTenantID,
 		)
 	} else {
-		db.Where(fmt.Sprintf("%s IN (?, ?)", tenantColumn), currentTid, ctxutil.SystemTenantID)
+		// 优化点：不再使用 IN (x, 1)，通过 OR 分开处理，对索引更友好
+		db.Where(fmt.Sprintf("%s = ? OR %s = ?", tenantColumn, tenantColumn), currentTid, ctxutil.SystemTenantID)
 	}
 }
 

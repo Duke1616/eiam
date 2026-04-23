@@ -76,7 +76,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 }
 
 func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Result, error) {
-	users, total, err := h.svc.ListMembers(ctx.Context, req.TenantID, req.Offset, req.Limit, req.Keyword)
+	newCtx := ctxutil.WithTenantID(ctx.Context, req.TenantID)
+	users, total, err := h.svc.ListMembers(newCtx, req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ErrTenantGet, err
 	}
@@ -102,7 +103,8 @@ func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Resul
 }
 
 func (h *Handler) AssignUser(ctx *ginx.Context, req AssignUserReq) (ginx.Result, error) {
-	err := h.svc.AssignUser(ctx.Context, req.TenantID, req.UserID)
+	newCtx := ctxutil.WithTenantID(ctx.Context, req.TenantID)
+	err := h.svc.AssignUser(newCtx, req.UserID)
 	if err != nil {
 		return ErrTenantUpdate, err
 	}

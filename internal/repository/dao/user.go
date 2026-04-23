@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -42,19 +43,19 @@ type IUserDAO interface {
 	FindIdentityByExternal(ctx context.Context, provider, externalID string) (UserIdentity, error)
 
 	// List 分页模糊查询用户列表（支持 tid 隔离与关键字搜索）
-	List(ctx context.Context, tid, offset, limit int64, keyword string) ([]User, error)
+	List(ctx context.Context, offset, limit int64, keyword string) ([]User, error)
 	// Count 统计用户总数
-	Count(ctx context.Context, tid int64, keyword string) (int64, error)
+	Count(ctx context.Context, keyword string) (int64, error)
 	// Search 模糊搜索当前租户下的成员用户
-	Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]User, error)
+	Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error)
 	// CountSearch 统计搜索结果总数
-	CountSearch(ctx context.Context, tid int64, keyword string) (int64, error)
+	CountSearch(ctx context.Context, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// FindUsersByUsernames 批量根据用户名获取用户
 	FindUsersByUsernames(ctx context.Context, usernames []string) ([]User, error)
 	// GetAttachedUsersWithFilter 联表分页获取关联角色的用户详情，支持关键词过滤
-	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]User, int64, error)
+	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]User, int64, error)
 	// BatchUpsertUsers 批量更新/写入基础用户资料
 	BatchUpsertUsers(ctx context.Context, users []User) error
 	// BatchUpsertProfilesAndIdentities 批量更新/写入名片与身份标记
@@ -227,13 +228,15 @@ func (dao *userDAO) FindIdentityByExternal(ctx context.Context, provider, extern
 	return y, err
 }
 
-func (dao *userDAO) List(ctx context.Context, tid, offset, limit int64, keyword string) ([]User, error) {
+func (dao *userDAO) List(ctx context.Context, offset, limit int64, keyword string) ([]User, error) {
 	var us []User
 	db := dao.db.WithContext(ctx).Model(&User{})
 
-	// 1. 租户隔离：只要指定了 Tid（包括系统租户），就说明是在租户视图下
-	if tid > 0 {
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+	// 1. 租户隔离：只要不是系统租户，就说明是在租户视图下，需要通过 Membership 过滤
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	if tid != ctxutil.SystemTenantID {
+		// NOTE: 此处 subQuery 虽未显式指定 tid，但 GORM 租户插件会自动拦截并注入 Membership 的隔离条件
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
 		db = db.Where("id IN (?)", subQuery)
 	}
 
@@ -247,13 +250,14 @@ func (dao *userDAO) List(ctx context.Context, tid, offset, limit int64, keyword 
 	return us, err
 }
 
-func (dao *userDAO) Count(ctx context.Context, tid int64, keyword string) (int64, error) {
+func (dao *userDAO) Count(ctx context.Context, keyword string) (int64, error) {
 	var total int64
 	db := dao.db.WithContext(ctx).Model(&User{})
 
-	// 1. 租户隔离：只要指定了 Tid（包括系统租户），就说明是在租户视图下
-	if tid > 0 {
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+	// 1. 租户隔离：只要不是系统租户，就说明是在租户视图下，需要通过 Membership 过滤
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	if tid != ctxutil.SystemTenantID {
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
 		db = db.Where("id IN (?)", subQuery)
 	}
 
@@ -267,7 +271,7 @@ func (dao *userDAO) Count(ctx context.Context, tid int64, keyword string) (int64
 	return total, err
 }
 
-func (dao *userDAO) CountSearch(ctx context.Context, tid int64, keyword string) (int64, error) {
+func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, error) {
 	var total int64
 	db := dao.db.WithContext(ctx).Model(&User{})
 	if keyword != "" {
@@ -276,8 +280,9 @@ func (dao *userDAO) CountSearch(ctx context.Context, tid int64, keyword string) 
 	}
 
 	// 强制锁定租户
-	if tid > 0 {
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	if tid != ctxutil.SystemTenantID {
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
 		db = db.Where("id IN (?)", subQuery)
 	}
 
@@ -285,7 +290,7 @@ func (dao *userDAO) CountSearch(ctx context.Context, tid int64, keyword string) 
 	return total, err
 }
 
-func (dao *userDAO) Search(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]User, error) {
+func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error) {
 	var us []User
 	db := dao.db.WithContext(ctx).Model(&User{})
 	if keyword != "" {
@@ -294,8 +299,9 @@ func (dao *userDAO) Search(ctx context.Context, tid int64, keyword string, offse
 	}
 
 	// 强制锁定租户
-	if tid > 0 {
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id").Where("tenant_id = ?", tid)
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	if tid != ctxutil.SystemTenantID {
+		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
 		db = db.Where("id IN (?)", subQuery)
 	}
 
@@ -316,11 +322,13 @@ func (dao *userDAO) FindUsersByUsernames(ctx context.Context, usernames []string
 	return users, err
 }
 
-func (dao *userDAO) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, tid, offset, limit int64, keyword string) ([]User, int64, error) {
+func (dao *userDAO) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]User, int64, error) {
 	var (
 		us    []User
 		total int64
 	)
+
+	tid := ctxutil.GetTenantID(ctx).Int64()
 
 	// 1. 构造子查询：从 casbin_rule 中找出该租户下关联该角色的所有用户标识
 	// NOTE: v0 是 user:username, v1 是 role:roleCode

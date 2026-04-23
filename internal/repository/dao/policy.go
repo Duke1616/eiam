@@ -26,7 +26,7 @@ type Policy struct {
 // PolicyAssignment 策略分配关联表 (支持用户和角色统一授权)
 type PolicyAssignment struct {
 	Id         int64  `gorm:"primaryKey;autoIncrement"`
-	TenantId   int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID'" eiam:"shared"`
+	TenantId   int64  `gorm:"type:bigint;not null;uniqueIndex:uniq_subject_policy;comment:'租户ID'"`
 	SubType    string `gorm:"type:varchar(20);not null;uniqueIndex:uniq_subject_policy;comment:'主体类型: user, role'"`
 	SubCode    string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'主体标识 (用户名或角色代码)'"`
 	PolicyCode string `gorm:"type:varchar(255);not null;uniqueIndex:uniq_subject_policy;comment:'策略代码'"`

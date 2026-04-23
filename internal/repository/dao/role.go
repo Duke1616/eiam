@@ -103,6 +103,7 @@ func (d *RoleDAO) CountByKeyword(ctx context.Context, keyword string) (int64, er
 
 func (d *RoleDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]Role, error) {
 	var roles []Role
+
 	db := d.db.WithContext(ctx).Model(&Role{})
 
 	if keyword != "" {

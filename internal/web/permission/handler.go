@@ -203,8 +203,8 @@ func (h *Handler) ListAuthorizations(ctx *ginx.Context, req AuthorizationQueryRe
 		req.Limit = 10
 	}
 
-	// 2. 调用 Service 获取聚合数据 (直接进行类型转换，因为字符串值已完全对齐)
-	auths, total, err := h.svc.ListAuthorizations(ctx.Context, domain.AuthorizationQuery{
+	// 2. 调用 Service 获取数据
+	auths, total, err := h.svc.ListAuthorizations(ctx.Request.Context(), domain.AuthorizationQuery{
 		Offset:  req.Offset,
 		Limit:   req.Limit,
 		Keyword: req.Keyword,

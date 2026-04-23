@@ -190,21 +190,15 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 }
 
 func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, error) {
-	currentTid := ctxutil.GetTenantID(ctx).Int64()
-
-	// 1. 视角决策：系统管理员在全局页面使用上帝视角 (queryTid=0)，普通管理员锁定当前空间
-	queryTid := currentTid
-	if currentTid == ctxutil.SystemTenantID {
-		queryTid = 0
-	}
-
-	// 2. 调用服务层获取数据
-	users, total, err := h.svc.List(ctx.Request.Context(), queryTid, req.Offset, req.Limit, req.Keyword)
+	// 1. 调用服务层获取数据
+	// NOTE: 租户隔离逻辑已下沉至 DAO 层，由 GORM 插件根据 Context 中的 TenantID 自动处理
+	users, total, err := h.svc.List(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ginx.Result{}, err
 	}
 
-	// 3. 视图装饰：如果不是系统管理员，直接返回基础用户信息
+	// 2. 视图装饰：如果不是系统管理员，直接返回基础用户信息
+	currentTid := ctxutil.GetTenantID(ctx).Int64()
 	if currentTid != ctxutil.SystemTenantID {
 		return ginx.Result{
 			Data: RetrieveUsers[User]{
@@ -216,7 +210,7 @@ func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, err
 		}, nil
 	}
 
-	// 4. 超管特权装饰：批量标识这些用户中，哪些已经入驻了当前管理空间（或已入驻任意空间）
+	// 3. 超管特权装饰：批量标识这些用户中，哪些已经入驻了当前管理空间（或已入驻任意空间）
 	userIDs := slice.Map(users, func(idx int, src domain.User) int64 {
 		return src.ID
 	})
