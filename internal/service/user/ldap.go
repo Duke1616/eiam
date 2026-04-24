@@ -40,6 +40,7 @@ func (l *ldapService) Sync(ctx context.Context, users []domain.User) error {
 	usernames := make([]string, 0, len(users))
 	for i := range users {
 		users[i].Source = domain.SourceLdap
+		users[i].Status = domain.StatusActive
 		users[i].Ctime = now
 		users[i].Utime = now
 		usernames = append(usernames, users[i].Username)

@@ -32,8 +32,12 @@ type IUserRepository interface {
 
 	// List 分页模糊查询用户列表
 	List(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, error)
+	// ListMembers 分页模糊查询租户成员列表
+	ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, error)
 	// Count 统计搜索结果总数
 	Count(ctx context.Context, keyword string) (int64, error)
+	// CountMembers 统计租户成员总数
+	CountMembers(ctx context.Context, keyword string) (int64, error)
 	// Search 根据关键字模糊搜索当前租户成员用户
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
 	// CountSearch 根据关键字统计当前租户成员搜索结果总数
@@ -50,6 +54,8 @@ type IUserRepository interface {
 	CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error)
 	// FindUsersByUsernames 批量根据用户名查找用户
 	FindUsersByUsernames(ctx context.Context, usernames []string) ([]domain.User, error)
+	// DeleteIdentity 解除身份源绑定
+	DeleteIdentity(ctx context.Context, uid int64, provider string) error
 }
 
 type userRepository struct {
@@ -175,6 +181,18 @@ func (repo *userRepository) List(ctx context.Context, offset, limit int64, keywo
 
 func (repo *userRepository) Count(ctx context.Context, keyword string) (int64, error) {
 	return repo.dao.Count(ctx, keyword)
+}
+
+func (repo *userRepository) ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, error) {
+	us, err := repo.dao.ListMembers(ctx, offset, limit, keyword)
+	if err != nil {
+		return nil, err
+	}
+	return repo.batchHydration(ctx, us)
+}
+
+func (repo *userRepository) CountMembers(ctx context.Context, keyword string) (int64, error) {
+	return repo.dao.CountMembers(ctx, keyword)
 }
 
 func (repo *userRepository) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
@@ -311,6 +329,10 @@ func (repo *userRepository) UpdateLastLoginAt(ctx context.Context, id int64, log
 
 func (repo *userRepository) Delete(ctx context.Context, id int64) error {
 	return repo.dao.Delete(ctx, id)
+}
+
+func (repo *userRepository) DeleteIdentity(ctx context.Context, uid int64, provider string) error {
+	return repo.dao.DeleteIdentity(ctx, uid, provider)
 }
 
 func (repo *userRepository) BatchUpsert(ctx context.Context, users []domain.User) error {

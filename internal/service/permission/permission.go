@@ -61,7 +61,7 @@ func NewPermissionService(
 	}
 }
 
-func (s *permissionService) SearchSubjects(ctx context.Context, tid int64, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error) {
+func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, subType string, offset, limit int64) ([]domain.Subject, int64, error) {
 	// 委托给注册中心处理路由与聚合
 	p := s.registry.Route(subType)
 
@@ -74,12 +74,12 @@ func (s *permissionService) SearchSubjects(ctx context.Context, tid int64, keywo
 	// 并行执行计数与搜索，两者互不依赖
 	eg.Go(func() error {
 		var err error
-		total, err = p.CountSubjects(ctx, tid, keyword)
+		total, err = p.CountSubjects(ctx, keyword)
 		return err
 	})
 	eg.Go(func() error {
 		var err error
-		subjects, err = p.SearchSubjects(ctx, tid, keyword, offset, limit)
+		subjects, err = p.SearchSubjects(ctx, keyword, offset, limit)
 		return err
 	})
 
@@ -366,7 +366,12 @@ func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode stri
 }
 
 func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) (bool, error) {
-	// 1. 验证角色合法性，严禁为不存在的角色创建继承关系
+	// 1. 基础校验：严禁自继承
+	if roleCode == parentRoleCode {
+		return false, errs.ErrRoleSelfInheritance
+	}
+
+	// 2. 验证角色合法性，严禁为不存在的角色创建继承关系
 	if _, err := s.roleSvc.GetByCode(ctx, roleCode); err != nil {
 		return false, err
 	}

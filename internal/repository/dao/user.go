@@ -50,6 +50,10 @@ type IUserDAO interface {
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error)
 	// CountSearch 统计搜索结果总数
 	CountSearch(ctx context.Context, keyword string) (int64, error)
+	// ListMembers 显式分页查询租户成员列表（始终通过 Membership 过滤）
+	ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]User, error)
+	// CountMembers 统计租户成员总数
+	CountMembers(ctx context.Context, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// FindUsersByUsernames 批量根据用户名获取用户
@@ -62,6 +66,8 @@ type IUserDAO interface {
 	BatchUpsertProfilesAndIdentities(ctx context.Context, profiles []UserProfile, identities []UserIdentity) error
 	// UpdateLastLoginAt 更新最近登录时间
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
+	// DeleteIdentity 解除外部身份绑定
+	DeleteIdentity(ctx context.Context, userID int64, provider string) error
 }
 
 type userDAO struct {
@@ -95,8 +101,8 @@ type UserProfile struct {
 
 type UserIdentity struct {
 	ID       int64  `gorm:"primaryKey;autoIncrement"`
-	UserID   int64  `gorm:"index"`
-	Provider string `gorm:"index:idx_prov_key;type:varchar(32)"`
+	UserID   int64  `gorm:"uniqueIndex:idx_user_provider"`
+	Provider string `gorm:"uniqueIndex:idx_user_provider;type:varchar(32)"`
 
 	LdapInfo   sqlx.JSONColumn[LdapInfo]   `gorm:"type:json" json:"ldap_info"`
 	FeishuInfo sqlx.JSONColumn[FeishuInfo] `gorm:"type:json" json:"feishu_info"`
@@ -194,7 +200,10 @@ func (dao *userDAO) SaveProfile(ctx context.Context, ui UserProfile) error {
 }
 
 func (dao *userDAO) SaveIdentity(ctx context.Context, ui UserIdentity) error {
-	return dao.db.WithContext(ctx).Save(&ui).Error
+	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "provider"}},
+		DoUpdates: clause.AssignmentColumns([]string{"ldap_info", "feishu_info", "wechat_info"}),
+	}).Create(&ui).Error
 }
 
 func (dao *userDAO) FindIdentitiesByUserId(ctx context.Context, userID int64) ([]UserIdentity, error) {
@@ -262,6 +271,50 @@ func (dao *userDAO) Count(ctx context.Context, keyword string) (int64, error) {
 	}
 
 	// 2. 关键词模糊搜索
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		db = db.Where("username LIKE ?", kw)
+	}
+
+	err := db.Count(&total).Error
+	return total, err
+}
+
+func (dao *userDAO) ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]User, error) {
+	var us []User
+	db := dao.db.WithContext(ctx).Model(&User{})
+
+	// 获取目标租户 ID
+	tid := ctxutil.GetTenantID(ctx).Int64()
+
+	// 显式指定租户过滤，防止插件在超管视角下跳过隔离
+	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).
+		Where("tenant_id = ?", tid).
+		Select("user_id")
+	db = db.Where("id IN (?)", subQuery)
+
+	if keyword != "" {
+		kw := "%" + keyword + "%"
+		db = db.Where("username LIKE ?", kw)
+	}
+
+	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&us).Error
+	return us, err
+}
+
+func (dao *userDAO) CountMembers(ctx context.Context, keyword string) (int64, error) {
+	var total int64
+	db := dao.db.WithContext(ctx).Model(&User{})
+
+	// 获取目标租户 ID
+	tid := ctxutil.GetTenantID(ctx).Int64()
+
+	// 显式指定租户过滤
+	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).
+		Where("tenant_id = ?", tid).
+		Select("user_id")
+	db = db.Where("id IN (?)", subQuery)
+
 	if keyword != "" {
 		kw := "%" + keyword + "%"
 		db = db.Where("username LIKE ?", kw)
@@ -405,4 +458,10 @@ func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profil
 }
 func (dao *userDAO) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error {
 	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("last_login_at", loginAt).Error
+}
+
+func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider string) error {
+	return dao.db.WithContext(ctx).
+		Where("user_id = ? AND provider = ?", userID, provider).
+		Delete(&UserIdentity{}).Error
 }

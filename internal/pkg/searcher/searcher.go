@@ -19,10 +19,10 @@ type Subject struct {
 // 用于规范各领域（用户、角色等）在治理中心统一搜索行为的标准化接口
 type SubjectProvider interface {
 	// SearchSubjects 执行特定领域的关键词搜索，仅返回主体数据结果集
-	SearchSubjects(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]Subject, error)
+	SearchSubjects(ctx context.Context, keyword string, offset, limit int64) ([]Subject, error)
 
 	// CountSubjects 获取符合关键词搜索条件的主体总数
-	CountSubjects(ctx context.Context, tid int64, keyword string) (int64, error)
+	CountSubjects(ctx context.Context, keyword string) (int64, error)
 
 	// SupportType 返回该提供者所支持的主体类型标识（如 "user", "role"）
 	SupportType() string
@@ -31,15 +31,15 @@ type SubjectProvider interface {
 // SubjectAdapter 适配器
 type SubjectAdapter[T any] struct {
 	supportType string
-	searchFn    func(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]T, error)
-	countFn     func(ctx context.Context, tid int64, keyword string) (int64, error)
+	searchFn    func(ctx context.Context, keyword string, offset, limit int64) ([]T, error)
+	countFn     func(ctx context.Context, keyword string) (int64, error)
 	mapper      func(T) Subject
 }
 
 func NewSubjectAdapter[T any](
 	supportType string,
-	search func(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]T, error),
-	count func(ctx context.Context, tid int64, keyword string) (int64, error),
+	search func(ctx context.Context, keyword string, offset, limit int64) ([]T, error),
+	count func(ctx context.Context, keyword string) (int64, error),
 	mapper func(T) Subject,
 ) *SubjectAdapter[T] {
 	return &SubjectAdapter[T]{
@@ -50,8 +50,8 @@ func NewSubjectAdapter[T any](
 	}
 }
 
-func (a *SubjectAdapter[T]) SearchSubjects(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]Subject, error) {
-	ts, err := a.searchFn(ctx, tid, keyword, offset, limit)
+func (a *SubjectAdapter[T]) SearchSubjects(ctx context.Context, keyword string, offset, limit int64) ([]Subject, error) {
+	ts, err := a.searchFn(ctx, keyword, offset, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +62,8 @@ func (a *SubjectAdapter[T]) SearchSubjects(ctx context.Context, tid int64, keywo
 	return res, nil
 }
 
-func (a *SubjectAdapter[T]) CountSubjects(ctx context.Context, tid int64, keyword string) (int64, error) {
-	return a.countFn(ctx, tid, keyword)
+func (a *SubjectAdapter[T]) CountSubjects(ctx context.Context, keyword string) (int64, error) {
+	return a.countFn(ctx, keyword)
 }
 
 func (a *SubjectAdapter[T]) SupportType() string { return a.supportType }
@@ -110,7 +110,7 @@ func (r *subjectRegistry) Route(subType string) SubjectProvider {
 	return r
 }
 
-func (r *subjectRegistry) SearchSubjects(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]Subject, error) {
+func (r *subjectRegistry) SearchSubjects(ctx context.Context, keyword string, offset, limit int64) ([]Subject, error) {
 	r.mu.RLock()
 	ps := r.providers
 	r.mu.RUnlock()
@@ -123,7 +123,7 @@ func (r *subjectRegistry) SearchSubjects(ctx context.Context, tid int64, keyword
 	for i, p := range ps {
 		idx, provider := i, p
 		eg.Go(func() error {
-			total, err := provider.CountSubjects(ctx, tid, keyword)
+			total, err := provider.CountSubjects(ctx, keyword)
 			if err != nil {
 				return err
 			}
@@ -141,7 +141,7 @@ func (r *subjectRegistry) SearchSubjects(ctx context.Context, tid int64, keyword
 		pTotal := totals[i]
 		if int64(len(res)) < limit && currentOffset < pTotal {
 			pLimit := limit - int64(len(res))
-			pSubjects, err := p.SearchSubjects(ctx, tid, keyword, currentOffset, pLimit)
+			pSubjects, err := p.SearchSubjects(ctx, keyword, currentOffset, pLimit)
 			if err != nil {
 				return nil, err
 			}
@@ -154,7 +154,7 @@ func (r *subjectRegistry) SearchSubjects(ctx context.Context, tid int64, keyword
 	return res, nil
 }
 
-func (r *subjectRegistry) CountSubjects(ctx context.Context, tid int64, keyword string) (int64, error) {
+func (r *subjectRegistry) CountSubjects(ctx context.Context, keyword string) (int64, error) {
 	r.mu.RLock()
 	ps := r.providers
 	r.mu.RUnlock()
@@ -167,7 +167,7 @@ func (r *subjectRegistry) CountSubjects(ctx context.Context, tid int64, keyword 
 	for _, p := range ps {
 		p := p
 		eg.Go(func() error {
-			count, err := p.CountSubjects(ctx, tid, keyword)
+			count, err := p.CountSubjects(ctx, keyword)
 			if err != nil {
 				return err
 			}

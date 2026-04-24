@@ -129,6 +129,7 @@ func (p *ldapProvider) Authenticate(ctx context.Context, username, password stri
 // buildDraftUser 构造一个带有所需属性但尚未绑定 MembershipID 的 User 雏形
 func (p *ldapProvider) buildDraftUser(entry *ldap.Entry) domain.User {
 	u := domain.User{
+		Status:  domain.StatusActive,
 		Profile: domain.UserProfile{},
 		Identities: []domain.UserIdentity{
 			{

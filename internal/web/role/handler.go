@@ -219,6 +219,12 @@ func (h *Handler) AnalyzeInlinePolicies(ctx *ginx.Context, req RoleAnalysisReq) 
 func (h *Handler) AddParentRole(ctx *ginx.Context, req RoleInheritanceReq) (ginx.Result, error) {
 	_, err := h.permSvc.AddRoleInheritance(ctx.Request.Context(), req.RoleCode, req.ParentRoleCode)
 	if err != nil {
+		if errors.Is(err, errs.ErrRoleSelfInheritance) {
+			return ErrRoleSelfInheritance, err
+		}
+		if errors.Is(err, errs.ErrRoleCycleInheritance) {
+			return ErrRoleCycleInheritance, err
+		}
 		return ginx.Result{Code: 50101, Msg: "添加父角色失败"}, err
 	}
 	return ginx.Result{Msg: "添加成功"}, nil

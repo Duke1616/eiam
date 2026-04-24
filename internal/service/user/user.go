@@ -39,6 +39,12 @@ type IUserService interface {
 	CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error)
 	// GetAttachedUsersWithFilter 获取关联角色的用户详情，支持关键词过滤
 	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]domain.User, int64, error)
+	// BindIdentity 手动绑定外部身份
+	BindIdentity(ctx context.Context, uid int64, identity domain.UserIdentity) error
+	// UnbindIdentity 解除外部身份绑定
+	UnbindIdentity(ctx context.Context, uid int64, provider string) error
+	// ManageIdentities 批量管理/同步外部身份信息
+	ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error
 }
 
 type userService struct {
@@ -220,6 +226,10 @@ func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) 
 		u.Source = domain.SourceLocal
 	}
 
+	if u.Status == domain.StatusUnknown {
+		u.Status = domain.StatusActive
+	}
+
 	if u.Password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 		if err != nil {
@@ -313,4 +323,30 @@ func (s *userService) CheckUsersExist(ctx context.Context, usernames []string) (
 
 func (s *userService) GetAttachedUsersWithFilter(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]domain.User, int64, error) {
 	return s.repo.GetAttachedUsersWithFilter(ctx, roleCode, offset, limit, keyword)
+}
+
+func (s *userService) BindIdentity(ctx context.Context, uid int64, identity domain.UserIdentity) error {
+	identity.UserID = uid
+	return s.repo.SaveIdentity(ctx, identity)
+}
+
+func (s *userService) UnbindIdentity(ctx context.Context, uid int64, provider string) error {
+	return s.repo.DeleteIdentity(ctx, uid, provider)
+}
+
+func (s *userService) ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error {
+	for _, id := range identities {
+		id.UserID = uid
+		// 策略：如果标识为空，则解绑；否则绑定/更新
+		if id.IdentityKey() == "" {
+			if err := s.repo.DeleteIdentity(ctx, uid, id.Provider); err != nil {
+				return err
+			}
+		} else {
+			if err := s.repo.SaveIdentity(ctx, id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

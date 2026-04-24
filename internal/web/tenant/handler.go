@@ -1,6 +1,7 @@
 package tenant
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -76,7 +77,17 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 }
 
 func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Result, error) {
-	users, total, err := h.svc.ListMembers(ctx.Context, req.Offset, req.Limit, req.Keyword)
+	// 核心逻辑：动态注入租户上下文
+	// 1. 默认使用当前 Session 中的租户 ID
+	var newCtx context.Context = ctx.Context
+
+	// 2. 如果请求显式指定了 TenantID（如系统管理员管理其他租户成员），则进行 Context 覆盖
+	// 注入后的 TenantID 将被下层 DAO 识别，用于精准过滤 membership 表
+	if req.TenantID != 0 {
+		newCtx = ctxutil.WithTenantID(ctx.Request.Context(), req.TenantID)
+	}
+
+	users, total, err := h.svc.ListMembers(newCtx, req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ErrTenantGet, err
 	}

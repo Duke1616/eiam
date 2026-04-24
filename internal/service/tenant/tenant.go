@@ -223,17 +223,17 @@ func (s *tenantService) ListMembers(ctx context.Context, offset, limit int64, ke
 	)
 	eg, _ := errgroup.WithContext(ctx)
 
-	// 1. 并发查询成员详情列表 (userRepo.List 内部已通过 GORM 插件处理租户隔离)
+	// 1. 并发查询成员详情列表 (userRepo.ListMembers 内部已通过 GORM 插件处理租户隔离)
 	eg.Go(func() error {
 		var err error
-		users, err = s.userRepo.List(ctx, offset, limit, keyword)
+		users, err = s.userRepo.ListMembers(ctx, offset, limit, keyword)
 		return err
 	})
 
 	// 2. 并发查询成员总数
 	eg.Go(func() error {
 		var err error
-		total, err = s.userRepo.Count(ctx, keyword)
+		total, err = s.userRepo.CountMembers(ctx, keyword)
 		return err
 	})
 

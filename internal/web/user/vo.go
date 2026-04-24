@@ -1,5 +1,7 @@
 package user
 
+import "github.com/Duke1616/eiam/internal/domain"
+
 // SignupRequest 注册请求
 type SignupRequest struct {
 	Username        string `json:"username"`
@@ -123,6 +125,36 @@ type ListRoleUsersRequest struct {
 
 type SyncLdapUserReq struct {
 	Users []User `json:"users"`
+}
+
+type BindIdentityRequest struct {
+	UserID     int64      `json:"user_id"`
+	Provider   string     `json:"provider"`
+	LdapInfo   LdapInfo   `json:"ldap_info"`
+	WechatInfo WechatInfo `json:"wechat_info"`
+	FeishuInfo FeishuInfo `json:"feishu_info"`
+}
+
+func (req BindIdentityRequest) ToDomain() domain.UserIdentity {
+	return domain.UserIdentity{
+		UserID:     req.UserID,
+		Provider:   req.Provider,
+		LdapInfo:   domain.LdapInfo(req.LdapInfo),
+		WechatInfo: domain.WechatInfo(req.WechatInfo),
+		FeishuInfo: domain.FeishuInfo(req.FeishuInfo),
+	}
+}
+
+type UnbindIdentityRequest struct {
+	UserID   int64  `json:"user_id"`
+	Provider string `json:"provider"`
+}
+
+type ManageIdentitiesRequest struct {
+	UserID     int64      `json:"user_id"`
+	LdapInfo   LdapInfo   `json:"ldap_info"`
+	WechatInfo WechatInfo `json:"wechat_info"`
+	FeishuInfo FeishuInfo `json:"feishu_info"`
 }
 
 type LdapSyncUser struct {

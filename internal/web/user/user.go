@@ -77,6 +77,15 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/ldap/refresh_cache", h.Capability("刷新 LDAP 缓存", "ldap_refresh").
 		Handle(ginx.W(h.LdapRefreshCache)),
 	)
+	g.POST("/identity/bind", h.Capability("绑定外部身份", "bind_identity").
+		Handle(ginx.B[BindIdentityRequest](h.BindIdentity)),
+	)
+	g.POST("/identity/unbind", h.Capability("解绑外部身份", "unbind_identity").
+		Handle(ginx.B[UnbindIdentityRequest](h.UnbindIdentity)),
+	)
+	g.POST("/identity/manage", h.Capability("治理外部身份", "manage_identity").
+		Handle(ginx.B[ManageIdentitiesRequest](h.ManageIdentities)),
+	)
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -358,4 +367,37 @@ func (h *Handler) LdapRefreshCache(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{Msg: "刷新 LDAP 缓存成功"}, nil
+}
+
+func (h *Handler) BindIdentity(ctx *ginx.Context, req BindIdentityRequest) (ginx.Result, error) {
+	err := h.svc.BindIdentity(ctx.Request.Context(), req.UserID, req.ToDomain())
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{Msg: "绑定身份成功"}, nil
+}
+
+func (h *Handler) UnbindIdentity(ctx *ginx.Context, req UnbindIdentityRequest) (ginx.Result, error) {
+	err := h.svc.UnbindIdentity(ctx.Request.Context(), req.UserID, req.Provider)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{Msg: "解除绑定成功"}, nil
+}
+
+func (h *Handler) ManageIdentities(ctx *ginx.Context, req ManageIdentitiesRequest) (ginx.Result, error) {
+	identities := []domain.UserIdentity{
+		{Provider: "ldap", LdapInfo: domain.LdapInfo(req.LdapInfo)},
+		{Provider: "wechat", WechatInfo: domain.WechatInfo(req.WechatInfo)},
+		{Provider: "feishu", FeishuInfo: domain.FeishuInfo(req.FeishuInfo)},
+	}
+
+	err := h.svc.ManageIdentities(ctx.Request.Context(), req.UserID, identities)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{Msg: "外部身份治理信息已更新"}, nil
 }

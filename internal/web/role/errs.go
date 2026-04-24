@@ -22,6 +22,8 @@ var (
 	ErrGetRoleDetailFailed   = ginx.Result{Code: 4010508, Msg: "获取角色详情失败"}
 	ErrGetRoleAnalysisFailed = ginx.Result{Code: 4010509, Msg: "获取角色权限分析失败"}
 	ErrImmutableInheritance  = ginx.Result{Code: 4010510, Msg: "系统级继承关系严禁移除"}
+	ErrRoleSelfInheritance   = ginx.Result{Code: 4010511, Msg: "角色禁止继承自身"}
+	ErrRoleCycleInheritance  = ginx.Result{Code: 4010512, Msg: "角色继承存在死循环"}
 
 	ErrUnauthenticated = user.ErrUnauthenticated
 )

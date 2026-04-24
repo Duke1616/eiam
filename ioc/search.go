@@ -29,11 +29,11 @@ func InitSearchSubjectProviders(
 func NewRoleAdapter(roleSvc role.IRoleService) searcher.SubjectProvider {
 	return searcher.NewSubjectAdapter(
 		domain.SubjectTypeRole,
-		func(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.Role, error) {
+		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.Role, error) {
 			// 开启私有模式：在此 Context 下的查询将自动排除掉共享的系统角色 (type=1)
 			return roleSvc.Search(ctxutil.WithPrivateOnly(ctx), keyword, offset, limit)
 		},
-		func(ctx context.Context, tid int64, keyword string) (int64, error) {
+		func(ctx context.Context, keyword string) (int64, error) {
 			// 开启私有模式：在此 Context 下的查询将自动排除掉共享的系统角色 (type=1)
 			return roleSvc.CountByKeyword(ctxutil.WithPrivateOnly(ctx), keyword)
 		},
@@ -46,12 +46,12 @@ func NewRoleAdapter(roleSvc role.IRoleService) searcher.SubjectProvider {
 func NewUserAdapter(userSvc user.IUserService) searcher.SubjectProvider {
 	return searcher.NewSubjectAdapter(
 		domain.SubjectTypeUser,
-		func(ctx context.Context, tid int64, keyword string, offset, limit int64) ([]domain.User, error) {
+		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
 			// NOTE: 用户搜索逻辑已下沉，通过 Context 注入 tid 以触发插件自动隔离
-			return userSvc.Search(ctxutil.WithTenantID(ctx, tid), keyword, offset, limit)
+			return userSvc.Search(ctx, keyword, offset, limit)
 		},
-		func(ctx context.Context, tid int64, keyword string) (int64, error) {
-			return userSvc.CountSearch(ctxutil.WithTenantID(ctx, tid), keyword)
+		func(ctx context.Context, keyword string) (int64, error) {
+			return userSvc.CountSearch(ctx, keyword)
 		},
 		func(src domain.User) searcher.Subject {
 			return searcher.Subject{Type: domain.SubjectTypeUser, ID: src.Username, Name: src.Profile.Nickname}
