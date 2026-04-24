@@ -13,9 +13,9 @@ import (
 
 type LdapService interface {
 	Login(ctx context.Context, username, password string) (domain.User, error)
-	SearchCacheUserWithPager(ctx context.Context, keywords string, offset, limit int) ([]domain.User, int, error)
-	RefreshCacheUserWithPager(ctx context.Context) error
-	Sync(ctx context.Context, users []domain.User) error
+	SearchCacheUserWithPager(ctx context.Context, tid int64, keywords string, offset, limit int) ([]domain.User, int, error)
+	RefreshCacheUserWithPager(ctx context.Context, tid int64) error
+	Sync(ctx context.Context, tid int64, users []domain.User) error
 }
 
 type ldapService struct {
@@ -35,10 +35,11 @@ func NewLdapService(repo repository.IUserRepository, tenantSvc tenant.ITenantSer
 	}
 }
 
-func (l *ldapService) Sync(ctx context.Context, users []domain.User) error {
+func (l *ldapService) Sync(ctx context.Context, tid int64, users []domain.User) error {
 	now := time.Now().UnixMilli()
 	usernames := make([]string, 0, len(users))
 	for i := range users {
+		users[i].TenantID = tid
 		users[i].Source = domain.SourceLdap
 		users[i].Status = domain.StatusActive
 		users[i].Ctime = now
@@ -61,18 +62,18 @@ func (l *ldapService) Sync(ctx context.Context, users []domain.User) error {
 	return l.tenantSvc.BatchInitPersonalTenant(ctx, savedUsers)
 }
 
-func (l *ldapService) SearchCacheUserWithPager(ctx context.Context, keywords string,
+func (l *ldapService) SearchCacheUserWithPager(ctx context.Context, tid int64, keywords string,
 	offset, limit int) ([]domain.User, int, error) {
-	return l.cache.Query(ctx, keywords, offset, limit)
+	return l.cache.Query(ctx, tid, keywords, offset, limit)
 }
 
-func (l *ldapService) RefreshCacheUserWithPager(ctx context.Context) error {
+func (l *ldapService) RefreshCacheUserWithPager(ctx context.Context, tid int64) error {
 	ldapUsers, err := l.ldap.SearchUserWithPaging(ctx)
 	if err != nil {
 		return err
 	}
 
-	return l.cache.Document(ctx, ldapUsers)
+	return l.cache.Document(ctx, tid, ldapUsers)
 }
 
 // Login LDAP 登录

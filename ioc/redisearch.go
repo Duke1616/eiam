@@ -3,6 +3,7 @@ package ioc
 import (
 	"fmt"
 
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/gomodule/redigo/redis"
 	"github.com/spf13/viper"
@@ -26,5 +27,23 @@ func InitRedisSearch() *redisearch.Client {
 			redis.DialDatabase(cfg.DB))
 	}}
 
-	return redisearch.NewClientFromPool(pool, "idx:ldap:users")
+	client := redisearch.NewClientFromPool(pool, cache.LdapUserIndexName)
+
+	// 统一维护 Schema
+	sc := redisearch.NewSchema(redisearch.DefaultOptions).
+		AddField(redisearch.NewTextField("tid")).
+		AddField(redisearch.NewTextField("username")).
+		AddField(redisearch.NewTextField("display_name")).
+		AddField(redisearch.NewTextField("title")).
+		AddField(redisearch.NewTextField("email")).
+		AddField(redisearch.NewNumericField("updated_at"))
+
+	// 自动初始化：如果索引不存在则创建
+	_, err := client.Info()
+	if err != nil {
+		indexDefinition := redisearch.NewIndexDefinition().AddPrefix(cache.LdapUserKeyPrefix)
+		_ = client.CreateIndexWithIndexDefinition(sc, indexDefinition)
+	}
+
+	return client
 }

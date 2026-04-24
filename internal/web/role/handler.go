@@ -295,16 +295,16 @@ func (h *Handler) GetMyRoles(ctx *ginx.Context, req any, sess session.Session) (
 
 func (h *Handler) toVo(src domain.Role) Role {
 	return Role{
-		ID:   src.ID,
-		Code: src.Code,
-		Name: src.Name,
-		Desc: src.Desc,
-		Type: src.Type,
+		ID:    src.ID,
+		Code:  src.Code,
+		Name:  src.Name,
+		Desc:  src.Desc,
+		Type:  src.Type,
+		Ctime: src.Ctime,
+		Utime: src.Utime,
 		InlinePolicies: slice.Map(src.InlinePolicies, func(idx int, src domain.Policy) Policy {
 			return h.toPolicyVO(src)
 		}),
-		Ctime: src.Ctime,
-		Utime: src.Utime,
 	}
 }
 

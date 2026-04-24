@@ -56,6 +56,8 @@ type IUserRepository interface {
 	FindUsersByUsernames(ctx context.Context, usernames []string) ([]domain.User, error)
 	// DeleteIdentity 解除身份源绑定
 	DeleteIdentity(ctx context.Context, uid int64, provider string) error
+	// UpdateTenantID 更新用户归属租户
+	UpdateTenantID(ctx context.Context, id int64, tenantID int64) error
 }
 
 type userRepository struct {
@@ -290,6 +292,7 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 
 	return domain.User{
 		ID:          u.ID,
+		TenantID:    u.TenantID,
 		Username:    u.Username,
 		Password:    u.Password,
 		Email:       u.Email,
@@ -312,6 +315,7 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 func (repo *userRepository) toEntity(u domain.User) dao.User {
 	return dao.User{
 		ID:          u.ID,
+		TenantID:    u.TenantID,
 		Username:    u.Username,
 		Password:    u.Password,
 		Email:       u.Email,
@@ -333,6 +337,10 @@ func (repo *userRepository) Delete(ctx context.Context, id int64) error {
 
 func (repo *userRepository) DeleteIdentity(ctx context.Context, uid int64, provider string) error {
 	return repo.dao.DeleteIdentity(ctx, uid, provider)
+}
+
+func (repo *userRepository) UpdateTenantID(ctx context.Context, id int64, tenantID int64) error {
+	return repo.dao.UpdateTenantID(ctx, id, tenantID)
 }
 
 func (repo *userRepository) BatchUpsert(ctx context.Context, users []domain.User) error {

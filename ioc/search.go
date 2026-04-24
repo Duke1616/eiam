@@ -47,7 +47,6 @@ func NewUserAdapter(userSvc user.IUserService) searcher.SubjectProvider {
 	return searcher.NewSubjectAdapter(
 		domain.SubjectTypeUser,
 		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error) {
-			// NOTE: 用户搜索逻辑已下沉，通过 Context 注入 tid 以触发插件自动隔离
 			return userSvc.Search(ctx, keyword, offset, limit)
 		},
 		func(ctx context.Context, keyword string) (int64, error) {

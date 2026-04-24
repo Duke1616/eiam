@@ -18,6 +18,7 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
+	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
 )
@@ -58,6 +59,7 @@ func InitApp() (*App, error) {
 		dao.NewResourceDAO,
 		dao.NewServiceDAO,
 		dao.NewPolicyDAO,
+		dao.NewIdentitySourceDAO,
 
 		// Repositories
 		repository.NewUserRepository,
@@ -67,6 +69,7 @@ func InitApp() (*App, error) {
 		repository.NewResourceRepository,
 		repository.NewServiceRepository,
 		repository.NewPolicyRepository,
+		repository.NewIdentitySourceRepository,
 
 		// Services
 		usersvc.NewUserService,
@@ -77,12 +80,14 @@ func InitApp() (*App, error) {
 		resource.NewResourceInitializer,
 		permission.NewPermissionService,
 		policysvc.NewPolicyService,
+		InitIdentitySourceService,
 
 		// Handlers
 		user.NewUserHandler,
 		policy.NewHandler,
 		tenanthdl.NewHandler,
 		resourcehdl.NewHandler,
+		idhdl.NewHandler,
 		// Handlers (Capabilities)
 		permissionhdl.NewHandler,
 		rolehdl.NewHandler,

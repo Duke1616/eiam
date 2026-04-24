@@ -6,11 +6,12 @@ import (
 
 	"github.com/Duke1616/eiam/internal/pkg/middleware"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
-	"github.com/Duke1616/eiam/internal/web/role"
-	"github.com/Duke1616/eiam/internal/web/tenant"
+	rolehdl "github.com/Duke1616/eiam/internal/web/role"
+	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
 	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx/session"
@@ -23,8 +24,9 @@ import (
 
 func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.HandlerFunc,
 	userHdl *user.Handler, policyHdl *policy.Handler,
-	tenantHdl *tenant.Handler, permissionHdl *permissionhdl.Handler,
-	roleHdl *role.Handler, resourceHdl *resourcehdl.Handler,
+	tenantHdl *tenanthdl.Handler, permissionHdl *permissionhdl.Handler,
+	roleHdl *rolehdl.Handler, resourceHdl *resourcehdl.Handler,
+	identitySourceHdl *idhdl.Handler,
 	permSvc permission.IPermissionService) *egin.Component {
 	session.SetDefaultProvider(sp)
 
@@ -54,6 +56,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	roleHdl.PrivateRoutes(server.Engine)
 	resourceHdl.PrivateRoutes(server.Engine)
 	permissionHdl.PrivateRoutes(server.Engine)
+	identitySourceHdl.PrivateRoutes(server.Engine)
 
 	return server
 }

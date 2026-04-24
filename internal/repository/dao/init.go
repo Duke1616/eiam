@@ -14,6 +14,7 @@ func InitTables(db *gorm.DB) error {
 		&Membership{},
 		&Role{},
 		&Permission{},
+		&IdentitySource{},
 		&PermissionBinding{},
 		&Policy{},
 		&PolicyAssignment{},

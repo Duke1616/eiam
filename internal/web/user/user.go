@@ -320,7 +320,8 @@ func (h *Handler) ListAttachedRole(ctx *ginx.Context, req ListRoleUsersRequest) 
 }
 
 func (h *Handler) SearchLdapUser(ctx *ginx.Context, req SearchLdapUser) (ginx.Result, error) {
-	users, total, err := h.ldapSvc.SearchCacheUserWithPager(ctx.Request.Context(), req.Keywords, req.Offset, req.Limit)
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	users, total, err := h.ldapSvc.SearchCacheUserWithPager(ctx.Request.Context(), tid, req.Keywords, req.Offset, req.Limit)
 	if err != nil {
 		return ErrLdapSearchFailed, err
 	}
@@ -348,11 +349,12 @@ func (h *Handler) SearchLdapUser(ctx *ginx.Context, req SearchLdapUser) (ginx.Re
 }
 
 func (h *Handler) SyncLdapUser(ctx *ginx.Context, req SyncLdapUserReq) (ginx.Result, error) {
+	tid := ctxutil.GetTenantID(ctx).Int64()
 	users := slice.Map(req.Users, func(idx int, src User) domain.User {
 		return src.ToDomain()
 	})
 
-	err := h.ldapSvc.Sync(ctx.Request.Context(), users)
+	err := h.ldapSvc.Sync(ctx.Request.Context(), tid, users)
 	if err != nil {
 		return ErrLdapSyncFailed, err
 	}
@@ -361,7 +363,8 @@ func (h *Handler) SyncLdapUser(ctx *ginx.Context, req SyncLdapUserReq) (ginx.Res
 }
 
 func (h *Handler) LdapRefreshCache(ctx *ginx.Context) (ginx.Result, error) {
-	err := h.ldapSvc.RefreshCacheUserWithPager(ctx.Request.Context())
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	err := h.ldapSvc.RefreshCacheUserWithPager(ctx.Request.Context(), tid)
 	if err != nil {
 		return ErrLdapRefreshFailed, err
 	}

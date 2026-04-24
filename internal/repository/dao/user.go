@@ -68,6 +68,8 @@ type IUserDAO interface {
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
 	// DeleteIdentity 解除外部身份绑定
 	DeleteIdentity(ctx context.Context, userID int64, provider string) error
+	// UpdateTenantID 更新用户的归属租户 ID
+	UpdateTenantID(ctx context.Context, id int64, tenantID int64) error
 }
 
 type userDAO struct {
@@ -80,7 +82,8 @@ func NewUserDAO(db *gorm.DB) IUserDAO {
 
 type User struct {
 	ID          int64  `gorm:"primaryKey;autoIncrement"`
-	Username    string `gorm:"uniqueIndex;type:varchar(64)"`
+	TenantID    int64  `gorm:"column:tenant_id;uniqueIndex:idx_tenant_username;comment:'租户ID'"`
+	Username    string `gorm:"column:username;uniqueIndex:idx_tenant_username;type:varchar(64)"`
 	Password    string `gorm:"type:varchar(255)"`
 	Email       string `gorm:"type:varchar(128)"`
 	Status      int    `gorm:"type:tinyint"`
@@ -428,7 +431,7 @@ func (dao *userDAO) BatchUpsertUsers(ctx context.Context, users []User) error {
 		users[i].Utime = now
 	}
 	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "username"}},
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "username"}},
 		DoUpdates: clause.AssignmentColumns([]string{"email", "status", "source", "utime"}),
 	}).Create(&users).Error
 }
@@ -464,4 +467,8 @@ func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider s
 	return dao.db.WithContext(ctx).
 		Where("user_id = ? AND provider = ?", userID, provider).
 		Delete(&UserIdentity{}).Error
+}
+
+func (dao *userDAO) UpdateTenantID(ctx context.Context, id int64, tenantID int64) error {
+	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("tenant_id", tenantID).Error
 }

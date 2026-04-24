@@ -16,6 +16,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/internal/web/identity_source"
 	permission2 "github.com/Duke1616/eiam/internal/web/permission"
 	policy2 "github.com/Duke1616/eiam/internal/web/policy"
 	resource2 "github.com/Duke1616/eiam/internal/web/resource"
@@ -74,7 +75,11 @@ func InitApp() (*App, error) {
 	string2 := InitServiceConfig()
 	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, iResourceService, string2)
 	resourceHandler := resource2.NewHandler(iInitializer)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, resourceHandler, iPermissionService)
+	iIdentitySourceDAO := dao.NewIdentitySourceDAO(db)
+	iIdentitySourceRepository := repository.NewIdentitySourceRepository(iIdentitySourceDAO)
+	iService := InitIdentitySourceService(iIdentitySourceRepository)
+	identity_sourceHandler := identity_source.NewHandler(iService)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, resourceHandler, identity_sourceHandler, iPermissionService)
 	v3 := InitProviders()
 	app := &App{
 		Web:         component,

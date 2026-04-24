@@ -114,6 +114,15 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 		ctxutil.ContextID(tenantID).String(),
 		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	)
+	if err != nil {
+		return 0, err
+	}
+
+	// 4. 回填用户表的 TenantID (关键修复)
+	err = s.userRepo.UpdateTenantID(ctx, userId, tenantID)
+	if err != nil {
+		return 0, err
+	}
 
 	return tenantID, err
 }
@@ -162,7 +171,18 @@ func (s *tenantService) BatchInitPersonalTenant(ctx context.Context, users []dom
 	}
 
 	_, err = s.enforcer.AddGroupingPolicies(rules)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 4. 批量回填用户表的 TenantID (关键修复)
+	for i, u := range users {
+		if err = s.userRepo.UpdateTenantID(ctx, u.ID, savedTenants[i].ID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *tenantService) GetTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {

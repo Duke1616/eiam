@@ -20,8 +20,8 @@ VALUES
                          `utime`           = VALUES(`utime`);
 
 -- 初始化超级管理员账户：admin / 12345678
-INSERT INTO `user` (`id`, `username`, `password`, `email`, `status`, `source`, `ctime`, `utime`)
-VALUES (1, 'admin', '$2a$10$6ocvB6VX93BKFT4HruyWEOFy1ePGbXbd37uBvtnZ7CHovY9N3WotK', 'admin@example.com', 1, 'local',
+INSERT INTO `user` (`id`, `tenant_id`, `username`, `password`, `email`, `status`, `source`, `ctime`, `utime`)
+VALUES (1, 1, 'admin', '$2a$10$6ocvB6VX93BKFT4HruyWEOFy1ePGbXbd37uBvtnZ7CHovY9N3WotK', 'admin@example.com', 1, 'local',
         FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `password` = VALUES(`password`), `utime` = VALUES(`utime`);
 
