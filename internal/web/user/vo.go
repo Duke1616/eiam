@@ -94,8 +94,9 @@ type RetrieveUsers[T any] struct {
 }
 
 type RetrieveUser struct {
-	User    User     `json:"user"`
-	Tenants []Tenant `json:"tenants"`
+	User             User     `json:"user"`
+	Tenants          []Tenant `json:"tenants"`
+	MustSelectTenant bool     `json:"must_select_tenant"`
 }
 
 type UpdatePasswordRequest struct {
@@ -165,4 +166,16 @@ type LdapSyncUser struct {
 type LdapUserList struct {
 	Total int64          `json:"total"`
 	Users []LdapSyncUser `json:"users"`
+}
+
+type SwitchTenantRequest struct {
+	TenantID int64 `json:"tenant_id"`
+}
+
+type UserVO struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Status   uint8  `json:"status"`
+	Source   string `json:"source"`
 }

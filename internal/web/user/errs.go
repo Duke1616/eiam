@@ -20,15 +20,17 @@ var (
 	ErrUserNotFound = ginx.Result{Code: 4010501, Msg: "未找到该用户信息"}
 
 	// ErrInternalServer 系统架构类错误
-	ErrInternalServer  = ginx.Result{Code: 4010901, Msg: "服务内部链路繁忙"}
-	ErrSignupFailed    = ginx.Result{Code: 4010902, Msg: "账户预配 JIT 失败"}
-	ErrProviderMissing = ginx.Result{Code: 4010903, Msg: "不适用的认证源适配器"}
+	ErrInternalServer   = ginx.Result{Code: 4010901, Msg: "服务内部链路繁忙"}
+	ErrSignupFailed     = ginx.Result{Code: 4010902, Msg: "账户预配 JIT 失败"}
+	ErrProviderMissing  = ginx.Result{Code: 4010903, Msg: "不适用的认证源适配器"}
 	ErrUserListFailed   = ginx.Result{Code: 4010904, Msg: "获取用户列表失败"}
 	ErrUserUpdateFailed = ginx.Result{Code: 4010905, Msg: "更新用户信息失败"}
 	ErrUserDeleteFailed = ginx.Result{Code: 4010906, Msg: "删除用户失败"}
 
 	// ErrLdapFederation LDAP 联邦管理错误
-	ErrLdapSearchFailed  = ginx.Result{Code: 4010907, Msg: "搜索 LDAP 用户失败"}
-	ErrLdapSyncFailed    = ginx.Result{Code: 4010908, Msg: "同步 LDAP 用户失败"}
-	ErrLdapRefreshFailed = ginx.Result{Code: 4010909, Msg: "刷新 LDAP 缓存失败"}
+	ErrLdapSearchFailed   = ginx.Result{Code: 4010907, Msg: "搜索 LDAP 用户失败"}
+	ErrLdapSyncFailed     = ginx.Result{Code: 4010908, Msg: "同步 LDAP 用户失败"}
+	ErrLdapRefreshFailed  = ginx.Result{Code: 4010909, Msg: "刷新 LDAP 缓存失败"}
+	ErrTenantAccessDenied = ginx.Result{Code: 4010910, Msg: "无权访问该租户空间"}
+	ErrTenantSwitchFailed = ginx.Result{Code: 4010911, Msg: "切换租户空间失败"}
 )

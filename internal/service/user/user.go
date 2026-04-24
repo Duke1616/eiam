@@ -25,6 +25,7 @@ type IUserService interface {
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
 
 	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error)
+	Invite(ctx context.Context, username string) error
 
 	List(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
@@ -145,18 +146,18 @@ func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.Logi
 		return domain.LoginResult{}, errors.New("用户无可用租户空间")
 	}
 
-	// 单租户：直接加载该空间下的名片并返回确定的 tenantID
-	if len(tenants) == 1 {
-		tID := tenants[0].ID
-		fullUser, err := s.repo.FindById(ctxutil.WithTenantID(ctx, tID), u.ID)
-		if err != nil {
-			return domain.LoginResult{}, err
-		}
-		return domain.LoginResult{User: fullUser, TenantID: tID, Tenants: tenants}, nil
+	// 多租户处理：返回 0 作为标记，阻断直接进入，强制前端执行空间选择流
+	if len(tenants) > 1 {
+		return domain.LoginResult{User: u, TenantID: 0, Tenants: tenants}, nil
 	}
 
-	// 多租户：TenantID 为 0，由前端从 Tenants 列表中选择后调 SwitchTenant
-	return domain.LoginResult{User: u, TenantID: 0, Tenants: tenants}, nil
+	// 单租户处理：自动进入
+	tID := tenants[0].ID
+	fullUser, err := s.repo.FindById(ctxutil.WithTenantID(ctx, tID), u.ID)
+	if err != nil {
+		return domain.LoginResult{}, err
+	}
+	return domain.LoginResult{User: fullUser, TenantID: tID, Tenants: tenants}, nil
 }
 
 func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error) {
@@ -171,6 +172,17 @@ func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantI
 	}
 
 	return s.repo.FindById(ctxutil.WithTenantID(ctx, targetTenantID), uid)
+}
+
+func (s *userService) Invite(ctx context.Context, username string) error {
+	// 1. 全局查找用户（UserRepository 的 FindByUsername 已经是全局的了，因为它不依赖租户插件）
+	u, err := s.repo.FindByUsername(ctx, username)
+	if err != nil {
+		return err
+	}
+
+	// 2. 建立该用户与当前操作租户的 Membership 关系
+	return s.tenantSvc.AssignUser(ctx, u.ID)
 }
 
 func (s *userService) provisionOnLogin(ctx context.Context, ext domain.User, id domain.UserIdentity) (domain.User, int64, error) {

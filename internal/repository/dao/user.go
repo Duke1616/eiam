@@ -50,10 +50,6 @@ type IUserDAO interface {
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error)
 	// CountSearch 统计搜索结果总数
 	CountSearch(ctx context.Context, keyword string) (int64, error)
-	// ListMembers 显式分页查询租户成员列表（始终通过 Membership 过滤）
-	ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]User, error)
-	// CountMembers 统计租户成员总数
-	CountMembers(ctx context.Context, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// FindUsersByUsernames 批量根据用户名获取用户
@@ -68,8 +64,6 @@ type IUserDAO interface {
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
 	// DeleteIdentity 解除外部身份绑定
 	DeleteIdentity(ctx context.Context, userID int64, provider string) error
-	// UpdateTenantID 更新用户的归属租户 ID
-	UpdateTenantID(ctx context.Context, id int64, tenantID int64) error
 }
 
 type userDAO struct {
@@ -80,10 +74,20 @@ func NewUserDAO(db *gorm.DB) IUserDAO {
 	return &userDAO{db: db}
 }
 
+// membershipScope 封装多租户 Membership 隔离逻辑
+// 返回一个 GORM Scope 函数，自动注入针对指定租户的成员过滤条件
+func (dao *userDAO) membershipScope(tid int64) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		subQuery := dao.db.Session(&gorm.Session{}).Model(&Membership{}).
+			Where("tenant_id = ?", tid).
+			Select("user_id")
+		return db.Where("id IN (?)", subQuery)
+	}
+}
+
 type User struct {
 	ID          int64  `gorm:"primaryKey;autoIncrement"`
-	TenantID    int64  `gorm:"column:tenant_id;uniqueIndex:idx_tenant_username;comment:'租户ID'"`
-	Username    string `gorm:"column:username;uniqueIndex:idx_tenant_username;type:varchar(64)"`
+	Username    string `gorm:"column:username;uniqueIndex;type:varchar(64)"`
 	Password    string `gorm:"type:varchar(255)"`
 	Email       string `gorm:"type:varchar(128)"`
 	Status      int    `gorm:"type:tinyint"`
@@ -242,20 +246,16 @@ func (dao *userDAO) FindIdentityByExternal(ctx context.Context, provider, extern
 
 func (dao *userDAO) List(ctx context.Context, offset, limit int64, keyword string) ([]User, error) {
 	var us []User
+	tid := ctxutil.GetTenantID(ctx).Int64()
 	db := dao.db.WithContext(ctx).Model(&User{})
 
-	// 1. 租户隔离：只要不是系统租户，就说明是在租户视图下，需要通过 Membership 过滤
-	tid := ctxutil.GetTenantID(ctx).Int64()
+	// 核心逻辑：只有在系统租户 (ID=1) 且非成员搜索场景下，才允许看到全量“国籍”用户
 	if tid != ctxutil.SystemTenantID {
-		// NOTE: 此处 subQuery 虽未显式指定 tid，但 GORM 租户插件会自动拦截并注入 Membership 的隔离条件
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-		db = db.Where("id IN (?)", subQuery)
+		db = db.Scopes(dao.membershipScope(tid))
 	}
 
-	// 2. 关键词模糊搜索
 	if keyword != "" {
-		kw := "%" + keyword + "%"
-		db = db.Where("username LIKE ?", kw)
+		db = db.Where("username LIKE ?", "%"+keyword+"%")
 	}
 
 	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&us).Error
@@ -264,82 +264,15 @@ func (dao *userDAO) List(ctx context.Context, offset, limit int64, keyword strin
 
 func (dao *userDAO) Count(ctx context.Context, keyword string) (int64, error) {
 	var total int64
+	tid := ctxutil.GetTenantID(ctx).Int64()
 	db := dao.db.WithContext(ctx).Model(&User{})
 
-	// 1. 租户隔离：只要不是系统租户，就说明是在租户视图下，需要通过 Membership 过滤
-	tid := ctxutil.GetTenantID(ctx).Int64()
 	if tid != ctxutil.SystemTenantID {
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-		db = db.Where("id IN (?)", subQuery)
+		db = db.Scopes(dao.membershipScope(tid))
 	}
-
-	// 2. 关键词模糊搜索
-	if keyword != "" {
-		kw := "%" + keyword + "%"
-		db = db.Where("username LIKE ?", kw)
-	}
-
-	err := db.Count(&total).Error
-	return total, err
-}
-
-func (dao *userDAO) ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]User, error) {
-	var us []User
-	db := dao.db.WithContext(ctx).Model(&User{})
-
-	// 获取目标租户 ID
-	tid := ctxutil.GetTenantID(ctx).Int64()
-
-	// 显式指定租户过滤，防止插件在超管视角下跳过隔离
-	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).
-		Where("tenant_id = ?", tid).
-		Select("user_id")
-	db = db.Where("id IN (?)", subQuery)
 
 	if keyword != "" {
-		kw := "%" + keyword + "%"
-		db = db.Where("username LIKE ?", kw)
-	}
-
-	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&us).Error
-	return us, err
-}
-
-func (dao *userDAO) CountMembers(ctx context.Context, keyword string) (int64, error) {
-	var total int64
-	db := dao.db.WithContext(ctx).Model(&User{})
-
-	// 获取目标租户 ID
-	tid := ctxutil.GetTenantID(ctx).Int64()
-
-	// 显式指定租户过滤
-	subQuery := dao.db.WithContext(ctx).Model(&Membership{}).
-		Where("tenant_id = ?", tid).
-		Select("user_id")
-	db = db.Where("id IN (?)", subQuery)
-
-	if keyword != "" {
-		kw := "%" + keyword + "%"
-		db = db.Where("username LIKE ?", kw)
-	}
-
-	err := db.Count(&total).Error
-	return total, err
-}
-
-func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, error) {
-	var total int64
-	db := dao.db.WithContext(ctx).Model(&User{})
-	if keyword != "" {
-		kw := "%" + keyword + "%"
-		db = db.Where("username LIKE ?", kw)
-	}
-
-	// 强制锁定租户
-	tid := ctxutil.GetTenantID(ctx).Int64()
-	if tid != ctxutil.SystemTenantID {
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-		db = db.Where("id IN (?)", subQuery)
+		db = db.Where("username LIKE ?", "%"+keyword+"%")
 	}
 
 	err := db.Count(&total).Error
@@ -348,21 +281,30 @@ func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, err
 
 func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error) {
 	var us []User
-	db := dao.db.WithContext(ctx).Model(&User{})
-	if keyword != "" {
-		kw := "%" + keyword + "%"
-		db = db.Where("username LIKE ?", kw)
-	}
-
-	// 强制锁定租户
 	tid := ctxutil.GetTenantID(ctx).Int64()
-	if tid != ctxutil.SystemTenantID {
-		subQuery := dao.db.WithContext(ctx).Model(&Membership{}).Select("user_id")
-		db = db.Where("id IN (?)", subQuery)
+	// NOTE: Search 明确用于成员授权/搜索场景，即便是系统租户也必须强制过滤，避免数据泄露
+	db := dao.db.WithContext(ctx).Model(&User{}).Scopes(dao.membershipScope(tid))
+
+	if keyword != "" {
+		db = db.Where("username LIKE ?", "%"+keyword+"%")
 	}
 
-	err := db.Offset(int(offset)).Limit(int(limit)).Find(&us).Error
+	// 增加排序，使其能替代原有的 ListMembers
+	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&us).Error
 	return us, err
+}
+
+func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, error) {
+	var total int64
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	db := dao.db.WithContext(ctx).Model(&User{}).Scopes(dao.membershipScope(tid))
+
+	if keyword != "" {
+		db = db.Where("username LIKE ?", "%"+keyword+"%")
+	}
+
+	err := db.Count(&total).Error
+	return total, err
 }
 
 func (dao *userDAO) Delete(ctx context.Context, id int64) error {
@@ -431,7 +373,7 @@ func (dao *userDAO) BatchUpsertUsers(ctx context.Context, users []User) error {
 		users[i].Utime = now
 	}
 	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "username"}},
+		Columns:   []clause.Column{{Name: "username"}},
 		DoUpdates: clause.AssignmentColumns([]string{"email", "status", "source", "utime"}),
 	}).Create(&users).Error
 }
@@ -467,8 +409,4 @@ func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider s
 	return dao.db.WithContext(ctx).
 		Where("user_id = ? AND provider = ?", userID, provider).
 		Delete(&UserIdentity{}).Error
-}
-
-func (dao *userDAO) UpdateTenantID(ctx context.Context, id int64, tenantID int64) error {
-	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("tenant_id", tenantID).Error
 }

@@ -118,12 +118,6 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 		return 0, err
 	}
 
-	// 4. 回填用户表的 TenantID (关键修复)
-	err = s.userRepo.UpdateTenantID(ctx, userId, tenantID)
-	if err != nil {
-		return 0, err
-	}
-
 	return tenantID, err
 }
 
@@ -173,13 +167,6 @@ func (s *tenantService) BatchInitPersonalTenant(ctx context.Context, users []dom
 	_, err = s.enforcer.AddGroupingPolicies(rules)
 	if err != nil {
 		return err
-	}
-
-	// 4. 批量回填用户表的 TenantID (关键修复)
-	for i, u := range users {
-		if err = s.userRepo.UpdateTenantID(ctx, u.ID, savedTenants[i].ID); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -243,17 +230,17 @@ func (s *tenantService) ListMembers(ctx context.Context, offset, limit int64, ke
 	)
 	eg, _ := errgroup.WithContext(ctx)
 
-	// 1. 并发查询成员详情列表 (userRepo.ListMembers 内部已通过 GORM 插件处理租户隔离)
+	// 1. 并发查询成员详情列表 (userRepo.Search 内部已通过 GORM 插件处理租户隔离)
 	eg.Go(func() error {
 		var err error
-		users, err = s.userRepo.ListMembers(ctx, offset, limit, keyword)
+		users, err = s.userRepo.Search(ctx, keyword, offset, limit)
 		return err
 	})
 
 	// 2. 并发查询成员总数
 	eg.Go(func() error {
 		var err error
-		total, err = s.userRepo.CountMembers(ctx, keyword)
+		total, err = s.userRepo.CountSearch(ctx, keyword)
 		return err
 	})
 

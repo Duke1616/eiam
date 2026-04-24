@@ -39,7 +39,6 @@ func (l *ldapService) Sync(ctx context.Context, tid int64, users []domain.User) 
 	now := time.Now().UnixMilli()
 	usernames := make([]string, 0, len(users))
 	for i := range users {
-		users[i].TenantID = tid
 		users[i].Source = domain.SourceLdap
 		users[i].Status = domain.StatusActive
 		users[i].Ctime = now

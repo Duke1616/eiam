@@ -86,6 +86,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/identity/manage", h.Capability("治理外部身份", "manage_identity").
 		Handle(ginx.B[ManageIdentitiesRequest](h.ManageIdentities)),
 	)
+	// 【核心：自服务接口】切换租户不需要管理权限，只需拥有该租户的 Membership 即可
+	g.POST("/switch-tenant", ginx.B[SwitchTenantRequest](h.SwitchTenant))
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -119,6 +121,46 @@ func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginSystemRequest) (ginx.R
 	return h.handleLoginResult(ctx, result)
 }
 
+func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx.Result, error) {
+	sess, err := h.sp.Get(ctx)
+	if err != nil {
+		return ErrUnauthenticated, err
+	}
+
+	// 1. 安全校验：确认该用户是否真的属于目标租户
+	u, err := h.svc.SwitchTenant(ctx.Request.Context(), sess.Claims().Uid, req.TenantID)
+	if err != nil {
+		return ErrTenantAccessDenied, err
+	}
+
+	// 2. 【核心录入点】：重新构建 Session 并注入新的租户 ID
+	// 使用 SessionBuilder 签发包含了租户信息的正式 JWT
+	_, err = session.NewSessionBuilder(ctx, sess.Claims().Uid).
+		SetJwtData(map[string]string{
+			"tenant_id": strconv.FormatInt(req.TenantID, 10),
+			"username":  u.Username,
+		}).
+		Build()
+
+	if err != nil {
+		return ErrTenantSwitchFailed, err
+	}
+
+	// 3. 获取该用户关联的所有租户（用于对齐登录后的返回结构）
+	tenants, err := h.tenantSvc.GetTenantsByUserId(ctx.Request.Context(), u.ID)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{
+		Msg: "成功切换至新租户空间",
+		Data: RetrieveUser{
+			User:    ToUserVO(u),
+			Tenants: ToTenantVOs(tenants),
+		},
+	}, nil
+}
+
 // handleLoginResult 统一处理登录后的路由决策
 func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult) (ginx.Result, error) {
 	if err := h.issueSession(ctx, result.User.ID, result.User.Username,
@@ -129,8 +171,9 @@ func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult
 	return ginx.Result{
 		Msg: fmt.Sprintf("登录成功，欢迎回来：%s", result.User.Username),
 		Data: RetrieveUser{
-			User:    ToUserVO(result.User),
-			Tenants: ToTenantVOs(result.Tenants),
+			User:             ToUserVO(result.User),
+			Tenants:          ToTenantVOs(result.Tenants),
+			MustSelectTenant: result.TenantID == 0,
 		},
 	}, nil
 }
