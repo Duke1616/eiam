@@ -16,6 +16,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/web/identity_source"
 	permission2 "github.com/Duke1616/eiam/internal/web/permission"
 	policy2 "github.com/Duke1616/eiam/internal/web/policy"
@@ -41,7 +42,8 @@ func InitApp() (*App, error) {
 	db := InitDB()
 	iUserDAO := dao.NewUserDAO(db)
 	iTenantDAO := dao.NewTenantDAO(db)
-	iUserRepository := repository.NewUserRepository(iUserDAO, iTenantDAO)
+	iUserCache := cache.NewUserCache(cmdable)
+	iUserRepository := repository.NewUserRepository(iUserDAO, iTenantDAO, iUserCache)
 	iTenantRepository := repository.NewTenantRepository(iTenantDAO)
 	iRoleDAO := dao.NewRoleDAO(db)
 	iRoleRepository := repository.NewRoleRepository(iRoleDAO)
@@ -51,13 +53,16 @@ func InitApp() (*App, error) {
 	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService)
 	syncedEnforcer := InitCasbin(db)
 	iTenantService := tenant.NewTenantService(iTenantRepository, iUserRepository, iRoleService, syncedEnforcer)
-	config := InitLdapConfig()
-	v2 := InitIdentityProviders(config)
-	iUserService := user.NewUserService(iUserRepository, iTenantService, v2)
+	iIdentitySourceDAO := dao.NewIdentitySourceDAO(db)
+	iIdentitySourceCache := cache.NewIdentitySourceCache(cmdable)
+	iIdentitySourceRepository := repository.NewIdentitySourceRepository(iIdentitySourceDAO, iIdentitySourceCache)
+	iService := InitIdentitySourceService(iIdentitySourceRepository)
+	v2 := InitCredentialProviders(iService)
+	iUserService := user.NewUserService(iUserRepository, iTenantService, iService, v2)
 	client := InitRedisSearch()
 	redisearchLdapUserCache := InitLdapUserCache(client)
-	ldapService := user.NewLdapService(iUserRepository, iTenantService, config, redisearchLdapUserCache)
-	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, provider)
+	ldapService := ldap.NewLdapService(iUserRepository, iTenantService, iService, redisearchLdapUserCache)
+	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, provider)
 	iSubjectRegistry := InitSearchSubjectProviders(iRoleService, iUserService)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)
@@ -75,9 +80,6 @@ func InitApp() (*App, error) {
 	string2 := InitServiceConfig()
 	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, iResourceService, string2)
 	resourceHandler := resource2.NewHandler(iInitializer)
-	iIdentitySourceDAO := dao.NewIdentitySourceDAO(db)
-	iIdentitySourceRepository := repository.NewIdentitySourceRepository(iIdentitySourceDAO)
-	iService := InitIdentitySourceService(iIdentitySourceRepository)
 	identity_sourceHandler := identity_source.NewHandler(iService)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, resourceHandler, identity_sourceHandler, iPermissionService)
 	v3 := InitProviders()
@@ -101,8 +103,7 @@ var BaseSet = wire.NewSet(
 	InitOPA,
 
 	InitRedisSearch,
-	InitLdapConfig,
-	InitIdentityProviders,
+	InitCredentialProviders,
 
 	InitServiceConfig,
 )

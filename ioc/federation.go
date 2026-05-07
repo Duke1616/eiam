@@ -1,26 +1,14 @@
 package ioc
 
 import (
-	"fmt"
-
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/internal/service/user/ldapx"
-	"github.com/spf13/viper"
+	"github.com/Duke1616/eiam/internal/service/identity_source"
+	"github.com/Duke1616/eiam/internal/service/user/ldap"
 )
 
-func InitLdapConfig() ldapx.Config {
-	var cfg ldapx.Config
-	if err := viper.UnmarshalKey("ldap", &cfg); err != nil {
-		panic(fmt.Errorf("unable to decode into structure: %v", err))
-	}
-	return cfg
-}
-
-// InitIdentityProviders 显式返回系统支持的所有联邦身份源列表
-// 这次我们一次性解决 Wire 注入 []IdentityProvider 的问题
-func InitIdentityProviders(lconf ldapx.Config) []domain.IdentityProvider {
-	return []domain.IdentityProvider{
-		ldapx.NewLdap(lconf),
-		// 未来您可以在这里直接追加: feishu.NewProvider(fconf),
+// InitCredentialProviders 显式返回系统支持的所有凭证身份源列表
+func InitCredentialProviders(idsSvc identity_source.IService) []domain.CredentialProvider {
+	return []domain.CredentialProvider{
+		ldap.NewDynamicLdapProvider(idsSvc),
 	}
 }

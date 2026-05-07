@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	LdapUserIndexName = "idx:ldap:users:v2"
+	LdapUserIndexName = "idx:ldap:users:v3"
 	LdapUserKeyPrefix = "eiam:user:ldap:"
 	BatchSize         = 500
 	PagingSize        = 1000
@@ -50,6 +50,10 @@ func (cache *redisearchLdapUserCache) Document(ctx context.Context, tid int64, u
 			Set("title", user.Profile.JobTitle).
 			Set("email", user.Email).
 			Set("updated_at", syncTime)
+
+		if ident, ok := user.GetPrimaryIdentity("ldap"); ok {
+			doc.Set("dn", ident.LdapInfo.DN)
+		}
 
 		allDocs = append(allDocs, doc)
 	}
@@ -149,7 +153,7 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 
 	query := redisearch.NewQuery(raw).
 		Limit(offset, limit).
-		SetReturnFields("username", "display_name", "title", "email")
+		SetReturnFields("username", "display_name", "title", "email", "dn")
 
 	docs, total, err := cache.conn.Search(query)
 	if err != nil {
@@ -158,14 +162,25 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 
 	users := make([]domain.User, 0, len(docs))
 	for _, doc := range docs {
-		users = append(users, domain.User{
+		u := domain.User{
 			Username: doc.Properties["username"].(string),
 			Email:    doc.Properties["email"].(string),
 			Profile: domain.UserProfile{
 				Nickname: doc.Properties["display_name"].(string),
 				JobTitle: doc.Properties["title"].(string),
 			},
-		})
+		}
+
+		if dn, ok := doc.Properties["dn"].(string); ok && dn != "" {
+			u.Identities = []domain.UserIdentity{
+				{
+					Provider: "ldap",
+					LdapInfo: domain.LdapInfo{DN: dn},
+				},
+			}
+		}
+
+		users = append(users, u)
 	}
 
 	return users, total, nil

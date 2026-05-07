@@ -35,7 +35,7 @@ type Connection interface {
 }
 
 type LdapProvider interface {
-	domain.IdentityProvider
+	domain.CredentialProvider
 	CheckConnect() error
 	SearchUserWithPaging(ctx context.Context) ([]domain.User, error)
 }

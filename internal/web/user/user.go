@@ -5,31 +5,45 @@ import (
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
+	"golang.org/x/sync/errgroup"
 )
 
 type Handler struct {
 	capability.IRegistry
-	svc       usersvc.IUserService
+	userSvc   usersvc.IUserService
 	tenantSvc tenant.ITenantService
-	ldapSvc   usersvc.LdapService
+	ldapSvc   ldap.LdapService
+	idsSvc    idsource.IService
 	sp        session.Provider
+	logger    *elog.Component
 }
 
-func NewUserHandler(svc usersvc.IUserService, tenantSvc tenant.ITenantService, ldapSvc usersvc.LdapService, sp session.Provider) *Handler {
+func NewUserHandler(
+	userSvc usersvc.IUserService,
+	tenantSvc tenant.ITenantService,
+	ldapSvc ldap.LdapService,
+	idsSvc idsource.IService,
+	sp session.Provider,
+) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "user", "用户管理"),
-		svc:       svc,
+		userSvc:   userSvc,
 		tenantSvc: tenantSvc,
 		ldapSvc:   ldapSvc,
+		idsSvc:    idsSvc,
 		sp:        sp,
+		logger:    elog.DefaultLogger,
 	}
 }
 
@@ -38,6 +52,11 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	g.POST("/signup", ginx.B[SignupRequest](h.Signup))
 	g.POST("/ldap/login", ginx.B[LoginLdapRequest](h.LoginLdap))
 	g.POST("/system/login", ginx.B[LoginSystemRequest](h.LoginSystem))
+
+	// OIDC 授权跳转：未登录用户触发，不需要登录态
+	g.GET("/oidc/render", ginx.W(h.OIDCAuthURL))
+	// OIDC 回调必须公开：飞书服务器回调时不携带用户登录态
+	g.GET("/oidc/callback", ginx.W(h.OIDCCallback))
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
@@ -95,7 +114,7 @@ func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, err
 		return ErrPasswordMismatch, nil
 	}
 
-	id, err := h.svc.Signup(ctx.Request.Context(), req.ToDomain())
+	id, err := h.userSvc.Signup(ctx.Request.Context(), req.ToDomain())
 	if err != nil {
 		return ErrSignupFailed, err
 	}
@@ -104,7 +123,7 @@ func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, err
 }
 
 func (h *Handler) LoginLdap(ctx *ginx.Context, req LoginLdapRequest) (ginx.Result, error) {
-	result, err := h.svc.Login(ctx.Request.Context(), "ldap", req.Username, req.Password)
+	result, err := h.userSvc.Login(ctx.Request.Context(), "ldap", req.Username, req.Password)
 	if err != nil {
 		return ErrUnauthorized, err
 	}
@@ -113,7 +132,7 @@ func (h *Handler) LoginLdap(ctx *ginx.Context, req LoginLdapRequest) (ginx.Resul
 }
 
 func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginSystemRequest) (ginx.Result, error) {
-	result, err := h.svc.Login(ctx.Request.Context(), "local", req.Username, req.Password)
+	result, err := h.userSvc.Login(ctx.Request.Context(), "local", req.Username, req.Password)
 	if err != nil {
 		return ErrUnauthorized, err
 	}
@@ -128,7 +147,7 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx
 	}
 
 	// 1. 安全校验：确认该用户是否真的属于目标租户
-	u, err := h.svc.SwitchTenant(ctx.Request.Context(), sess.Claims().Uid, req.TenantID)
+	u, err := h.userSvc.SwitchTenant(ctx.Request.Context(), sess.Claims().Uid, req.TenantID)
 	if err != nil {
 		return ErrTenantAccessDenied, err
 	}
@@ -138,6 +157,10 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx
 	_, err = session.NewSessionBuilder(ctx, sess.Claims().Uid).
 		SetJwtData(map[string]string{
 			"tenant_id": strconv.FormatInt(req.TenantID, 10),
+			"username":  u.Username,
+		}).
+		SetSessData(map[string]any{
+			"tenant_id": req.TenantID,
 			"username":  u.Username,
 		}).
 		Build()
@@ -173,9 +196,77 @@ func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult
 		Data: RetrieveUser{
 			User:             ToUserVO(result.User),
 			Tenants:          ToTenantVOs(result.Tenants),
-			MustSelectTenant: result.TenantID == 0,
+			MustSelectTenant: len(result.Tenants) > 1,
 		},
 	}, nil
+}
+
+// OIDCAuthURL 引导用户重定向至 OIDC 提供商 (如飞书)
+func (h *Handler) OIDCAuthURL(ctx *ginx.Context) (ginx.Result, error) {
+	providerType, err := ctx.Query("provider_type").AsString()
+	if err != nil || providerType == "" {
+		return ErrInvalidInput, fmt.Errorf("provider_type 不能为空")
+	}
+
+	h.logger.Info("[OIDC] 获取授权 URL", elog.String("provider_type", providerType))
+
+	url, err := h.idsSvc.GetAuthURL(ctx.Request.Context(), providerType)
+	if err != nil {
+		h.logger.Error("[OIDC] 获取授权 URL 失败", elog.FieldErr(err))
+		return ErrInternalServer, err
+	}
+
+	h.logger.Info("[OIDC] 授权 URL 生成成功", elog.String("url", url))
+	return ginx.Result{Data: url}, nil
+}
+
+// OIDCCallback 处理 OIDC 授权码回调
+func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
+	//  OAuth2 授权被拒绝时，提供商会在回调中携带 error 参数
+	if errParam, _ := ctx.Query("error").AsString(); errParam != "" {
+		desc, _ := ctx.Query("error_description").AsString()
+		h.logger.Warn("[OIDC] 授权被拒绝", elog.String("error", errParam), elog.String("desc", desc))
+		return ErrOIDCDenied, fmt.Errorf("OIDC 授权被拒绝: %s - %s", errParam, desc)
+	}
+
+	code, _ := ctx.Query("code").AsString()
+	state, _ := ctx.Query("state").AsString()
+
+	if code == "" || state == "" {
+		return ErrInvalidInput, fmt.Errorf("OIDC 回调缺少必要参数: code 或 state 为空")
+	}
+
+	h.logger.Info("[OIDC] 收到回调", elog.Int("code_len", len(code)), elog.String("state", state))
+
+	// 1. 校验并获取身份信息
+	ident, err := h.idsSvc.VerifyOIDC(ctx.Request.Context(), state, code)
+	if err != nil {
+		h.logger.Error("[OIDC] 身份校验失败", elog.FieldErr(err))
+		return ErrInternalServer, err
+	}
+
+	h.logger.Info("[OIDC] 身份校验成功",
+		elog.String("provider", ident.Provider),
+		elog.String("external_id", ident.ExternalID),
+		elog.String("username", ident.Username),
+	)
+
+	// 2. 执行登录与 JIT 开户
+	result, err := h.userSvc.LoginWithExternal(ctx.Request.Context(), ident)
+	if err != nil {
+		h.logger.Error("[OIDC] 登录处理失败", elog.FieldErr(err))
+		return ErrInternalServer, err
+	}
+
+	h.logger.Info("[OIDC] 登录成功",
+		elog.Int64("user_id", result.User.ID),
+		elog.String("username", result.User.Username),
+		elog.Int64("tenant_id", result.TenantID),
+		elog.Int("tenant_count", len(result.Tenants)),
+	)
+
+	// 3. 复用统一的登录处理逻辑 (会在这里调用 h.issueSession 签发并向 HTTP 响应头注入 Token)
+	return h.handleLoginResult(ctx, result)
 }
 
 func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
@@ -185,12 +276,35 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	uid := sess.Claims().Uid
-	u, err := h.svc.GetById(ctx, uid)
-	if err != nil {
+	var (
+		eg      errgroup.Group
+		u       domain.User
+		tenants []domain.Tenant
+	)
+
+	// 并发获取用户信息和租户列表
+	eg.Go(func() error {
+		var err error
+		u, err = h.userSvc.GetById(ctx.Request.Context(), uid)
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		tenants, err = h.tenantSvc.GetTenantsByUserId(ctx.Request.Context(), uid)
+		return err
+	})
+
+	if err = eg.Wait(); err != nil {
 		return ErrUserNotFound, err
 	}
 
-	return ginx.Result{Data: ToUserVO(u)}, nil
+	return ginx.Result{
+		Data: RetrieveUser{
+			User:    ToUserVO(u),
+			Tenants: ToTenantVOs(tenants),
+		},
+	}, nil
 }
 
 func (h *Handler) Logout(ctx *ginx.Context) (ginx.Result, error) {
@@ -221,6 +335,7 @@ func (h *Handler) issueSession(ctx *ginx.Context, uid int64, username string, te
 
 	return err
 }
+
 func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (ginx.Result, error) {
 	if req.NewPassword != req.ConfirmPassword {
 		return ErrPasswordMismatch, nil
@@ -233,7 +348,7 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 
 	uid := sess.Claims().Uid
 
-	err = h.svc.UpdatePassword(ctx.Request.Context(), uid, req.OldPassword, req.NewPassword)
+	err = h.userSvc.UpdatePassword(ctx.Request.Context(), uid, req.OldPassword, req.NewPassword)
 	if err != nil {
 		return ErrUnauthorized, err
 	}
@@ -244,7 +359,7 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, error) {
 	// 1. 调用服务层获取数据
 	// NOTE: 租户隔离逻辑已下沉至 DAO 层，由 GORM 插件根据 Context 中的 TenantID 自动处理
-	users, total, err := h.svc.List(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword)
+	users, total, err := h.userSvc.List(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ginx.Result{}, err
 	}
@@ -287,7 +402,7 @@ func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, err
 }
 
 func (h *Handler) Update(ctx *ginx.Context, req UpdateUserReq) (ginx.Result, error) {
-	_, err := h.svc.Update(ctx.Request.Context(), req.ToDomain())
+	_, err := h.userSvc.Update(ctx.Request.Context(), req.ToDomain())
 	if err != nil {
 		return ErrUserUpdateFailed, err
 	}
@@ -321,12 +436,12 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 func (h *Handler) resolveUser(ctx *ginx.Context) (domain.User, error) {
 	// 逻辑：ID 优先 (ID 是物理主键，查询速度最快)
 	if id, err := ctx.Query("id").AsInt64(); err == nil && id != 0 {
-		return h.svc.GetById(ctx.Request.Context(), id)
+		return h.userSvc.GetById(ctx.Request.Context(), id)
 	}
 
 	// 降级：使用 Username (支持 username 或 code 参数名)
 	if username, err := ctx.Query("username").AsString(); err == nil && username != "" {
-		return h.svc.GetByUsername(ctx.Request.Context(), username)
+		return h.userSvc.GetByUsername(ctx.Request.Context(), username)
 	}
 
 	return domain.User{}, fmt.Errorf("未找到该用户信息")
@@ -338,7 +453,7 @@ func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrUserNotFound, err
 	}
 
-	err = h.svc.Delete(ctx.Request.Context(), id)
+	err = h.userSvc.Delete(ctx.Request.Context(), id)
 	if err != nil {
 		return ErrUserDeleteFailed, err
 	}
@@ -347,7 +462,7 @@ func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 func (h *Handler) ListAttachedRole(ctx *ginx.Context, req ListRoleUsersRequest) (ginx.Result, error) {
-	users, total, err := h.svc.GetAttachedUsersWithFilter(ctx.Request.Context(), req.RoleCode, req.Offset, req.Limit, req.Keyword)
+	users, total, err := h.userSvc.GetAttachedUsersWithFilter(ctx.Request.Context(), req.RoleCode, req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ErrUserListFailed, err
 	}
@@ -373,7 +488,7 @@ func (h *Handler) SearchLdapUser(ctx *ginx.Context, req SearchLdapUser) (ginx.Re
 		return src.Username
 	})
 
-	existMap, err := h.svc.CheckUsersExist(ctx.Request.Context(), usernames)
+	existMap, err := h.userSvc.CheckUsersExist(ctx.Request.Context(), usernames)
 	if err != nil {
 		existMap = make(map[string]bool) // 如果检查失败，默认都不存在，或者根据需求返回 Error
 	}
@@ -416,7 +531,7 @@ func (h *Handler) LdapRefreshCache(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 func (h *Handler) BindIdentity(ctx *ginx.Context, req BindIdentityRequest) (ginx.Result, error) {
-	err := h.svc.BindIdentity(ctx.Request.Context(), req.UserID, req.ToDomain())
+	err := h.userSvc.BindIdentity(ctx.Request.Context(), req.UserID, req.ToDomain())
 	if err != nil {
 		return ErrInternalServer, err
 	}
@@ -425,7 +540,7 @@ func (h *Handler) BindIdentity(ctx *ginx.Context, req BindIdentityRequest) (ginx
 }
 
 func (h *Handler) UnbindIdentity(ctx *ginx.Context, req UnbindIdentityRequest) (ginx.Result, error) {
-	err := h.svc.UnbindIdentity(ctx.Request.Context(), req.UserID, req.Provider)
+	err := h.userSvc.UnbindIdentity(ctx.Request.Context(), req.UserID, req.Provider)
 	if err != nil {
 		return ErrInternalServer, err
 	}
@@ -440,7 +555,7 @@ func (h *Handler) ManageIdentities(ctx *ginx.Context, req ManageIdentitiesReques
 		{Provider: "feishu", FeishuInfo: domain.FeishuInfo(req.FeishuInfo)},
 	}
 
-	err := h.svc.ManageIdentities(ctx.Request.Context(), req.UserID, identities)
+	err := h.userSvc.ManageIdentities(ctx.Request.Context(), req.UserID, identities)
 	if err != nil {
 		return ErrInternalServer, err
 	}

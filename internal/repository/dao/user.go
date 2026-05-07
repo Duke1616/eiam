@@ -24,6 +24,8 @@ type IUserDAO interface {
 	FindByIds(ctx context.Context, ids []int64) ([]User, error)
 	// FindByUsername 根据用户名获取基础用户对象
 	FindByUsername(ctx context.Context, username string) (User, error)
+	// FindByEmail 根据邮箱获取基础用户对象
+	FindByEmail(ctx context.Context, email string) (User, error)
 
 	// FindProfileByUserId 获取用户业务名片 (Profile)
 	FindProfileByUserId(ctx context.Context, userID int64) (UserProfile, error)
@@ -64,6 +66,8 @@ type IUserDAO interface {
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
 	// DeleteIdentity 解除外部身份绑定
 	DeleteIdentity(ctx context.Context, userID int64, provider string) error
+	// FindByIdentity 根据身份标识查找关联的完整用户
+	FindByIdentity(ctx context.Context, provider, identityID string) (User, UserProfile, []UserIdentity, error)
 }
 
 type userDAO struct {
@@ -107,13 +111,15 @@ type UserProfile struct {
 }
 
 type UserIdentity struct {
-	ID       int64  `gorm:"primaryKey;autoIncrement"`
-	UserID   int64  `gorm:"uniqueIndex:idx_user_provider"`
-	Provider string `gorm:"uniqueIndex:idx_user_provider;type:varchar(32)"`
+	ID         int64  `gorm:"primaryKey;autoIncrement"`
+	UserID     int64  `gorm:"index:idx_user_id"`
+	Provider   string `gorm:"uniqueIndex:idx_provider_identity;type:varchar(32)"`
+	IdentityID string `gorm:"uniqueIndex:idx_provider_identity;type:varchar(255)"`
 
-	LdapInfo   sqlx.JSONColumn[LdapInfo]   `gorm:"type:json" json:"ldap_info"`
-	FeishuInfo sqlx.JSONColumn[FeishuInfo] `gorm:"type:json" json:"feishu_info"`
-	WechatInfo sqlx.JSONColumn[WechatInfo] `gorm:"type:json" json:"wechat_info"`
+	LdapInfo    sqlx.JSONColumn[LdapInfo]    `gorm:"type:json" json:"ldap_info"`
+	FeishuInfo  sqlx.JSONColumn[FeishuInfo]  `gorm:"type:json" json:"feishu_info"`
+	WechatInfo  sqlx.JSONColumn[WechatInfo]  `gorm:"type:json" json:"wechat_info"`
+	PasskeyInfo sqlx.JSONColumn[PasskeyInfo] `gorm:"type:json" json:"passkey_info"`
 }
 
 type LdapInfo struct {
@@ -125,8 +131,16 @@ type WechatInfo struct {
 }
 
 type FeishuInfo struct {
-	OpenID string `json:"open_id"`
-	UserID string `json:"user_id"`
+	OpenID  string `json:"open_id"`
+	UnionID string `json:"union_id"`
+	UserID  string `json:"user_id"`
+}
+
+type PasskeyInfo struct {
+	PublicKey       []byte `json:"public_key"`
+	AttestationType string `json:"attestation_type"`
+	AAGUID          []byte `json:"aaguid"`
+	SignCount       uint32 `json:"sign_count"`
 }
 
 func (dao *userDAO) Create(ctx context.Context, u User) (int64, error) {
@@ -174,6 +188,12 @@ func (dao *userDAO) FindByIds(ctx context.Context, ids []int64) ([]User, error) 
 func (dao *userDAO) FindByUsername(ctx context.Context, username string) (User, error) {
 	var u User
 	err := dao.db.WithContext(ctx).Where("username = ?", username).First(&u).Error
+	return u, err
+}
+
+func (dao *userDAO) FindByEmail(ctx context.Context, email string) (User, error) {
+	var u User
+	err := dao.db.WithContext(ctx).Where("email = ?", email).First(&u).Error
 	return u, err
 }
 
@@ -391,8 +411,8 @@ func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profil
 
 		if len(identities) > 0 {
 			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "provider"}, {Name: "user_id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"ldap_info", "feishu_info", "wechat_info"}),
+				Columns:   []clause.Column{{Name: "provider"}, {Name: "identity_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{"ldap_info", "feishu_info", "wechat_info", "passkey_info"}),
 			}).Create(&identities).Error; err != nil {
 				return err
 			}
@@ -409,4 +429,30 @@ func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider s
 	return dao.db.WithContext(ctx).
 		Where("user_id = ? AND provider = ?", userID, provider).
 		Delete(&UserIdentity{}).Error
+}
+
+func (dao *userDAO) FindByIdentity(ctx context.Context, provider, identityID string) (User, UserProfile, []UserIdentity, error) {
+	var ui UserIdentity
+	// 1. 查找身份标识
+	err := dao.db.WithContext(ctx).Where("provider = ? AND identity_id = ?", provider, identityID).First(&ui).Error
+	if err != nil {
+		return User{}, UserProfile{}, nil, err
+	}
+
+	// 2. 查找基础用户
+	var u User
+	err = dao.db.WithContext(ctx).Where("id = ?", ui.UserID).First(&u).Error
+	if err != nil {
+		return User{}, UserProfile{}, nil, err
+	}
+
+	// 3. 查找名片
+	var up UserProfile
+	_ = dao.db.WithContext(ctx).Where("user_id = ?", u.ID).First(&up).Error
+
+	// 4. 查找该用户的所有身份（用于 WebAuthn 校验）
+	var ids []UserIdentity
+	_ = dao.db.WithContext(ctx).Where("user_id = ?", u.ID).Find(&ids).Error
+
+	return u, up, ids, nil
 }

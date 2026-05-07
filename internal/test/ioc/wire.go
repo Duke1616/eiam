@@ -5,6 +5,7 @@ package testioc
 import (
 	"github.com/Duke1616/eiam/internal/pkg/searcher"
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
@@ -24,9 +25,13 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	wire.Build(
 		// 基础组件：使用 testioc 本地定义的 InitDB (跳过 goose 迁移)
 		InitDB,
+		mainioc.InitRedis,
 		mainioc.InitCasbin,
 		mainioc.InitOPA,
 		ProvideTestSubjectRegistry,
+
+		// Cache
+		cache.NewUserCache,
 
 		// DAOs
 		dao.NewTenantDAO,

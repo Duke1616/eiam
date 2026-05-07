@@ -591,6 +591,16 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["system"]
+  - name: IdentitySourceGovernance
+    permission_code: "iam:identity_source:view"
+    path: /iam/identity/source
+    component: /pages/iam/identity-source/index.vue
+    meta:
+      title: 认证管理
+      icon: identity_source
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
 - name: IAMPermissionGovernance
   path: /iam/permission
   component: Layouts

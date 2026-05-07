@@ -12,13 +12,14 @@ import (
 	role "github.com/Duke1616/eiam/internal/service/role"
 	tenantsvc "github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/internal/service/user/ldap"
+	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
-	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
 )
@@ -33,8 +34,7 @@ var BaseSet = wire.NewSet(
 
 	// LDAP 基础设施
 	InitRedisSearch,
-	InitLdapConfig,
-	InitIdentityProviders,
+	InitCredentialProviders,
 
 	// 其他全局配置注入
 	InitServiceConfig,
@@ -50,6 +50,8 @@ func InitApp() (*App, error) {
 
 		// Cache
 		InitLdapUserCache,
+		cache.NewIdentitySourceCache,
+		cache.NewUserCache,
 
 		// DAOs
 		dao.NewUserDAO,
@@ -73,7 +75,7 @@ func InitApp() (*App, error) {
 
 		// Services
 		usersvc.NewUserService,
-		usersvc.NewLdapService,
+		ldap.NewLdapService,
 		tenantsvc.NewTenantService,
 		role.NewRoleService,
 		resource.NewResourceService,

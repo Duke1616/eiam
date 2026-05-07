@@ -8,4 +8,5 @@ var (
 	ErrIdentitySourceDeleteFailed         = ginx.Result{Code: 4010603, Msg: "删除身份源失败"}
 	ErrIdentitySourceTestConnectionFailed = ginx.Result{Code: 4010604, Msg: "身份源连接测试失败"}
 	ErrIdentitySourceInvalidId            = ginx.Result{Code: 4010605, Msg: "身份源 ID 非法"}
+	ErrIdentitySourceGetFailed            = ginx.Result{Code: 4010606, Msg: "获取身份源详情失败"}
 )

@@ -3,13 +3,17 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
+	"unicode"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
+	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/ecodeclub/ekit/slice"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
 )
@@ -44,25 +48,29 @@ type IUserService interface {
 	BindIdentity(ctx context.Context, uid int64, identity domain.UserIdentity) error
 	// UnbindIdentity 解除外部身份绑定
 	UnbindIdentity(ctx context.Context, uid int64, provider string) error
-	// ManageIdentities 批量管理/同步外部身份信息
 	ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error
+	// LoginWithExternal 处理外部身份源登录 (JIT 开户)
+	LoginWithExternal(ctx context.Context, ident domain.OidcIdentity) (domain.LoginResult, error)
 }
 
 type userService struct {
-	repo      repository.IUserRepository
-	tenantSvc tenant.ITenantService
-	providers map[string]domain.IdentityProvider
+	repo                repository.IUserRepository
+	tenantSvc           tenant.ITenantService
+	idsSvc              idsource.IService
+	credentialProviders map[string]domain.CredentialProvider
 }
 
-func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService, ps []domain.IdentityProvider) IUserService {
-	registry := make(map[string]domain.IdentityProvider, len(ps))
+func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService,
+	idsSvc idsource.IService, ps []domain.CredentialProvider) IUserService {
+	registry := make(map[string]domain.CredentialProvider, len(ps))
 	for _, p := range ps {
 		registry[p.Name()] = p
 	}
 	return &userService{
-		repo:      r,
-		tenantSvc: tenantSvc,
-		providers: registry,
+		repo:                r,
+		tenantSvc:           tenantSvc,
+		idsSvc:              idsSvc,
+		credentialProviders: registry,
 	}
 }
 
@@ -75,20 +83,46 @@ func (s *userService) Login(ctx context.Context, provider, username, password st
 }
 
 func (s *userService) loginLocal(ctx context.Context, username, password string) (domain.LoginResult, error) {
+	// 1. 获取本地口令策略
+	localCfg, found := s.getLocalConfig(ctx)
+
+	// 2. 检查是否已被锁定
+	if found && localCfg.MaxFailedAttempts > 0 {
+		isLocked, _ := s.repo.IsLocked(ctx, username)
+		if isLocked {
+			return domain.LoginResult{}, errs.ErrUserLocked
+		}
+	}
+
 	u, err := s.repo.FindByUsername(ctx, username)
 	if err != nil {
+		// NOTE: 防时序攻击：即使用户不存在也执行一次 bcrypt 比较，消除响应时间差异
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return domain.LoginResult{}, errs.ErrInvalidUser
 	}
 
+	// 3. 校验密码
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err != nil {
+		// 密码错误，处理失败计数与锁定
+		if found && localCfg.MaxFailedAttempts > 0 {
+			_, _ = s.repo.IncFailedAttempts(ctx, username, localCfg.MaxFailedAttempts, localCfg.LockoutDuration)
+		}
 		return domain.LoginResult{}, errs.ErrInvalidUser
+	}
+
+	// 4. 登录成功，清除失败计数
+	if found {
+		_ = s.repo.ClearFailedAttempts(ctx, username)
 	}
 
 	return s.postLogin(ctx, u)
 }
 
+// dummyHash 用于防时序攻击的哑元哈希值，避免用户不存在时直接跳过 bcrypt 导致响应时间差异
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("anti-timing-attack"), bcrypt.DefaultCost)
+
 func (s *userService) loginExternal(ctx context.Context, providerName string, username, password string) (domain.LoginResult, error) {
-	strategy, ok := s.providers[providerName]
+	strategy, ok := s.credentialProviders[providerName]
 	if !ok {
 		return domain.LoginResult{}, errs.ErrProviderNotFound
 	}
@@ -129,37 +163,146 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 
 // postLogin 认证后公共逻辑：查询租户列表并决定路由
 func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.LoginResult, error) {
-	// 记录最近登录时间（即使后续租户查询失败，登录行为本身已发生）
 	_ = s.repo.UpdateLastLoginAt(ctx, u.ID, time.Now().UnixMilli())
 
-	tenants, err := s.tenantSvc.GetTenantsByUserId(ctx, u.ID)
-	// 针对没有任何租户的用户（如 LDAP 批量同步过来的），执行延迟初始化
-	if err == nil && len(tenants) == 0 {
-		tID, initErr := s.tenantSvc.InitPersonalTenant(ctx, u.ID, u.Username)
-		if initErr == nil {
-			// 初始化成功后，重新获取租户列表以保证后续逻辑统一
-			tenants = []domain.Tenant{{ID: tID}}
-		}
-	}
-
-	if err != nil || len(tenants) == 0 {
-		return domain.LoginResult{}, errors.New("用户无可用租户空间")
-	}
-
-	// 多租户处理：返回 0 作为标记，阻断直接进入，强制前端执行空间选择流
-	if len(tenants) > 1 {
-		return domain.LoginResult{User: u, TenantID: 0, Tenants: tenants}, nil
-	}
-
-	// 单租户处理：自动进入
-	tID := tenants[0].ID
-	fullUser, err := s.repo.FindById(ctxutil.WithTenantID(ctx, tID), u.ID)
+	// 1. 获取并确保用户至少属于一个租户
+	tenants, err := s.getOrInitTenants(ctx, u.ID, u.Username)
 	if err != nil {
 		return domain.LoginResult{}, err
 	}
-	return domain.LoginResult{User: fullUser, TenantID: tID, Tenants: tenants}, nil
+
+	// 2. 选取本次登录的激活租户 (母体优先)
+	activeTid := s.selectActiveTenant(tenants)
+
+	// 3. 加载租户空间下的完整名片
+	u, _ = s.repo.FindById(ctxutil.WithTenantID(ctx, activeTid), u.ID)
+
+	return domain.LoginResult{User: u, TenantID: activeTid, Tenants: tenants}, nil
 }
 
+// getOrInitTenants 获取租户列表，若为空则执行延迟初始化 (JIT)
+func (s *userService) getOrInitTenants(ctx context.Context, uid int64, username string) ([]domain.Tenant, error) {
+	tenants, err := s.tenantSvc.GetTenantsByUserId(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenants) == 0 {
+		tID, err := s.tenantSvc.InitPersonalTenant(ctx, uid, username)
+		if err != nil {
+			return nil, errors.New("用户无可用租户空间")
+		}
+		tenants = []domain.Tenant{{ID: tID}}
+	}
+
+	return tenants, nil
+}
+
+// selectActiveTenant 从租户列表中挑选最合适的默认切入点
+func (s *userService) selectActiveTenant(tenants []domain.Tenant) int64 {
+	// 策略 1：寻找母体/系统租户
+	for _, t := range tenants {
+		if t.ID == ctxutil.SystemTenantID {
+			return t.ID
+		}
+	}
+
+	// 策略 2：兜底选择首个租户
+	return tenants[0].ID
+}
+
+// LoginWithExternal 处理外部身份源 (如 OIDC) 的登录请求，包含 JIT 开户逻辑
+// 两步走策略：精确匹配身份标识 → JIT 自动开户
+func (s *userService) LoginWithExternal(ctx context.Context, ident domain.OidcIdentity) (domain.LoginResult, error) {
+	identity := s.buildUserIdentity(ident)
+
+	// 1. 精确匹配：通过 Provider + IdentityID 直接查找
+	u, err := s.repo.FindUserByIdentity(ctx, identity.Provider, identity.IdentityKey())
+	if err == nil {
+		return s.postLogin(ctx, u)
+	}
+
+	// 2. 检查该身份源是否允许 JIT 开户
+	config, found := s.getOIDCConfig(ctx, ident.Provider)
+	if !found || !config.JitEnabled {
+		return domain.LoginResult{}, errs.ErrUserNotLinked
+	}
+
+	// 3. JIT 开户：身份标识未命中，创建新用户
+	u, err = s.provisionJITUser(ctx, ident)
+	if err != nil {
+		return domain.LoginResult{}, err
+	}
+
+	// 4. 绑定外部身份，下次登录直接走第 1 步精确匹配
+	identity.UserID = u.ID
+	if err = s.repo.SaveIdentity(ctx, identity); err != nil {
+		return domain.LoginResult{}, fmt.Errorf("绑定外部身份失败: %w", err)
+	}
+
+	return s.postLogin(ctx, u)
+}
+
+// provisionJITUser 即时创建用户（Just-In-Time Provisioning）
+func (s *userService) provisionJITUser(ctx context.Context, ident domain.OidcIdentity) (domain.User, error) {
+	username := ident.Username
+	if username == "" {
+		username = ident.ExternalID
+	}
+
+	u := domain.User{
+		Username: username,
+		Email:    ident.Email,
+		Source:   domain.Source(ident.Provider),
+	}
+
+	var err error
+	u.ID, err = s.repo.Create(ctx, u)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("JIT 创建用户失败: %w", err)
+	}
+
+	return u, nil
+}
+
+// buildUserIdentity 根据外部身份信息动态构建 UserIdentity
+func (s *userService) buildUserIdentity(ident domain.OidcIdentity) domain.UserIdentity {
+	id := domain.UserIdentity{
+		Provider: ident.Provider,
+	}
+
+	switch ident.Provider {
+	case domain.SourceFeishu.String():
+		id.FeishuInfo = domain.FeishuInfo{
+			UserID:  getClaimString(ident.RawClaims, "user_id"),
+			UnionID: getClaimString(ident.RawClaims, "union_id"),
+			OpenID:  getClaimString(ident.RawClaims, "open_id"),
+		}
+		// NOTE: 飞书的 IdentityID 使用 user_id 作为核心标识
+		id.IdentityID = id.FeishuInfo.UserID
+	case domain.SourceWechat.String():
+		id.WechatInfo = domain.WechatInfo{
+			UserID: ident.ExternalID,
+		}
+		id.IdentityID = ident.ExternalID
+	default:
+		// NOTE: 通用 OIDC 使用 ExternalID (即 sub claim) 作为统一身份标识
+		id.IdentityID = ident.ExternalID
+	}
+
+	return id
+}
+
+func getClaimString(claims map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := claims[key]; ok {
+			if str, ok := val.(string); ok && str != "" {
+				return str
+			}
+		}
+	}
+	return ""
+}
 func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error) {
 	// 直接复用 CheckUserTenantAccess 校验 Membership 合约是否存在
 	hasAccess, err := s.tenantSvc.CheckUserTenantAccess(ctx, uid, targetTenantID)
@@ -243,6 +386,10 @@ func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) 
 	}
 
 	if u.Password != "" {
+		if err = s.validatePassword(ctx, u.Password); err != nil {
+			return 0, err
+		}
+
 		hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 		if err != nil {
 			return 0, err
@@ -261,6 +408,11 @@ func (s *userService) UpdatePassword(ctx context.Context, uid int64, oldPassword
 	// 校验旧密码
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(oldPassword)); err != nil {
 		return errs.ErrInvalidUser
+	}
+
+	// 校验新密码复杂度
+	if err = s.validatePassword(ctx, newPassword); err != nil {
+		return err
 	}
 
 	// 加密新密码
@@ -361,4 +513,84 @@ func (s *userService) ManageIdentities(ctx context.Context, uid int64, identitie
 		}
 	}
 	return nil
+}
+
+func (s *userService) validatePassword(ctx context.Context, password string) error {
+	// 1. 获取本地口令策略（复用统一方法）
+	localCfg, found := s.getLocalConfig(ctx)
+
+	// 2. 如果没配置，执行默认最低要求：8 位
+	if !found {
+		if len(password) < 8 {
+			return errs.ErrPasswordWeak
+		}
+		return nil
+	}
+
+	// 3. 执行基础合规性检查（手动规则）
+	if len(password) < localCfg.MinLength {
+		return errs.ErrPasswordWeak
+	}
+
+	var hasDigit, hasUpper, hasLower, hasSymbol bool
+	for _, char := range password {
+		switch {
+		case unicode.IsDigit(char):
+			hasDigit = true
+		case unicode.IsUpper(char):
+			hasUpper = true
+		case unicode.IsLower(char):
+			hasLower = true
+		case unicode.IsPunct(char) || unicode.IsSymbol(char):
+			hasSymbol = true
+		}
+	}
+
+	if (localCfg.RequireDigit && !hasDigit) ||
+		(localCfg.RequireUpper && !hasUpper) ||
+		(localCfg.RequireLower && !hasLower) ||
+		(localCfg.RequireSymbol && !hasSymbol) {
+		return errs.ErrPasswordWeak
+	}
+
+	return nil
+}
+
+// getLocalConfig 获取已启用的本地口令策略配置
+// NOTE: 抽取为独立方法，避免 loginLocal 和 validatePassword 重复查全量身份源列表
+// TODO: 后续可增加内存缓存，避免每次都查数据库
+func (s *userService) getLocalConfig(ctx context.Context) (domain.LocalConfig, bool) {
+	sources, err := s.idsSvc.List(ctx)
+	if err != nil {
+		return domain.LocalConfig{}, false
+	}
+
+	config, found := slice.Find(sources, func(src domain.IdentitySource) bool {
+		return src.Type == domain.LOCAL && src.Enabled
+	})
+
+	if !found {
+		return domain.LocalConfig{}, false
+	}
+
+	return config.LocalConfig, true
+}
+
+func (s *userService) getOIDCConfig(ctx context.Context, provider string) (domain.OIDCConfig, bool) {
+	sources, err := s.idsSvc.List(ctx)
+	if err != nil {
+		return domain.OIDCConfig{}, false
+	}
+
+	config, found := slice.Find(sources, func(src domain.IdentitySource) bool {
+		// NOTE: 飞书和微信等提供商在 OIDCConfig 中有具体的 ProviderType
+		return src.Type == domain.OIDC && src.Enabled &&
+			(string(src.OIDCConfig.ProviderType) == provider || src.Name == provider)
+	})
+
+	if !found {
+		return domain.OIDCConfig{}, false
+	}
+
+	return config.OIDCConfig, true
 }

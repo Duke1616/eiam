@@ -26,8 +26,9 @@ func ToUserVO(u domain.User) User {
 			LdapInfo:   LdapInfo{DN: src.LdapInfo.DN},
 			WechatInfo: WechatInfo{UserID: src.WechatInfo.UserID},
 			FeishuInfo: FeishuInfo{
-				OpenID: src.FeishuInfo.OpenID,
-				UserID: src.FeishuInfo.UserID,
+				OpenID:  src.FeishuInfo.OpenID,
+				UnionID: src.FeishuInfo.UnionID,
+				UserID:  src.FeishuInfo.UserID,
 			},
 		}
 	})
@@ -80,8 +81,9 @@ func (u User) ToDomain() domain.User {
 			LdapInfo:   domain.LdapInfo{DN: src.LdapInfo.DN},
 			WechatInfo: domain.WechatInfo{UserID: src.WechatInfo.UserID},
 			FeishuInfo: domain.FeishuInfo{
-				OpenID: src.FeishuInfo.OpenID,
-				UserID: src.FeishuInfo.UserID,
+				OpenID:  src.FeishuInfo.OpenID,
+				UnionID: src.FeishuInfo.UnionID,
+				UserID:  src.FeishuInfo.UserID,
 			},
 		}
 	})

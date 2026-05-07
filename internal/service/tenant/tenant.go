@@ -10,6 +10,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/casbin/casbin/v2"
+	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -126,50 +127,62 @@ func (s *tenantService) BatchInitPersonalTenant(ctx context.Context, users []dom
 		return nil
 	}
 
-	// 1. 构造租户信息并批量创建
-	tenants := make([]domain.Tenant, 0, len(users))
-	for _, u := range users {
-		tenants = append(tenants, domain.Tenant{
+	// 1. 过滤：仅为尚未入驻任何租户（没有 Membership）的用户初始化空间
+	userIDs := lo.Map(users, func(u domain.User, _ int) int64 {
+		return u.ID
+	})
+
+	membershipMap, err := s.FindMembershipsByUserIds(ctx, userIDs)
+	if err != nil {
+		return err
+	}
+
+	filteredUsers := lo.Filter(users, func(u domain.User, _ int) bool {
+		_, ok := membershipMap[u.ID]
+		return !ok
+	})
+
+	if len(filteredUsers) == 0 {
+		return nil
+	}
+
+	// 2. 构造租户信息并批量创建
+	tenants := lo.Map(filteredUsers, func(u domain.User, _ int) domain.Tenant {
+		return domain.Tenant{
 			Name:   u.Username + "的个人空间",
 			Code:   u.Username + "-personal",
 			Status: 1,
-		})
-	}
+		}
+	})
 
 	savedTenants, err := s.repo.BatchCreate(ctx, tenants)
 	if err != nil {
 		return err
 	}
 
-	// 2. 构造 Membership 并批量插入
-	memberships := make([]domain.Membership, 0, len(users))
-	for i, u := range users {
-		memberships = append(memberships, domain.Membership{
+	// 3. 构造 Membership 并批量插入
+	memberships := lo.Map(filteredUsers, func(u domain.User, i int) domain.Membership {
+		return domain.Membership{
 			UserID:   u.ID,
 			TenantID: savedTenants[i].ID,
-		})
-	}
+		}
+	})
 
 	if err = s.repo.BatchAddMemberships(ctx, memberships); err != nil {
 		return err
 	}
 
-	// 3. 构造 Casbin 策略并批量授权
-	rules := make([][]string, 0, len(users))
-	for i, u := range users {
-		rules = append(rules, []string{
+	// 4. 构造 Casbin 策略并批量授权
+	rules := lo.Map(filteredUsers, func(u domain.User, i int) []string {
+		return []string{
 			domain.UserSubject(u.Username),
 			domain.RoleSubject("admin"),
 			ctxutil.ContextID(savedTenants[i].ID).String(),
-		})
-	}
+		}
+	})
 
 	_, err = s.enforcer.AddGroupingPolicies(rules)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (s *tenantService) GetTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {

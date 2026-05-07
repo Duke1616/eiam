@@ -39,6 +39,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	tenantHdl.PublicRoutes(server.Engine)
 	resourceHdl.PublicRoutes(server.Engine)
 	permissionHdl.PublicRoutes(server.Engine)
+	identitySourceHdl.PublicRoutes(server.Engine)
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())

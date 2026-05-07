@@ -27,5 +27,5 @@ func InitIdentitySourceService(repo repository.IIdentitySourceRepository) identi
 	cm := cryptox.NewCryptoManager("v1").
 		Register("v1", cryptox.MustNewAESCryptoV2(cfg.EncryptionKey))
 
-	return identity_source.NewService(repo, cm)
+	return identity_source.NewService(repo, identity_source.NewOidcService(), cm)
 }

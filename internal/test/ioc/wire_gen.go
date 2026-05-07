@@ -9,6 +9,7 @@ package testioc
 import (
 	"github.com/Duke1616/eiam/internal/pkg/searcher"
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/policy"
@@ -26,7 +27,9 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	iTenantDAO := dao.NewTenantDAO(db)
 	iTenantRepository := repository.NewTenantRepository(iTenantDAO)
 	iUserDAO := dao.NewUserDAO(db)
-	iUserRepository := repository.NewUserRepository(iUserDAO, iTenantDAO)
+	cmdable := ioc.InitRedis()
+	iUserCache := cache.NewUserCache(cmdable)
+	iUserRepository := repository.NewUserRepository(iUserDAO, iTenantDAO, iUserCache)
 	iRoleDAO := dao.NewRoleDAO(db)
 	iRoleRepository := repository.NewRoleRepository(iRoleDAO)
 	iPolicyDAO := dao.NewPolicyDAO(db)

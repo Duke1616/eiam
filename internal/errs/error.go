@@ -18,4 +18,7 @@ var (
 	ErrTenantAccessDenied = errors.New("无权访问该租户空间")
 
 	ErrImmutableInheritance = errors.New("系统级继承关系严禁移除")
+	ErrPasswordWeak         = errors.New("密码强度不符合策略要求")
+	ErrUserLocked           = errors.New("账号由于多次输入错误已被锁定，请稍后再试")
+	ErrUserNotLinked        = errors.New("外部账号未绑定，请先登录并关联账号")
 )

@@ -1,14 +1,17 @@
-package user
+package ldap
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
+	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user/ldapx"
+	"github.com/ecodeclub/ekit/slice"
 )
 
 type LdapService interface {
@@ -21,16 +24,16 @@ type LdapService interface {
 type ldapService struct {
 	repo      repository.IUserRepository
 	tenantSvc tenant.ITenantService
-	ldap      ldapx.LdapProvider
+	idsSvc    idsource.IService
 	cache     cache.RedisearchLdapUserCache
 }
 
 func NewLdapService(repo repository.IUserRepository, tenantSvc tenant.ITenantService,
-	conf ldapx.Config, cache cache.RedisearchLdapUserCache) LdapService {
+	idsSvc idsource.IService, cache cache.RedisearchLdapUserCache) LdapService {
 	return &ldapService{
 		repo:      repo,
 		tenantSvc: tenantSvc,
-		ldap:      ldapx.NewLdap(conf),
+		idsSvc:    idsSvc,
 		cache:     cache,
 	}
 }
@@ -67,7 +70,13 @@ func (l *ldapService) SearchCacheUserWithPager(ctx context.Context, tid int64, k
 }
 
 func (l *ldapService) RefreshCacheUserWithPager(ctx context.Context, tid int64) error {
-	ldapUsers, err := l.ldap.SearchUserWithPaging(ctx)
+	config, ok := l.getLDAPConfig(ctx)
+	if !ok {
+		return errors.New("未找到启用的 LDAP 身份源配置")
+	}
+
+	provider := ldapx.NewLdap(l.toLdapxConfig(config))
+	ldapUsers, err := provider.SearchUserWithPaging(ctx)
 	if err != nil {
 		return err
 	}
@@ -77,5 +86,43 @@ func (l *ldapService) RefreshCacheUserWithPager(ctx context.Context, tid int64) 
 
 // Login LDAP 登录
 func (l *ldapService) Login(ctx context.Context, username, password string) (domain.User, error) {
-	return l.ldap.Authenticate(ctx, username, password)
+	config, ok := l.getLDAPConfig(ctx)
+	if !ok {
+		return domain.User{}, errors.New("未找到启用的 LDAP 身份源配置")
+	}
+
+	provider := ldapx.NewLdap(l.toLdapxConfig(config))
+	return provider.Authenticate(ctx, username, password)
+}
+
+func (l *ldapService) getLDAPConfig(ctx context.Context) (domain.LDAPConfig, bool) {
+	sources, err := l.idsSvc.List(ctx)
+	if err != nil {
+		return domain.LDAPConfig{}, false
+	}
+
+	config, found := slice.Find(sources, func(src domain.IdentitySource) bool {
+		return src.Type == domain.LDAP && src.Enabled
+	})
+
+	if !found {
+		return domain.LDAPConfig{}, false
+	}
+
+	return config.LDAPConfig, true
+}
+
+func (l *ldapService) toLdapxConfig(cfg domain.LDAPConfig) ldapx.Config {
+	return ldapx.Config{
+		Url:                  cfg.URL,
+		BaseDN:               cfg.BaseDN,
+		BindDN:               cfg.BindDN,
+		BindPassword:         cfg.BindPassword,
+		UsernameAttribute:    cfg.UsernameAttribute,
+		MailAttribute:        cfg.MailAttribute,
+		DisplayNameAttribute: cfg.DisplayNameAttribute,
+		TitleAttribute:       cfg.TitleAttribute,
+		UserFilter:           cfg.UserFilter,
+		SyncUserFilter:       cfg.SyncUserFilter,
+	}
 }

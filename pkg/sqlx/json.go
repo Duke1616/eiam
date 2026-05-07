@@ -28,6 +28,11 @@ func (j JSONColumn[T]) Value() (driver.Value, error) {
 	return string(res), err
 }
 
+// GormDataType 返回 GORM 迁移时使用的数据库类型
+func (j JSONColumn[T]) GormDataType() string {
+	return "json"
+}
+
 // Scan 将 src 转化为对象
 // src 的类型必须是 []byte, string 或者 nil
 // 如果是 nil，我们不会做任何处理

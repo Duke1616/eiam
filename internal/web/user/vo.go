@@ -66,8 +66,9 @@ type WechatInfo struct {
 }
 
 type FeishuInfo struct {
-	OpenID string `json:"open_id"`
-	UserID string `json:"user_id"`
+	OpenID  string `json:"open_id"`
+	UnionID string `json:"union_id"`
+	UserID  string `json:"user_id"`
 }
 
 // Tenant 空间展示对象

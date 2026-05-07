@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"github.com/samber/lo"
@@ -22,6 +24,8 @@ type IUserRepository interface {
 	FindByIds(ctx context.Context, ids []int64) ([]domain.User, error)
 	// FindByUsername 根据用户名查找用户
 	FindByUsername(ctx context.Context, username string) (domain.User, error)
+	// FindByEmail 根据邮箱查找用户
+	FindByEmail(ctx context.Context, email string) (domain.User, error)
 
 	// Update 更新用户信息
 	Update(ctx context.Context, u domain.User) (int64, error)
@@ -52,17 +56,27 @@ type IUserRepository interface {
 	FindUsersByUsernames(ctx context.Context, usernames []string) ([]domain.User, error)
 	// DeleteIdentity 解除身份源绑定
 	DeleteIdentity(ctx context.Context, uid int64, provider string) error
+	// IsLocked 检查用户是否处于锁定状态
+	IsLocked(ctx context.Context, username string) (bool, error)
+	// IncFailedAttempts 增加失败次数，若达到阈值则自动锁定
+	IncFailedAttempts(ctx context.Context, username string, maxAttempts int, lockoutMinutes int) (int64, error)
+	// ClearFailedAttempts 登录成功后清除失败计数和锁定
+	ClearFailedAttempts(ctx context.Context, username string) error
+	// FindByIdentity 根据身份标识查找关联的完整用户
+	FindByIdentity(ctx context.Context, provider, identityID string) (domain.User, error)
 }
 
 type userRepository struct {
-	dao  dao.IUserDAO
-	tdao dao.ITenantDAO
+	dao   dao.IUserDAO
+	tdao  dao.ITenantDAO
+	cache cache.IUserCache
 }
 
-func NewUserRepository(d dao.IUserDAO, td dao.ITenantDAO) IUserRepository {
+func NewUserRepository(d dao.IUserDAO, td dao.ITenantDAO, c cache.IUserCache) IUserRepository {
 	return &userRepository{
-		dao:  d,
-		tdao: td,
+		dao:   d,
+		tdao:  td,
+		cache: c,
 	}
 }
 
@@ -101,6 +115,14 @@ func (repo *userRepository) FindByIds(ctx context.Context, ids []int64) ([]domai
 
 func (repo *userRepository) FindByUsername(ctx context.Context, username string) (domain.User, error) {
 	u, err := repo.dao.FindByUsername(ctx, username)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return repo.fullHydration(ctx, u)
+}
+
+func (repo *userRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
+	u, err := repo.dao.FindByEmail(ctx, email)
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -158,13 +180,24 @@ func (repo *userRepository) FindUserByIdentity(ctx context.Context, provider, id
 }
 
 func (repo *userRepository) SaveIdentity(ctx context.Context, ui domain.UserIdentity) error {
-	return repo.dao.SaveIdentity(ctx, dao.UserIdentity{
+	identity := dao.UserIdentity{
 		UserID:     ui.UserID,
 		Provider:   ui.Provider,
-		LdapInfo:   sqlx.JSONColumn[dao.LdapInfo]{Val: dao.LdapInfo(ui.LdapInfo), Valid: true},
-		WechatInfo: sqlx.JSONColumn[dao.WechatInfo]{Val: dao.WechatInfo(ui.WechatInfo), Valid: true},
-		FeishuInfo: sqlx.JSONColumn[dao.FeishuInfo]{Val: dao.FeishuInfo(ui.FeishuInfo), Valid: true},
-	})
+		IdentityID: ui.IdentityKey(),
+	}
+
+	switch ui.Provider {
+	case "ldap":
+		identity.LdapInfo = sqlx.JSONColumn[dao.LdapInfo]{Val: dao.LdapInfo(ui.LdapInfo), Valid: true}
+	case "wechat":
+		identity.WechatInfo = sqlx.JSONColumn[dao.WechatInfo]{Val: dao.WechatInfo(ui.WechatInfo), Valid: true}
+	case "feishu":
+		identity.FeishuInfo = sqlx.JSONColumn[dao.FeishuInfo]{Val: dao.FeishuInfo(ui.FeishuInfo), Valid: true}
+	case "passkey":
+		identity.PasskeyInfo = sqlx.JSONColumn[dao.PasskeyInfo]{Val: dao.PasskeyInfo(ui.PasskeyInfo), Valid: true}
+	}
+
+	return repo.dao.SaveIdentity(ctx, identity)
 }
 
 func (repo *userRepository) List(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, error) {
@@ -264,12 +297,16 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 	identities := make([]domain.UserIdentity, 0, len(ids))
 	for _, id := range ids {
 		identities = append(identities, domain.UserIdentity{
-			UserID:     id.UserID,
-			Provider:   id.Provider,
-			LdapInfo:   domain.LdapInfo(id.LdapInfo.Val),
-			WechatInfo: domain.WechatInfo(id.WechatInfo.Val),
-			FeishuInfo: domain.FeishuInfo(id.FeishuInfo.Val),
+			ID:          id.ID,
+			UserID:      id.UserID,
+			Provider:    id.Provider,
+			IdentityID:  id.IdentityID,
+			LdapInfo:    domain.LdapInfo(id.LdapInfo.Val),
+			WechatInfo:  domain.WechatInfo(id.WechatInfo.Val),
+			FeishuInfo:  domain.FeishuInfo(id.FeishuInfo.Val),
+			PasskeyInfo: domain.PasskeyInfo(id.PasskeyInfo.Val),
 		})
+
 	}
 
 	return domain.User{
@@ -360,13 +397,24 @@ func (repo *userRepository) BatchUpsert(ctx context.Context, users []domain.User
 		}
 
 		return lo.Map(u.Identities, func(id domain.UserIdentity, _ int) dao.UserIdentity {
-			return dao.UserIdentity{
+			identity := dao.UserIdentity{
 				UserID:     uid,
 				Provider:   id.Provider,
-				LdapInfo:   sqlx.JSONColumn[dao.LdapInfo]{Val: dao.LdapInfo(id.LdapInfo), Valid: true},
-				WechatInfo: sqlx.JSONColumn[dao.WechatInfo]{Val: dao.WechatInfo(id.WechatInfo), Valid: true},
-				FeishuInfo: sqlx.JSONColumn[dao.FeishuInfo]{Val: dao.FeishuInfo(id.FeishuInfo), Valid: true},
+				IdentityID: id.IdentityKey(),
 			}
+
+			switch id.Provider {
+			case "ldap":
+				identity.LdapInfo = sqlx.JSONColumn[dao.LdapInfo]{Val: dao.LdapInfo(id.LdapInfo), Valid: true}
+			case "wechat":
+				identity.WechatInfo = sqlx.JSONColumn[dao.WechatInfo]{Val: dao.WechatInfo(id.WechatInfo), Valid: true}
+			case "feishu":
+				identity.FeishuInfo = sqlx.JSONColumn[dao.FeishuInfo]{Val: dao.FeishuInfo(id.FeishuInfo), Valid: true}
+			case "passkey":
+				identity.PasskeyInfo = sqlx.JSONColumn[dao.PasskeyInfo]{Val: dao.PasskeyInfo(id.PasskeyInfo), Valid: true}
+			}
+
+			return identity
 		})
 	})
 
@@ -401,4 +449,36 @@ func (repo *userRepository) FindUsersByUsernames(ctx context.Context, usernames 
 			Username: u.Username,
 		}
 	}), nil
+}
+
+func (repo *userRepository) IsLocked(ctx context.Context, username string) (bool, error) {
+	return repo.cache.IsLocked(ctx, username)
+}
+
+func (repo *userRepository) IncFailedAttempts(ctx context.Context, username string, maxAttempts int, lockoutMinutes int) (int64, error) {
+	// 失败计数保留 24 小时
+	attempts, err := repo.cache.IncFailedAttempts(ctx, username, 24*time.Hour)
+	if err != nil {
+		return 0, err
+	}
+
+	// 达到阈值，触发锁定
+	if attempts >= int64(maxAttempts) {
+		_ = repo.cache.SetLockout(ctx, username, time.Duration(lockoutMinutes)*time.Minute)
+	}
+
+	return attempts, nil
+}
+
+func (repo *userRepository) ClearFailedAttempts(ctx context.Context, username string) error {
+	return repo.cache.ClearFailedAttempts(ctx, username)
+}
+
+func (repo *userRepository) FindByIdentity(ctx context.Context, provider, identityID string) (domain.User, error) {
+	u, up, ids, err := repo.dao.FindByIdentity(ctx, provider, identityID)
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	return repo.toDomain(u, up, ids), nil
 }

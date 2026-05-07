@@ -33,4 +33,7 @@ var (
 	ErrLdapRefreshFailed  = ginx.Result{Code: 4010909, Msg: "刷新 LDAP 缓存失败"}
 	ErrTenantAccessDenied = ginx.Result{Code: 4010910, Msg: "无权访问该租户空间"}
 	ErrTenantSwitchFailed = ginx.Result{Code: 4010911, Msg: "切换租户空间失败"}
+
+	// OIDC 授权错误
+	ErrOIDCDenied = ginx.Result{Code: 4010301, Msg: "OIDC 授权被拒绝"}
 )
