@@ -48,19 +48,25 @@ INSERT INTO `user_profile` (`id`, `user_id`, `nickname`, `avatar`, `job_title`, 
 VALUES (1, 1, '系统管理员', '', '平台负责人', '')
 ON DUPLICATE KEY UPDATE `nickname` = VALUES(`nickname`), `job_title` = VALUES(`job_title`), `phone` = VALUES(`phone`);
 
+-- 初始化系统预置身份源：本地口令 (默认启用)
+INSERT INTO `identity_source` (`id`, `name`, `type`, `local_config`, `enabled`, `ctime`, `utime`)
+VALUES (1, '本地账号登录', 'local', '{"min_length": 6, "max_failed_attempts": 5, "lockout_duration": 15}', 1,
+        FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `enabled` = VALUES(`enabled`), `utime` = VALUES(`utime`);
 
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-DELETE FROM `role` WHERE `tenant_id` = 0 AND `code` IN ('super_admin', 'admin');
-DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'role:admin' AND `v1` = 'role:super_admin' AND `v2` = '0';
+DELETE FROM `role` WHERE `tenant_id` = 1 AND `code` IN ('super_admin', 'admin');
+DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'role:admin' AND `v1` = 'role:super_admin' AND `v2` = '1';
 DELETE FROM `user` WHERE `username` = 'admin';
-DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'user:admin' AND `v1` = 'role:super_admin' AND `v2` = '0';
+DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'user:admin' AND `v1` = 'role:super_admin' AND `v2` = '1';
 DELETE FROM `tenant` WHERE `id` = 1;
 
 DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` = 1;
 DELETE FROM `user_profile` WHERE `user_id` = 1;
+DELETE FROM `identity_source` WHERE `id` = 1;
 
 
 -- +goose StatementEnd

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -64,6 +65,10 @@ type IUserRepository interface {
 	ClearFailedAttempts(ctx context.Context, username string) error
 	// FindByIdentity 根据身份标识查找关联的完整用户
 	FindByIdentity(ctx context.Context, provider, identityID string) (domain.User, error)
+	// SetBindState 存储临时绑定状态 (5分钟过期)
+	SetBindState(ctx context.Context, token string, ident domain.OidcIdentity) error
+	// GetBindState 获取并删除临时绑定状态
+	GetBindState(ctx context.Context, token string) (domain.OidcIdentity, error)
 }
 
 type userRepository struct {
@@ -481,4 +486,21 @@ func (repo *userRepository) FindByIdentity(ctx context.Context, provider, identi
 	}
 
 	return repo.toDomain(u, up, ids), nil
+}
+
+func (repo *userRepository) SetBindState(ctx context.Context, token string, ident domain.OidcIdentity) error {
+	return repo.cache.SetBindState(ctx, token, ident)
+}
+
+func (repo *userRepository) GetBindState(ctx context.Context, token string) (domain.OidcIdentity, error) {
+	val, err := repo.cache.GetBindState(ctx, token)
+	if err != nil {
+		return domain.OidcIdentity{}, err
+	}
+
+	var ident domain.OidcIdentity
+	if err = json.Unmarshal([]byte(val), &ident); err != nil {
+		return domain.OidcIdentity{}, err
+	}
+	return ident, nil
 }

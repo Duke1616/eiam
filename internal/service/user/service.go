@@ -14,6 +14,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/ecodeclub/ekit/slice"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
 )
@@ -51,6 +52,10 @@ type IUserService interface {
 	ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error
 	// LoginWithExternal 处理外部身份源登录 (JIT 开户)
 	LoginWithExternal(ctx context.Context, ident domain.OidcIdentity) (domain.LoginResult, error)
+	// GenerateBindToken 生成临时绑定令牌并存入缓存
+	GenerateBindToken(ctx context.Context, ident domain.OidcIdentity) (string, error)
+	// ConsumeBindToken 消费令牌并执行绑定
+	ConsumeBindToken(ctx context.Context, uid int64, token string) error
 }
 
 type userService struct {
@@ -593,4 +598,23 @@ func (s *userService) getOIDCConfig(ctx context.Context, provider string) (domai
 	}
 
 	return config.OIDCConfig, true
+}
+
+func (s *userService) GenerateBindToken(ctx context.Context, ident domain.OidcIdentity) (string, error) {
+	token := uuid.New().String()
+	if err := s.repo.SetBindState(ctx, token, ident); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func (s *userService) ConsumeBindToken(ctx context.Context, uid int64, token string) error {
+	ident, err := s.repo.GetBindState(ctx, token)
+	if err != nil {
+		return fmt.Errorf("绑定令牌无效或已过期: %w", err)
+	}
+
+	identity := s.buildUserIdentity(ident)
+	identity.UserID = uid
+	return s.repo.SaveIdentity(ctx, identity)
 }

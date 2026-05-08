@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -17,6 +18,11 @@ type IUserCache interface {
 	ClearFailedAttempts(ctx context.Context, username string) error
 	SetLockout(ctx context.Context, username string, duration time.Duration) error
 	IsLocked(ctx context.Context, username string) (bool, error)
+
+	// SetBindState 存储临时绑定状态 (5分钟过期)
+	SetBindState(ctx context.Context, token string, ident any) error
+	// GetBindState 获取并删除临时绑定状态
+	GetBindState(ctx context.Context, token string) (string, error)
 }
 
 type userCache struct {
@@ -61,4 +67,26 @@ func (c *userCache) failedAttemptsKey(username string) string {
 
 func (c *userCache) lockoutKey(username string) string {
 	return fmt.Sprintf("eiam:user:lockout:%s", username)
+}
+
+func (c *userCache) SetBindState(ctx context.Context, token string, ident any) error {
+	data, err := json.Marshal(ident)
+	if err != nil {
+		return err
+	}
+	return c.client.Set(ctx, c.bindKey(token), data, 5*time.Minute).Err()
+}
+
+func (c *userCache) GetBindState(ctx context.Context, token string) (string, error) {
+	key := c.bindKey(token)
+	val, err := c.client.Get(ctx, key).Result()
+	if err != nil {
+		return "", err
+	}
+	_ = c.client.Del(ctx, key)
+	return val, nil
+}
+
+func (c *userCache) bindKey(token string) string {
+	return fmt.Sprintf("eiam:user:bind:%s", token)
 }

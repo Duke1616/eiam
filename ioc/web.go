@@ -74,7 +74,7 @@ func corsHdl() gin.HandlerFunc {
 	return cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Content-Type", "Authorization", "X-Bind-Token"},
 		ExposeHeaders:    []string{"x-jwt-token", "x-refresh-token"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,

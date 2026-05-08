@@ -1,10 +1,12 @@
 package user
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
@@ -123,18 +125,23 @@ func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, err
 }
 
 func (h *Handler) LoginLdap(ctx *ginx.Context, req LoginLdapRequest) (ginx.Result, error) {
-	result, err := h.userSvc.Login(ctx.Request.Context(), "ldap", req.Username, req.Password)
+	return h.executeLogin(ctx, "ldap", req.Username, req.Password)
+}
+
+func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginSystemRequest) (ginx.Result, error) {
+	return h.executeLogin(ctx, "local", req.Username, req.Password)
+}
+
+func (h *Handler) executeLogin(ctx *ginx.Context, provider, username, password string) (ginx.Result, error) {
+	result, err := h.userSvc.Login(ctx.Request.Context(), provider, username, password)
 	if err != nil {
 		return ErrUnauthorized, err
 	}
 
-	return h.handleLoginResult(ctx, result)
-}
-
-func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginSystemRequest) (ginx.Result, error) {
-	result, err := h.userSvc.Login(ctx.Request.Context(), "local", req.Username, req.Password)
-	if err != nil {
-		return ErrUnauthorized, err
+	// 优雅地处理绑定逻辑：从 Header 中获取 X-Bind-Token
+	if bindToken := ctx.GetHeader("X-Bind-Token"); bindToken != "" {
+		_ = h.userSvc.ConsumeBindToken(ctx.Request.Context(), result.User.ID, bindToken)
+		h.logger.Info("登录时自动完成第三方身份绑定", elog.Int64("uid", result.User.ID))
 	}
 
 	return h.handleLoginResult(ctx, result)
@@ -254,6 +261,21 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 	// 2. 执行登录与 JIT 开户
 	result, err := h.userSvc.LoginWithExternal(ctx.Request.Context(), ident)
 	if err != nil {
+		// 如果是未绑定且禁用了 JIT，则走“登录页绑定”流程
+		if errors.Is(err, errs.ErrUserNotLinked) {
+			token, tokenErr := h.userSvc.GenerateBindToken(ctx.Request.Context(), ident)
+			if tokenErr != nil {
+				return ErrInternalServer, tokenErr
+			}
+			return ginx.Result{
+				Code: 0,
+				Msg:  "请先登录现有账号完成绑定",
+				Data: RetrieveUser{
+					MustBind:  true,
+					BindToken: token,
+				},
+			}, nil
+		}
 		h.logger.Error("[OIDC] 登录处理失败", elog.FieldErr(err))
 		return ErrInternalServer, err
 	}
@@ -265,7 +287,7 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 		elog.Int("tenant_count", len(result.Tenants)),
 	)
 
-	// 3. 复用统一的登录处理逻辑 (会在这里调用 h.issueSession 签发并向 HTTP 响应头注入 Token)
+	// 3. 复用统一的登录处理逻辑
 	return h.handleLoginResult(ctx, result)
 }
 

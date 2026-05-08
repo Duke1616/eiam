@@ -84,7 +84,7 @@ func (r *identitySourceRepository) GetEnabledProviderTypes(ctx context.Context) 
 
 	res := lo.FilterMap(sources, func(src dao.IdentitySource, _ int) (string, bool) {
 		switch domain.IdentitySourceType(src.Type) {
-		case domain.LDAP:
+		case domain.LDAP, domain.LOCAL, domain.PASSKEY:
 			return src.Type, true
 		case domain.OIDC:
 			return string(src.OIDCConfig.Val.ProviderType), true
