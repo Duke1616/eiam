@@ -14,6 +14,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/ecodeclub/ekit/slice"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
@@ -21,10 +22,10 @@ import (
 
 type IUserService interface {
 	Signup(ctx context.Context, u domain.User) (int64, error)
-	// Login 认证成功后，同步返回封装好的 LoginResult：
-	// Result.TenantID != 0 → 单租户，直接颁发正式 JWT
-	// Result.TenantID == 0 → 多租户，前端从 Result.Tenants 选择后调 SwitchTenant
+	// Login 认证成功后，同步返回封装好的 LoginResult
 	Login(ctx context.Context, provider, username, password string) (domain.LoginResult, error)
+	// LoginWithoutPassword 用于 Passkey/OIDC 等已经完成身份验证的场景，直接执行登录后置逻辑
+	LoginWithoutPassword(ctx context.Context, uid int64) (domain.LoginResult, error)
 
 	GetById(ctx context.Context, id int64) (domain.User, error)
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
@@ -56,6 +57,9 @@ type IUserService interface {
 	GenerateBindToken(ctx context.Context, ident domain.OidcIdentity) (string, error)
 	// ConsumeBindToken 消费令牌并执行绑定
 	ConsumeBindToken(ctx context.Context, uid int64, token string) error
+
+	SetPasskeyState(ctx context.Context, token string, data webauthn.SessionData) error
+	GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error)
 }
 
 type userService struct {
@@ -118,6 +122,15 @@ func (s *userService) loginLocal(ctx context.Context, username, password string)
 	// 4. 登录成功，清除失败计数
 	if found {
 		_ = s.repo.ClearFailedAttempts(ctx, username)
+	}
+
+	return s.postLogin(ctx, u)
+}
+
+func (s *userService) LoginWithoutPassword(ctx context.Context, uid int64) (domain.LoginResult, error) {
+	u, err := s.repo.FindById(ctx, uid)
+	if err != nil {
+		return domain.LoginResult{}, err
 	}
 
 	return s.postLogin(ctx, u)
@@ -611,10 +624,19 @@ func (s *userService) GenerateBindToken(ctx context.Context, ident domain.OidcId
 func (s *userService) ConsumeBindToken(ctx context.Context, uid int64, token string) error {
 	ident, err := s.repo.GetBindState(ctx, token)
 	if err != nil {
-		return fmt.Errorf("绑定令牌无效或已过期: %w", err)
+		return err
 	}
 
-	identity := s.buildUserIdentity(ident)
-	identity.UserID = uid
-	return s.repo.SaveIdentity(ctx, identity)
+	return s.BindIdentity(ctx, uid, domain.UserIdentity{
+		Provider:   ident.Provider,
+		IdentityID: ident.ExternalID,
+	})
+}
+
+func (s *userService) SetPasskeyState(ctx context.Context, token string, data webauthn.SessionData) error {
+	return s.repo.SetPasskeyState(ctx, token, data)
+}
+
+func (s *userService) GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error) {
+	return s.repo.GetPasskeyState(ctx, token)
 }

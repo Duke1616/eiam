@@ -11,24 +11,28 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
+	"github.com/Duke1616/eiam/internal/service/user/passkey"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
 	"golang.org/x/sync/errgroup"
 )
 
 type Handler struct {
 	capability.IRegistry
-	userSvc   usersvc.IUserService
-	tenantSvc tenant.ITenantService
-	ldapSvc   ldap.LdapService
-	idsSvc    idsource.IService
-	sp        session.Provider
-	logger    *elog.Component
+	userSvc    usersvc.IUserService
+	tenantSvc  tenant.ITenantService
+	ldapSvc    ldap.LdapService
+	idsSvc     idsource.IService
+	passkeySvc passkey.IPasskeyService
+	sp         session.Provider
+	logger     *elog.Component
 }
 
 func NewUserHandler(
@@ -36,16 +40,18 @@ func NewUserHandler(
 	tenantSvc tenant.ITenantService,
 	ldapSvc ldap.LdapService,
 	idsSvc idsource.IService,
+	passkeySvc passkey.IPasskeyService,
 	sp session.Provider,
 ) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("iam", "user", "用户管理"),
-		userSvc:   userSvc,
-		tenantSvc: tenantSvc,
-		ldapSvc:   ldapSvc,
-		idsSvc:    idsSvc,
-		sp:        sp,
-		logger:    elog.DefaultLogger,
+		IRegistry:  capability.NewRegistry("iam", "user", "用户管理"),
+		userSvc:    userSvc,
+		tenantSvc:  tenantSvc,
+		ldapSvc:    ldapSvc,
+		idsSvc:     idsSvc,
+		passkeySvc: passkeySvc,
+		sp:         sp,
+		logger:     elog.DefaultLogger,
 	}
 }
 
@@ -59,6 +65,10 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	g.GET("/oidc/render", ginx.W(h.OIDCAuthURL))
 	// OIDC 回调必须公开：飞书服务器回调时不携带用户登录态
 	g.GET("/oidc/callback", ginx.W(h.OIDCCallback))
+
+	// Passkey 登录流程
+	g.POST("/passkey/login/start", ginx.W(h.PasskeyLoginStart))
+	g.POST("/passkey/login/finish", ginx.W(h.PasskeyLoginFinish))
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
@@ -109,6 +119,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	// 【核心：自服务接口】切换租户不需要管理权限，只需拥有该租户的 Membership 即可
 	g.POST("/switch-tenant", ginx.B[SwitchTenantRequest](h.SwitchTenant))
+
+	// Passkey 注册流程 (个人自服务)
+	g.POST("/passkey/register/start", ginx.W(h.PasskeyRegisterStart))
+	g.POST("/passkey/register/finish", ginx.W(h.PasskeyRegisterFinish))
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -185,25 +199,25 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx
 	return ginx.Result{
 		Msg: "成功切换至新租户空间",
 		Data: RetrieveUser{
-			User:    ToUserVO(u),
-			Tenants: ToTenantVOs(tenants),
+			User:            ToUserVO(u),
+			Tenants:         ToTenantVOs(tenants),
+			CurrentTenantID: req.TenantID,
 		},
 	}, nil
 }
 
 // handleLoginResult 统一处理登录后的路由决策
 func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult) (ginx.Result, error) {
-	if err := h.issueSession(ctx, result.User.ID, result.User.Username,
-		strconv.FormatInt(result.TenantID, 10)); err != nil {
+	if err := h.issueSession(ctx, result.User.ID, result.User.Username, result.TenantID); err != nil {
 		return ErrInternalServer, err
 	}
 
 	return ginx.Result{
 		Msg: fmt.Sprintf("登录成功，欢迎回来：%s", result.User.Username),
 		Data: RetrieveUser{
-			User:             ToUserVO(result.User),
-			Tenants:          ToTenantVOs(result.Tenants),
-			MustSelectTenant: len(result.Tenants) > 1,
+			User:            ToUserVO(result.User),
+			Tenants:         ToTenantVOs(result.Tenants),
+			CurrentTenantID: result.TenantID,
 		},
 	}, nil
 }
@@ -321,10 +335,13 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrUserNotFound, err
 	}
 
+	tenantID, _ := sess.Get(ctx.Request.Context(), "tenant_id").AsInt64()
+
 	return ginx.Result{
 		Data: RetrieveUser{
-			User:    ToUserVO(u),
-			Tenants: ToTenantVOs(tenants),
+			User:            ToUserVO(u),
+			Tenants:         ToTenantVOs(tenants),
+			CurrentTenantID: tenantID,
 		},
 	}, nil
 }
@@ -343,10 +360,10 @@ func (h *Handler) Logout(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 // issueSession 统一颁发（或刷新）JWT，tenantID=0 代表临时凭证，等待选择
-func (h *Handler) issueSession(ctx *ginx.Context, uid int64, username string, tenantID string) error {
+func (h *Handler) issueSession(ctx *ginx.Context, uid int64, username string, tenantID int64) error {
 	_, err := session.NewSessionBuilder(ctx, uid).
 		SetJwtData(map[string]string{
-			"tenant_id": tenantID,
+			"tenant_id": strconv.FormatInt(tenantID, 10),
 			"username":  username,
 		}).
 		SetSessData(map[string]any{
@@ -399,24 +416,22 @@ func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, err
 		}, nil
 	}
 
-	// 3. 超管特权装饰：批量标识这些用户中，哪些已经入驻了当前管理空间（或已入驻任意空间）
+	// 3. 超管特权装饰：批量标识这些用户中，哪些已经入驻了当前管理空间
 	userIDs := slice.Map(users, func(idx int, src domain.User) int64 {
 		return src.ID
 	})
 
-	// 这里的 FindMembershipsByUserIds 会返回用户与租户的关联关系
-	memberMap, _ := h.tenantSvc.FindMembershipsByUserIds(ctx.Request.Context(), userIDs)
+	// 按 (userIDs, currentTid) 精确查，避免系统空间下被趟户插件豁免后拿到其他租户记录
+	memberMap, _ := h.tenantSvc.CheckUsersInTenant(ctx.Request.Context(), userIDs, currentTid)
 
 	return ginx.Result{
 		Data: RetrieveUsers[UserMemberVO]{
 			Total: total,
 			Users: slice.Map(users, func(idx int, src domain.User) UserMemberVO {
-				m, ok := memberMap[src.ID]
-				isMember := ok && m.TenantID == currentTid
+				isMember := memberMap[src.ID]
 				return UserMemberVO{
-					User:          ToUserVO(src),
-					IsMember:      &isMember,
-					IsSystemSpace: currentTid == ctxutil.SystemTenantID,
+					User:     ToUserVO(src),
+					IsMember: &isMember,
 				}
 			}),
 		},
@@ -583,4 +598,125 @@ func (h *Handler) ManageIdentities(ctx *ginx.Context, req ManageIdentitiesReques
 	}
 
 	return ginx.Result{Msg: "外部身份治理信息已更新"}, nil
+}
+
+func (h *Handler) PasskeyRegisterStart(ctx *ginx.Context) (ginx.Result, error) {
+	sess, err := session.Get(ctx)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	u, err := h.userSvc.GetById(ctx.Request.Context(), sess.Claims().Uid)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	options, sessionData, err := h.passkeySvc.BeginRegistration(ctx.Request.Context(), u)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	token := uuid.New().String()
+	err = h.userSvc.SetPasskeyState(ctx.Request.Context(), token, *sessionData)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{Data: map[string]any{
+		"options":       options,
+		"session_token": token,
+	}}, nil
+}
+
+func (h *Handler) PasskeyRegisterFinish(ctx *ginx.Context) (ginx.Result, error) {
+	sess, err := session.Get(ctx)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	u, err := h.userSvc.GetById(ctx.Request.Context(), sess.Claims().Uid)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	token := ctx.GetHeader("X-Passkey-Session")
+	if token == "" {
+		return ErrInvalidInput, fmt.Errorf("请求头缺少 X-Passkey-Session")
+	}
+
+	sessionData, err := h.userSvc.GetPasskeyState(ctx.Request.Context(), token)
+	if err != nil {
+		return ErrInternalServer, fmt.Errorf("注册会话已过期或不存在")
+	}
+
+	parsedResponse, err := protocol.ParseCredentialCreationResponse(ctx.Request)
+	if err != nil {
+		return ErrInvalidInput, err
+	}
+
+	err = h.passkeySvc.FinishRegistration(ctx.Request.Context(), u, sessionData, parsedResponse)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{Msg: "Passkey 注册成功"}, nil
+}
+
+func (h *Handler) PasskeyLoginStart(ctx *ginx.Context) (ginx.Result, error) {
+	sources, err := h.idsSvc.List(ctx.Request.Context())
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	config, found := slice.Find(sources, func(src domain.IdentitySource) bool {
+		return src.Type == domain.PASSKEY && src.Enabled
+	})
+	if !found {
+		return ErrInternalServer, fmt.Errorf("Passkey 身份源未启用")
+	}
+
+	options, sessionData, err := h.passkeySvc.BeginLogin(ctx.Request.Context(), config)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	token := uuid.New().String()
+	err = h.userSvc.SetPasskeyState(ctx.Request.Context(), token, *sessionData)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{Data: map[string]any{
+		"options":       options,
+		"session_token": token,
+	}}, nil
+}
+
+func (h *Handler) PasskeyLoginFinish(ctx *ginx.Context) (ginx.Result, error) {
+	token := ctx.GetHeader("X-Passkey-Session")
+	if token == "" {
+		return ErrInvalidInput, fmt.Errorf("请求头缺少 X-Passkey-Session")
+	}
+
+	sessionData, err := h.userSvc.GetPasskeyState(ctx.Request.Context(), token)
+	if err != nil {
+		return ErrInternalServer, fmt.Errorf("登录会话已过期或不存在")
+	}
+
+	parsedResponse, err := protocol.ParseCredentialRequestResponse(ctx.Request)
+	if err != nil {
+		return ErrInvalidInput, err
+	}
+
+	u, err := h.passkeySvc.FinishLogin(ctx.Request.Context(), sessionData, parsedResponse)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	result, err := h.userSvc.LoginWithoutPassword(ctx.Request.Context(), u.ID)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return h.handleLoginResult(ctx, result)
 }

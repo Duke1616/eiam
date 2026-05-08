@@ -38,6 +38,8 @@ type ITenantService interface {
 	GetByID(ctx context.Context, id int64) (domain.Tenant, error)
 	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
 	FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error)
+	// CheckUsersInTenant 批量判断一组用户是否已入驻指定租户，返回 map[userID]bool
+	CheckUsersInTenant(ctx context.Context, userIds []int64, tenantId int64) (map[int64]bool, error)
 	// BatchInitPersonalTenant 批量为用户初始化个人空间
 	BatchInitPersonalTenant(ctx context.Context, users []domain.User) error
 	// ListMembers 获取租户下成员列表
@@ -233,6 +235,24 @@ func (s *tenantService) FindMembershipsByUserIds(ctx context.Context, userIds []
 		res[m.UserID] = m
 	}
 
+	return res, nil
+}
+
+// CheckUsersInTenant 批量判断用户是否入驻指定租户。
+// 为避免超管在系统空间下被租户插件豁免后拿到多租户记录导致判断错乱，
+// 这里使用专门的按 (userIDs, tenantID) 精确查询接口。
+func (s *tenantService) CheckUsersInTenant(ctx context.Context, userIds []int64, tenantId int64) (map[int64]bool, error) {
+	res := make(map[int64]bool, len(userIds))
+	if len(userIds) == 0 {
+		return res, nil
+	}
+	ms, err := s.repo.FindMembershipsByUsersAndTenant(ctx, userIds, tenantId)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range ms {
+		res[m.UserID] = true
+	}
 	return res, nil
 }
 

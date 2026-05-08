@@ -17,6 +17,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
+	"github.com/Duke1616/eiam/internal/service/user/passkey"
 	"github.com/Duke1616/eiam/internal/web/identity_source"
 	permission2 "github.com/Duke1616/eiam/internal/web/permission"
 	policy2 "github.com/Duke1616/eiam/internal/web/policy"
@@ -62,7 +63,8 @@ func InitApp() (*App, error) {
 	client := InitRedisSearch()
 	redisearchLdapUserCache := InitLdapUserCache(client)
 	ldapService := ldap.NewLdapService(iUserRepository, iTenantService, iService, redisearchLdapUserCache)
-	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, provider)
+	iPasskeyService := passkey.NewPasskeyService(iUserRepository)
+	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, iPasskeyService, provider)
 	iSubjectRegistry := InitSearchSubjectProviders(iRoleService, iUserService)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)

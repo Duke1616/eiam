@@ -41,6 +41,8 @@ type ITenantRepository interface {
 	GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error)
 	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
 	FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error)
+	// FindMembershipsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系
+	FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]domain.Membership, error)
 }
 
 type TenantRepository struct {
@@ -187,6 +189,17 @@ func (r *TenantRepository) toDomainMembership(m dao.Membership) domain.Membershi
 
 func (r *TenantRepository) FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error) {
 	ms, err := r.dao.FindMembershipsByUserIds(ctx, userIds)
+	if err != nil {
+		return nil, err
+	}
+
+	return slice.Map(ms, func(idx int, m dao.Membership) domain.Membership {
+		return r.toDomainMembership(m)
+	}), nil
+}
+
+func (r *TenantRepository) FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]domain.Membership, error) {
+	ms, err := r.dao.FindMembershipsByUsersAndTenant(ctx, userIds, tenantId)
 	if err != nil {
 		return nil, err
 	}

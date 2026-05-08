@@ -13,13 +13,14 @@ import (
 	tenantsvc "github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
+	"github.com/Duke1616/eiam/internal/service/user/passkey"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
-	"github.com/Duke1616/eiam/internal/web/user"
+	userhdl "github.com/Duke1616/eiam/internal/web/user"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
 )
@@ -75,6 +76,7 @@ func InitApp() (*App, error) {
 
 		// Services
 		usersvc.NewUserService,
+		passkey.NewPasskeyService,
 		ldap.NewLdapService,
 		tenantsvc.NewTenantService,
 		role.NewRoleService,
@@ -85,7 +87,7 @@ func InitApp() (*App, error) {
 		InitIdentitySourceService,
 
 		// Handlers
-		user.NewUserHandler,
+		userhdl.NewUserHandler,
 		policy.NewHandler,
 		tenanthdl.NewHandler,
 		resourcehdl.NewHandler,

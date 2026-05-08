@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
@@ -69,6 +69,10 @@ type IUserRepository interface {
 	SetBindState(ctx context.Context, token string, ident domain.OidcIdentity) error
 	// GetBindState 获取并删除临时绑定状态
 	GetBindState(ctx context.Context, token string) (domain.OidcIdentity, error)
+	// SetPasskeyState 存储 WebAuthn 握手过程中的挑战值与会话上下文
+	SetPasskeyState(ctx context.Context, token string, data webauthn.SessionData) error
+	// GetPasskeyState 获取并删除 Passkey 状态，防止重放攻击
+	GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error)
 }
 
 type userRepository struct {
@@ -493,14 +497,13 @@ func (repo *userRepository) SetBindState(ctx context.Context, token string, iden
 }
 
 func (repo *userRepository) GetBindState(ctx context.Context, token string) (domain.OidcIdentity, error) {
-	val, err := repo.cache.GetBindState(ctx, token)
-	if err != nil {
-		return domain.OidcIdentity{}, err
-	}
+	return repo.cache.GetBindState(ctx, token)
+}
 
-	var ident domain.OidcIdentity
-	if err = json.Unmarshal([]byte(val), &ident); err != nil {
-		return domain.OidcIdentity{}, err
-	}
-	return ident, nil
+func (repo *userRepository) SetPasskeyState(ctx context.Context, token string, data webauthn.SessionData) error {
+	return repo.cache.SetPasskeyState(ctx, token, data)
+}
+
+func (repo *userRepository) GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error) {
+	return repo.cache.GetPasskeyState(ctx, token)
 }

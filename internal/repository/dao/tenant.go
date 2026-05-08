@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/pkg/gormx"
+	"github.com/ecodeclub/ekit/slice"
 	"gorm.io/gorm"
 )
 
@@ -39,10 +41,10 @@ type ITenantDAO interface {
 	DeleteMembership(ctx context.Context, tenantID, userID int64) error
 	// GetMembership 精确查询特定租户下特定用户的入驻信息
 	GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error)
-	// GetMembershipByUserId 查询用户在当前操作语境下的入驻信息
-	GetMembershipByUserId(ctx context.Context, userId int64) (Membership, error)
 	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
 	FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error)
+	// FindMembershipsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系
+	FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error)
 	// FindTenantsByIDs 根据 ID 列表批量检索租户详情
 	FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error)
 	// FindTenantIDsByUserId 查询指定用户所属的所有租户 ID 列表
@@ -128,13 +130,8 @@ func (d *TenantDAO) DeleteMembership(ctx context.Context, tenantID, userID int64
 
 func (d *TenantDAO) GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error) {
 	var m Membership
-	err := d.db.WithContext(ctx).Where("tenant_id = ? AND user_id = ?", tenantId, userId).First(&m).Error
-	return m, err
-}
-
-func (d *TenantDAO) GetMembershipByUserId(ctx context.Context, userId int64) (Membership, error) {
-	var m Membership
-	err := d.db.WithContext(ctx).Where("user_id = ?", userId).First(&m).Error
+	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).
+		Where("tenant_id = ? AND user_id = ?", tenantId, userId).First(&m).Error
 	return m, err
 }
 
@@ -143,7 +140,20 @@ func (d *TenantDAO) FindMembershipsByUserIds(ctx context.Context, userIds []int6
 	if len(userIds) == 0 {
 		return ms, nil
 	}
-	err := d.db.WithContext(ctx).Where("user_id IN ?", userIds).Find(&ms).Error
+	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Where("user_id IN ?", userIds).Find(&ms).Error
+	return ms, err
+}
+
+// FindMembershipsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系，
+// 防止超管在系统空间下被趟户插件豁免后拿到多租户记录导致判断错乱
+func (d *TenantDAO) FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error) {
+	var ms []Membership
+	if len(userIds) == 0 {
+		return ms, nil
+	}
+	err := d.db.WithContext(ctx).
+		Where("user_id IN ? AND tenant_id = ?", userIds, tenantId).
+		Find(&ms).Error
 	return ms, err
 }
 
@@ -187,21 +197,19 @@ func (d *TenantDAO) Delete(ctx context.Context, id int64) error {
 
 func (d *TenantDAO) FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error) {
 	var ms []Membership
-	err := d.db.WithContext(ctx).Select("tenant_id").Where("user_id = ?", userId).Find(&ms).Error
+	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Select("tenant_id").Where("user_id = ?", userId).Find(&ms).Error
 	if err != nil {
 		return nil, err
 	}
 
-	ids := make([]int64, 0, len(ms))
-	for _, m := range ms {
-		ids = append(ids, m.TenantID)
-	}
-	return ids, nil
+	return slice.Map(ms, func(idx int, src Membership) int64 {
+		return src.TenantID
+	}), nil
 }
 
 func (d *TenantDAO) FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error) {
 	var ts []Tenant
-	err := d.db.WithContext(ctx).Where("id IN ?", ids).Find(&ts).Error
+	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Where("id IN ?", ids).Find(&ts).Error
 	return ts, err
 }
 
@@ -218,7 +226,7 @@ func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, ti
 		Where("membership.user_id = ?", userID)
 
 	// 2. 将子查询注入主查询：直接覆盖到 tenant 的 ctime 字段中
-	query := d.db.WithContext(ctx).Model(&Tenant{}).
+	query := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Model(&Tenant{}).
 		Select("*, (?) AS ctime", subQueryExpr)
 
 	// 构造子查询，用于过滤出该用户有关联记录的租户 ID

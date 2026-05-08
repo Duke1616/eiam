@@ -44,17 +44,24 @@ type User struct {
 }
 
 // UserMemberVO 组合了用户基础信息与当前租户的成员状态
+// 用于在用户列表/详情中展示该用户与当前查看租户的关系
 type UserMemberVO struct {
 	User
-	IsMember      *bool `json:"is_member,omitempty"`
-	IsSystemSpace bool  `json:"is_system_space,omitempty"`
+	// IsMember 表示该用户是否已入驻当前查看的租户（tenant_id 来自请求上下文）。
+	// 注意：批量查询(List)时依赖 memberMap 的转换，若用户在多个租户中有入驻关系，
+	// map[int64]Membership 只会保留最后一条记录，可能导致 IsMember 判断错误。
+	IsMember *bool `json:"is_member,omitempty"`
+
+	// 是不是在系统租户下
+	IsSystemSpace bool `json:"is_system_space"`
 }
 
 type Identity struct {
-	Provider   string     `json:"provider"`
-	LdapInfo   LdapInfo   `json:"ldap_info,omitempty"`
-	WechatInfo WechatInfo `json:"wechat_info,omitempty"`
-	FeishuInfo FeishuInfo `json:"feishu_info,omitempty"`
+	Provider    string      `json:"provider"`
+	LdapInfo    LdapInfo    `json:"ldap_info,omitempty"`
+	WechatInfo  WechatInfo  `json:"wechat_info,omitempty"`
+	FeishuInfo  FeishuInfo  `json:"feishu_info,omitempty"`
+	PasskeyInfo PasskeyInfo `json:"passkey_info,omitempty"`
 }
 
 type LdapInfo struct {
@@ -69,6 +76,19 @@ type FeishuInfo struct {
 	OpenID  string `json:"open_id"`
 	UnionID string `json:"union_id"`
 	UserID  string `json:"user_id"`
+}
+
+type PasskeyInfo struct {
+	ID              string `json:"id"`
+	AttestationType string `json:"attestation_type"`
+}
+
+type PasskeyLoginFinishRequest struct {
+	Credential any `json:"credential"`
+}
+
+type PasskeyRegisterFinishRequest struct {
+	Credential any `json:"credential"`
 }
 
 // Tenant 空间展示对象
@@ -97,6 +117,7 @@ type RetrieveUsers[T any] struct {
 type RetrieveUser struct {
 	User             User     `json:"user"`
 	Tenants          []Tenant `json:"tenants"`
+	CurrentTenantID  int64    `json:"current_tenant_id"`
 	MustSelectTenant bool     `json:"must_select_tenant"`
 	MustBind         bool     `json:"must_bind"`
 	BindToken        string   `json:"bind_token,omitempty"`
