@@ -56,7 +56,9 @@ type IUserRepository interface {
 	// FindUsersByUsernames 批量根据用户名查找用户
 	FindUsersByUsernames(ctx context.Context, usernames []string) ([]domain.User, error)
 	// DeleteIdentity 解除身份源绑定
-	DeleteIdentity(ctx context.Context, uid int64, provider string) error
+	DeleteIdentity(ctx context.Context, uid int64, provider, identityID string) error
+	// FindIdentitiesByUserID 根据用户 ID 和提供商查询身份列表
+	FindIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]domain.UserIdentity, error)
 	// IsLocked 检查用户是否处于锁定状态
 	IsLocked(ctx context.Context, username string) (bool, error)
 	// IncFailedAttempts 增加失败次数，若达到阈值则自动锁定
@@ -361,8 +363,8 @@ func (repo *userRepository) Delete(ctx context.Context, id int64) error {
 	return repo.dao.Delete(ctx, id)
 }
 
-func (repo *userRepository) DeleteIdentity(ctx context.Context, uid int64, provider string) error {
-	return repo.dao.DeleteIdentity(ctx, uid, provider)
+func (repo *userRepository) DeleteIdentity(ctx context.Context, uid int64, provider, identityID string) error {
+	return repo.dao.DeleteIdentity(ctx, uid, provider, identityID)
 }
 
 func (repo *userRepository) BatchUpsert(ctx context.Context, users []domain.User) error {
@@ -506,4 +508,24 @@ func (repo *userRepository) SetPasskeyState(ctx context.Context, token string, d
 
 func (repo *userRepository) GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error) {
 	return repo.cache.GetPasskeyState(ctx, token)
+}
+
+func (repo *userRepository) FindIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]domain.UserIdentity, error) {
+	uis, err := repo.dao.FindIdentitiesByUserID(ctx, userID, provider)
+	if err != nil {
+		return nil, err
+	}
+
+	return lo.Map(uis, func(id dao.UserIdentity, _ int) domain.UserIdentity {
+		identity := domain.UserIdentity{
+			UserID:     id.UserID,
+			Provider:   id.Provider,
+			IdentityID: id.IdentityID,
+		}
+		switch id.Provider {
+		case "passkey":
+			identity.PasskeyInfo = domain.PasskeyInfo(id.PasskeyInfo.Val)
+		}
+		return identity
+	}), nil
 }

@@ -78,11 +78,6 @@ type FeishuInfo struct {
 	UserID  string `json:"user_id"`
 }
 
-type PasskeyInfo struct {
-	ID              string `json:"id"`
-	AttestationType string `json:"attestation_type"`
-}
-
 type PasskeyLoginFinishRequest struct {
 	Credential any `json:"credential"`
 }
@@ -171,8 +166,9 @@ func (req BindIdentityRequest) ToDomain() domain.UserIdentity {
 }
 
 type UnbindIdentityRequest struct {
-	UserID   int64  `json:"user_id"`
-	Provider string `json:"provider"`
+	UserID     int64  `json:"user_id"`
+	Provider   string `json:"provider"`
+	IdentityID string `json:"identity_id"`
 }
 
 type ManageIdentitiesRequest struct {
@@ -202,4 +198,17 @@ type UserVO struct {
 	Email    string `json:"email"`
 	Status   uint8  `json:"status"`
 	Source   string `json:"source"`
+}
+
+type IdentityVo struct {
+	Provider    string      `json:"provider"`
+	IdentityID  string      `json:"identity_id"`
+	PasskeyInfo PasskeyInfo `json:"passkey_info,omitempty"`
+}
+
+type PasskeyInfo struct {
+	SignCount      uint32 `json:"sign_count"`
+	BackupEligible bool   `json:"backup_eligible"`
+	BackupState    bool   `json:"backup_state"`
+	Nickname       string `json:"nickname"`
 }

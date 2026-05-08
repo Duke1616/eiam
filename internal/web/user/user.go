@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
@@ -21,6 +22,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -117,6 +119,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/identity/manage", h.Capability("治理外部身份", "manage_identity").
 		Handle(ginx.B[ManageIdentitiesRequest](h.ManageIdentities)),
 	)
+	g.GET("/identity/list", ginx.W(h.ListMyIdentities))
 	// 【核心：自服务接口】切换租户不需要管理权限，只需拥有该租户的 Membership 即可
 	g.POST("/switch-tenant", ginx.B[SwitchTenantRequest](h.SwitchTenant))
 
@@ -580,7 +583,7 @@ func (h *Handler) BindIdentity(ctx *ginx.Context, req BindIdentityRequest) (ginx
 }
 
 func (h *Handler) UnbindIdentity(ctx *ginx.Context, req UnbindIdentityRequest) (ginx.Result, error) {
-	err := h.userSvc.UnbindIdentity(ctx.Request.Context(), req.UserID, req.Provider)
+	err := h.userSvc.UnbindIdentity(ctx.Request.Context(), req.UserID, req.Provider, req.IdentityID)
 	if err != nil {
 		return ErrInternalServer, err
 	}
@@ -603,6 +606,7 @@ func (h *Handler) ManageIdentities(ctx *ginx.Context, req ManageIdentitiesReques
 	return ginx.Result{Msg: "外部身份治理信息已更新"}, nil
 }
 
+// PasskeyRegisterStart 获取 Passkey 注册挑战 (Challenge)
 func (h *Handler) PasskeyRegisterStart(ctx *ginx.Context) (ginx.Result, error) {
 	sess, err := session.Get(ctx)
 	if err != nil {
@@ -631,6 +635,7 @@ func (h *Handler) PasskeyRegisterStart(ctx *ginx.Context) (ginx.Result, error) {
 	}}, nil
 }
 
+// PasskeyRegisterFinish 验证并完成 Passkey 绑定
 func (h *Handler) PasskeyRegisterFinish(ctx *ginx.Context) (ginx.Result, error) {
 	sess, err := session.Get(ctx)
 	if err != nil {
@@ -659,12 +664,13 @@ func (h *Handler) PasskeyRegisterFinish(ctx *ginx.Context) (ginx.Result, error) 
 
 	err = h.passkeySvc.FinishRegistration(ctx.Request.Context(), u, sessionData, parsedResponse)
 	if err != nil {
-		return ErrInternalServer, err
+		return ErrUnauthorized, err
 	}
 
 	return ginx.Result{Msg: "Passkey 注册成功"}, nil
 }
 
+// PasskeyLoginStart 获取 Passkey 登录挑战
 func (h *Handler) PasskeyLoginStart(ctx *ginx.Context) (ginx.Result, error) {
 	sources, err := h.idsSvc.List(ctx.Request.Context())
 	if err != nil {
@@ -695,6 +701,7 @@ func (h *Handler) PasskeyLoginStart(ctx *ginx.Context) (ginx.Result, error) {
 	}}, nil
 }
 
+// PasskeyLoginFinish 验证 Passkey 签名并执行登录
 func (h *Handler) PasskeyLoginFinish(ctx *ginx.Context) (ginx.Result, error) {
 	token := ctx.GetHeader("X-Passkey-Session")
 	if token == "" {
@@ -713,7 +720,7 @@ func (h *Handler) PasskeyLoginFinish(ctx *ginx.Context) (ginx.Result, error) {
 
 	u, err := h.passkeySvc.FinishLogin(ctx.Request.Context(), sessionData, parsedResponse)
 	if err != nil {
-		return ErrInternalServer, err
+		return ErrUnauthorized, err
 	}
 
 	result, err := h.userSvc.LoginWithoutPassword(ctx.Request.Context(), u.ID)
@@ -722,4 +729,62 @@ func (h *Handler) PasskeyLoginFinish(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return h.handleLoginResult(ctx, result)
+}
+
+// ListMyIdentities 获取当前用户绑定的身份列表 (支持按 provider 过滤)
+func (h *Handler) ListMyIdentities(ctx *ginx.Context) (ginx.Result, error) {
+	sess, err := session.Get(ctx)
+	if err != nil || sess == nil {
+		return ErrUnauthenticated, err
+	}
+
+	provider, _ := ctx.Query("provider").AsString()
+	uis, err := h.userSvc.ListIdentitiesByUserID(ctx.Request.Context(), sess.Claims().Uid, provider)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{
+		Data: lo.Map(uis, func(id domain.UserIdentity, _ int) IdentityVo {
+			return IdentityVo{
+				Provider:   id.Provider,
+				IdentityID: id.IdentityID,
+				PasskeyInfo: PasskeyInfo{
+					SignCount:      id.PasskeyInfo.SignCount,
+					BackupEligible: id.PasskeyInfo.BackupEligible,
+					BackupState:    id.PasskeyInfo.BackupState,
+					Nickname:       id.PasskeyInfo.Nickname,
+				},
+			}
+		}),
+	}, nil
+}
+
+// getDeviceName 根据 User-Agent 简单识别设备类型
+func (h *Handler) getDeviceName(ua string) string {
+	if ua == "" {
+		return "未知设备"
+	}
+
+	// 优先级识别
+	if strings.Contains(ua, "iPhone") {
+		return "iPhone"
+	}
+	if strings.Contains(ua, "iPad") {
+		return "iPad"
+	}
+	if strings.Contains(ua, "Android") {
+		return "Android Device"
+	}
+	if strings.Contains(ua, "Macintosh") {
+		return "MacBook / iMac"
+	}
+	if strings.Contains(ua, "Windows") {
+		return "Windows PC"
+	}
+	if strings.Contains(ua, "Linux") {
+		return "Linux PC"
+	}
+
+	return "通用认证器"
 }

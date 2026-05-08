@@ -70,6 +70,7 @@ type PasskeyInfo struct {
 	SignCount       uint32
 	BackupEligible  bool
 	BackupState     bool
+	Nickname        string
 }
 
 func (u User) GetPrimaryIdentity(provider string) (UserIdentity, bool) {

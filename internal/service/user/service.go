@@ -27,17 +27,25 @@ type IUserService interface {
 	// LoginWithoutPassword 用于 Passkey/OIDC 等已经完成身份验证的场景，直接执行登录后置逻辑
 	LoginWithoutPassword(ctx context.Context, uid int64) (domain.LoginResult, error)
 
+	// GetById 根据 ID 获取用户信息
 	GetById(ctx context.Context, id int64) (domain.User, error)
+	// GetByUsername 根据用户名获取用户信息
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
 
+	// SwitchTenant 切换当前激活的租户空间
 	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error)
+	// Invite 邀请用户进入系统
 	Invite(ctx context.Context, username string) error
 
+	// List 分页获取用户列表，支持模糊搜索
 	List(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, int64, error)
+	// Search 全量搜索用户
 	Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.User, error)
 	// CountSearch 根据关键词获取符合条件的用户总数
 	CountSearch(ctx context.Context, keyword string) (int64, error)
+	// Update 更新用户基本资料 (Profile)
 	Update(ctx context.Context, u domain.User) (int64, error)
+	// UpdatePassword 修改用户本地密码
 	UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
@@ -49,7 +57,10 @@ type IUserService interface {
 	// BindIdentity 手动绑定外部身份
 	BindIdentity(ctx context.Context, uid int64, identity domain.UserIdentity) error
 	// UnbindIdentity 解除外部身份绑定
-	UnbindIdentity(ctx context.Context, uid int64, provider string) error
+	UnbindIdentity(ctx context.Context, userID int64, provider, identityID string) error
+	// ListIdentitiesByUserID 获取用户的身份绑定列表
+	ListIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]domain.UserIdentity, error)
+	// ManageIdentities 批量治理/管理用户的外部身份绑定关系
 	ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error
 	// LoginWithExternal 处理外部身份源登录 (JIT 开户)
 	LoginWithExternal(ctx context.Context, ident domain.OidcIdentity) (domain.LoginResult, error)
@@ -517,8 +528,8 @@ func (s *userService) BindIdentity(ctx context.Context, uid int64, identity doma
 	return s.repo.SaveIdentity(ctx, identity)
 }
 
-func (s *userService) UnbindIdentity(ctx context.Context, uid int64, provider string) error {
-	return s.repo.DeleteIdentity(ctx, uid, provider)
+func (s *userService) UnbindIdentity(ctx context.Context, userID int64, provider, identityID string) error {
+	return s.repo.DeleteIdentity(ctx, userID, provider, identityID)
 }
 
 func (s *userService) ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error {
@@ -526,7 +537,7 @@ func (s *userService) ManageIdentities(ctx context.Context, uid int64, identitie
 		id.UserID = uid
 		// 策略：如果标识为空，则解绑；否则绑定/更新
 		if id.IdentityKey() == "" {
-			if err := s.repo.DeleteIdentity(ctx, uid, id.Provider); err != nil {
+			if err := s.repo.DeleteIdentity(ctx, uid, id.Provider, id.IdentityKey()); err != nil {
 				return err
 			}
 		} else {
@@ -644,4 +655,9 @@ func (s *userService) SetPasskeyState(ctx context.Context, token string, data we
 
 func (s *userService) GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error) {
 	return s.repo.GetPasskeyState(ctx, token)
+}
+
+// ListIdentitiesByUserID 获取用户的身份绑定列表
+func (s *userService) ListIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]domain.UserIdentity, error) {
+	return s.repo.FindIdentitiesByUserID(ctx, userID, provider)
 }

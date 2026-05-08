@@ -8,6 +8,8 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/google/uuid"
+	"github.com/sumup/aaguids-go"
 )
 
 type IPasskeyService interface {
@@ -81,26 +83,44 @@ func (s *passkeyService) FinishRegistration(ctx context.Context, user domain.Use
 		return err
 	}
 
-	// 存入 Identity Hub（统一的 UserIdentity 表）
-	newIdentity := domain.UserIdentity{
+	// 4. 执行物理存储（Identity Hub）
+	ident := domain.UserIdentity{
 		UserID:     user.ID,
 		Provider:   "passkey",
 		IdentityID: base64.RawURLEncoding.EncodeToString(credential.ID),
 		PasskeyInfo: domain.PasskeyInfo{
-			PublicKey:       credential.PublicKey,
-			AttestationType: credential.AttestationType,
-			AAGUID:          credential.Authenticator.AAGUID,
-			SignCount:       credential.Authenticator.SignCount,
-			BackupEligible:  credential.Flags.BackupEligible,
-			BackupState:     credential.Flags.BackupState,
+			PublicKey:      credential.PublicKey,
+			AAGUID:         credential.Authenticator.AAGUID,
+			SignCount:      credential.Authenticator.SignCount,
+			BackupEligible: credential.Flags.BackupEligible,
+			BackupState:    credential.Flags.BackupState,
+			Nickname:       s.determineDeviceName(credential.Authenticator.AAGUID, "通用认证器"),
 		},
 	}
+	return s.repo.SaveIdentity(ctx, ident)
+}
 
-	return s.repo.BatchUpsert(ctx, []domain.User{{
-		ID:         user.ID,
-		Username:   user.Username,
-		Identities: []domain.UserIdentity{newIdentity},
-	}})
+// determineDeviceName 根据 AAGUID 识别设备厂商
+func (s *passkeyService) determineDeviceName(rawAaguid []byte, defaultName string) string {
+	if len(rawAaguid) == 0 {
+		return defaultName
+	}
+
+	// 转换为带有连字符的标准 UUID 格式 (aaguids-go 库的要求)
+	u, err := uuid.FromBytes(rawAaguid)
+	if err != nil {
+		return defaultName
+	}
+	aaguidStr := u.String()
+
+	// 使用第三方库查询元数据
+	metadata, err := aaguids.GetMetadata(aaguidStr)
+	if err == nil && metadata.Name != "" {
+		return metadata.Name
+	}
+
+	// 如果库里查不到，说明可能是某些私有认证器，保持原来的 UA 识别名称
+	return defaultName
 }
 
 // BeginLogin 生成登录挑战码（Discoverable 模式，不需要知道用户名）

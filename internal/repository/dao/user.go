@@ -65,7 +65,9 @@ type IUserDAO interface {
 	// UpdateLastLoginAt 更新最近登录时间
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
 	// DeleteIdentity 解除外部身份绑定
-	DeleteIdentity(ctx context.Context, userID int64, provider string) error
+	DeleteIdentity(ctx context.Context, userID int64, provider, identityID string) error
+	// FindIdentitiesByUserID 根据用户 ID 和提供商查询身份列表
+	FindIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]UserIdentity, error)
 	// FindByIdentity 根据身份标识查找关联的完整用户
 	FindByIdentity(ctx context.Context, provider, identityID string) (User, UserProfile, []UserIdentity, error)
 }
@@ -143,6 +145,7 @@ type PasskeyInfo struct {
 	SignCount       uint32 `json:"sign_count"`
 	BackupEligible  bool   `json:"backup_eligible"`
 	BackupState     bool   `json:"backup_state"`
+	Nickname        string `json:"nickname"`
 }
 
 func (dao *userDAO) Create(ctx context.Context, u User) (int64, error) {
@@ -427,10 +430,12 @@ func (dao *userDAO) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int
 	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("last_login_at", loginAt).Error
 }
 
-func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider string) error {
-	return dao.db.WithContext(ctx).
-		Where("user_id = ? AND provider = ?", userID, provider).
-		Delete(&UserIdentity{}).Error
+func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider, identityID string) error {
+	db := dao.db.WithContext(ctx).Where("user_id = ? AND provider = ?", userID, provider)
+	if identityID != "" {
+		db = db.Where("identity_id = ?", identityID)
+	}
+	return db.Delete(&UserIdentity{}).Error
 }
 
 func (dao *userDAO) FindByIdentity(ctx context.Context, provider, identityID string) (User, UserProfile, []UserIdentity, error) {
@@ -457,4 +462,14 @@ func (dao *userDAO) FindByIdentity(ctx context.Context, provider, identityID str
 	_ = dao.db.WithContext(ctx).Where("user_id = ?", u.ID).Find(&ids).Error
 
 	return u, up, ids, nil
+}
+
+func (dao *userDAO) FindIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]UserIdentity, error) {
+	var uis []UserIdentity
+	db := dao.db.WithContext(ctx).Where("user_id = ?", userID)
+	if provider != "" {
+		db = db.Where("provider = ?", provider)
+	}
+	err := db.Find(&uis).Error
+	return uis, err
 }

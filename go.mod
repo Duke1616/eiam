@@ -142,6 +142,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/sumup/aaguids-go v0.0.0-20251118110537-5a71322266f2 // indirect
 	github.com/tchap/go-patricia/v2 v2.3.3 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.6 // indirect
