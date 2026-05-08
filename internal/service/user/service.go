@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Duke1616/ecmdb/pkg/cryptox"
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
@@ -16,6 +17,8 @@ import (
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
+	"github.com/pquerna/otp"
+	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
 )
@@ -71,17 +74,32 @@ type IUserService interface {
 
 	SetPasskeyState(ctx context.Context, token string, data webauthn.SessionData) error
 	GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error)
+
+	// GenerateTOTPSetup 生成 TOTP 密钥和二维码
+	GenerateTOTPSetup(ctx context.Context, userID int64) (string, string, error)
+	// VerifyAndEnableTOTP 验证并开启 TOTP MFA
+	VerifyAndEnableTOTP(ctx context.Context, userID int64, code, secret string) error
+	// DisableMFA 关闭 MFA
+	DisableMFA(ctx context.Context, userID int64) error
+	// VerifyLoginMFA 登录时的 MFA 校验
+	VerifyLoginMFA(ctx context.Context, token, code string) (domain.LoginResult, error)
 }
+
+var (
+	ErrMfaAttemptsExhausted = errors.New("MFA 验证失败次数过多")
+	ErrMfaTokenNotFound     = errors.New("MFA 令牌已过期或无效")
+)
 
 type userService struct {
 	repo                repository.IUserRepository
 	tenantSvc           tenant.ITenantService
 	idsSvc              idsource.IService
 	credentialProviders map[string]domain.CredentialProvider
+	cm                  *cryptox.CryptoManager
 }
 
 func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService,
-	idsSvc idsource.IService, ps []domain.CredentialProvider) IUserService {
+	idsSvc idsource.IService, ps []domain.CredentialProvider, cm *cryptox.CryptoManager) IUserService {
 	registry := make(map[string]domain.CredentialProvider, len(ps))
 	for _, p := range ps {
 		registry[p.Name()] = p
@@ -91,6 +109,7 @@ func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantServic
 		tenantSvc:           tenantSvc,
 		idsSvc:              idsSvc,
 		credentialProviders: registry,
+		cm:                  cm,
 	}
 }
 
@@ -135,7 +154,7 @@ func (s *userService) loginLocal(ctx context.Context, username, password string)
 		_ = s.repo.ClearFailedAttempts(ctx, username)
 	}
 
-	return s.postLogin(ctx, u)
+	return s.postLogin(ctx, u, false)
 }
 
 func (s *userService) LoginWithoutPassword(ctx context.Context, uid int64) (domain.LoginResult, error) {
@@ -144,7 +163,7 @@ func (s *userService) LoginWithoutPassword(ctx context.Context, uid int64) (doma
 		return domain.LoginResult{}, err
 	}
 
-	return s.postLogin(ctx, u)
+	return s.postLogin(ctx, u, false)
 }
 
 // dummyHash 用于防时序攻击的哑元哈希值，避免用户不存在时直接跳过 bcrypt 导致响应时间差异
@@ -170,7 +189,7 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 	// 老用户：进入后续租户路由
 	localUser, err := s.repo.FindUserByIdentity(ctx, providerName, id.IdentityKey())
 	if err == nil {
-		return s.postLogin(ctx, localUser)
+		return s.postLogin(ctx, localUser, false)
 	}
 
 	// 新用户：JIT 开荒 → 创建账号 + 绑定身份 + 初始化个人空间
@@ -191,7 +210,7 @@ func (s *userService) loginExternal(ctx context.Context, providerName string, us
 }
 
 // postLogin 认证后公共逻辑：查询租户列表并决定路由
-func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.LoginResult, error) {
+func (s *userService) postLogin(ctx context.Context, u domain.User, skipMfa bool) (domain.LoginResult, error) {
 	_ = s.repo.UpdateLastLoginAt(ctx, u.ID, time.Now().UnixMilli())
 
 	// 1. 获取并确保用户至少属于一个租户
@@ -206,12 +225,23 @@ func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.Logi
 	// 3. 加载租户空间下的完整名片
 	u, _ = s.repo.FindById(ctxutil.WithTenantID(ctx, activeTid), u.ID)
 
-	return domain.LoginResult{
+	res := domain.LoginResult{
 		User:             u,
 		TenantID:         activeTid,
 		Tenants:          tenants,
 		MustSelectTenant: len(tenants) > 1,
-	}, nil
+	}
+
+	// 4. MFA 校验拦截
+	if !skipMfa && u.MfaType != "" {
+		res.MfaRequired = true
+		// 生成临时令牌并存入缓存 (有效期 5 分钟)
+		token := uuid.New().String()
+		_ = s.repo.SetMfaToken(ctx, token, u.ID)
+		res.MfaToken = token
+	}
+
+	return res, nil
 }
 
 // getOrInitTenants 获取租户列表，若为空则执行延迟初始化 (JIT)
@@ -253,7 +283,7 @@ func (s *userService) LoginWithExternal(ctx context.Context, ident domain.OidcId
 	// 1. 精确匹配：通过 Provider + IdentityID 直接查找
 	u, err := s.repo.FindUserByIdentity(ctx, identity.Provider, identity.IdentityKey())
 	if err == nil {
-		return s.postLogin(ctx, u)
+		return s.postLogin(ctx, u, false)
 	}
 
 	// 2. 检查该身份源是否允许 JIT 开户
@@ -274,7 +304,7 @@ func (s *userService) LoginWithExternal(ctx context.Context, ident domain.OidcId
 		return domain.LoginResult{}, fmt.Errorf("绑定外部身份失败: %w", err)
 	}
 
-	return s.postLogin(ctx, u)
+	return s.postLogin(ctx, u, false)
 }
 
 // provisionJITUser 即时创建用户（Just-In-Time Provisioning）
@@ -660,4 +690,105 @@ func (s *userService) GetPasskeyState(ctx context.Context, token string) (webaut
 // ListIdentitiesByUserID 获取用户的身份绑定列表
 func (s *userService) ListIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]domain.UserIdentity, error) {
 	return s.repo.FindIdentitiesByUserID(ctx, userID, provider)
+}
+
+func (s *userService) GenerateTOTPSetup(ctx context.Context, userID int64) (string, string, error) {
+	u, err := s.repo.FindById(ctx, userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "EIAM",
+		AccountName: u.Username,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	return key.Secret(), key.URL(), nil
+}
+
+func (s *userService) VerifyAndEnableTOTP(ctx context.Context, userID int64, code, secret string) error {
+	valid, err := totp.ValidateCustom(code, secret, time.Now().UTC(), totp.ValidateOpts{
+		Period:    30,
+		Skew:      1, // 允许上下 1 个周期（±30秒）的误差
+		Digits:    otp.DigitsSix,
+		Algorithm: otp.AlgorithmSHA1,
+	})
+	if err != nil || !valid {
+		return errors.New("验证码不正确")
+	}
+
+	u, err := s.repo.FindById(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	u.MfaType = "totp"
+	encrypted, err := s.cm.Encrypt(secret)
+	if err != nil {
+		return fmt.Errorf("加密 MFA 密钥失败: %w", err)
+	}
+	u.MfaSecret = encrypted
+
+	_, err = s.repo.Update(ctx, u)
+	return err
+}
+
+func (s *userService) DisableMFA(ctx context.Context, userID int64) error {
+	u, err := s.repo.FindById(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	u.MfaType = ""
+	u.MfaSecret = ""
+
+	_, err = s.repo.Update(ctx, u)
+	return err
+}
+
+func (s *userService) VerifyLoginMFA(ctx context.Context, token, code string) (domain.LoginResult, error) {
+	// 1. 从缓存获取 UID
+	uid, err := s.repo.GetMfaToken(ctx, token)
+	if err != nil {
+		return domain.LoginResult{}, ErrMfaTokenNotFound
+	}
+
+	// 2. 获取用户信息
+	u, err := s.repo.FindById(ctx, uid)
+	if err != nil {
+		return domain.LoginResult{}, err
+	}
+
+	// 2.1 解密 MFA 密钥
+	secret, err := s.cm.Decrypt(u.MfaSecret)
+	if err != nil {
+		return domain.LoginResult{}, fmt.Errorf("解密 MFA 密钥失败: %w", err)
+	}
+
+	// 3. 校验 TOTP
+	valid, err := totp.ValidateCustom(code, secret, time.Now().UTC(), totp.ValidateOpts{
+		Period:    30,
+		Skew:      1,
+		Digits:    otp.DigitsSix,
+		Algorithm: otp.AlgorithmSHA1,
+	})
+
+	if err != nil || !valid {
+		// 校验失败，增加失败次数记录
+		attempts, _ := s.repo.IncMfaAttempts(ctx, token)
+		if attempts >= 5 {
+			_ = s.repo.DeleteMfaToken(ctx, token)
+			return domain.LoginResult{}, ErrMfaAttemptsExhausted
+		}
+		return domain.LoginResult{}, fmt.Errorf("验证码错误 (剩余尝试次数: %d)", 5-attempts)
+	}
+
+	// 4. 校验成功，销毁令牌
+	_ = s.repo.DeleteMfaToken(ctx, token)
+
+	// 5. 执行后续登录逻辑
+	return s.postLogin(ctx, u, true)
 }

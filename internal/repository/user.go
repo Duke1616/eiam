@@ -75,6 +75,11 @@ type IUserRepository interface {
 	SetPasskeyState(ctx context.Context, token string, data webauthn.SessionData) error
 	// GetPasskeyState 获取并删除 Passkey 状态，防止重放攻击
 	GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error)
+	// SetMfaToken 存储 MFA 临时令牌 (5分钟过期)
+	SetMfaToken(ctx context.Context, token string, userID int64) error
+	GetMfaToken(ctx context.Context, token string) (int64, error)
+	DeleteMfaToken(ctx context.Context, token string) error
+	IncMfaAttempts(ctx context.Context, token string) (int, error)
 }
 
 type userRepository struct {
@@ -327,6 +332,8 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 		Email:       u.Email,
 		Status:      domain.Status(u.Status),
 		Source:      domain.Source(u.Source),
+		MfaType:     u.MfaType,
+		MfaSecret:   u.MfaSecret,
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,
@@ -348,7 +355,9 @@ func (repo *userRepository) toEntity(u domain.User) dao.User {
 		Password:    u.Password,
 		Email:       u.Email,
 		Status:      int(u.Status),
-		Source:      u.Source.String(),
+		Source:      string(u.Source),
+		MfaType:     u.MfaType,
+		MfaSecret:   u.MfaSecret,
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,
@@ -528,4 +537,20 @@ func (repo *userRepository) FindIdentitiesByUserID(ctx context.Context, userID i
 		}
 		return identity
 	}), nil
+}
+
+func (repo *userRepository) SetMfaToken(ctx context.Context, token string, userID int64) error {
+	return repo.cache.SetMfaToken(ctx, token, userID)
+}
+
+func (repo *userRepository) GetMfaToken(ctx context.Context, token string) (int64, error) {
+	return repo.cache.GetMfaToken(ctx, token)
+}
+
+func (repo *userRepository) DeleteMfaToken(ctx context.Context, token string) error {
+	return repo.cache.DeleteMfaToken(ctx, token)
+}
+
+func (repo *userRepository) IncMfaAttempts(ctx context.Context, token string) (int, error) {
+	return repo.cache.IncMfaAttempts(ctx, token)
 }

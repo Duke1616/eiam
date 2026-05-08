@@ -30,6 +30,10 @@ func ToUserVO(u domain.User) User {
 				UnionID: src.FeishuInfo.UnionID,
 				UserID:  src.FeishuInfo.UserID,
 			},
+			PasskeyInfo: PasskeyInfo{
+				Nickname:  src.PasskeyInfo.Nickname,
+				SignCount: src.PasskeyInfo.SignCount,
+			},
 		}
 	})
 
@@ -45,6 +49,8 @@ func ToUserVO(u domain.User) User {
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,
+		MfaType:     u.MfaType,
+		MfaBound:    u.MfaType != "",
 		Identities:  identities,
 	}
 }

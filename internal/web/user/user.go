@@ -71,6 +71,9 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	// Passkey 登录流程
 	g.POST("/passkey/login/start", ginx.W(h.PasskeyLoginStart))
 	g.POST("/passkey/login/finish", ginx.W(h.PasskeyLoginFinish))
+
+	// 登录阶段的 MFA 校验
+	g.POST("/login/mfa/verify", ginx.B[MfaLoginVerifyRequest](h.LoginMFAVerify))
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
@@ -126,6 +129,11 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	// Passkey 注册流程 (个人自服务)
 	g.POST("/passkey/register/start", ginx.W(h.PasskeyRegisterStart))
 	g.POST("/passkey/register/finish", ginx.W(h.PasskeyRegisterFinish))
+
+	// MFA 二次验证 (设置类接口，需登录)
+	g.GET("/mfa/totp/setup", ginx.W(h.MfaTotpSetup))
+	g.POST("/mfa/totp/bind", ginx.B[MfaTotpBindRequest](h.MfaTotpBind))
+	g.POST("/mfa/disable", ginx.W(h.MfaDisable))
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -211,6 +219,19 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx
 
 // handleLoginResult 统一处理登录后的路由决策
 func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult) (ginx.Result, error) {
+	// 如果需要 MFA，则不签发正式 Session，直接返回 MFA 令牌
+	if result.MfaRequired {
+		return ginx.Result{
+			Msg: "请进行二次验证",
+			Data: RetrieveUser{
+				User:            ToUserVO(result.User),
+				MfaRequired:     true,
+				MfaToken:        result.MfaToken,
+				CurrentTenantID: result.TenantID,
+			},
+		}, nil
+	}
+
 	if err := h.issueSession(ctx, result.User.ID, result.User.Username, result.TenantID); err != nil {
 		return ErrInternalServer, err
 	}
@@ -787,4 +808,63 @@ func (h *Handler) getDeviceName(ua string) string {
 	}
 
 	return "通用认证器"
+}
+
+func (h *Handler) MfaTotpSetup(ctx *ginx.Context) (ginx.Result, error) {
+	sess, err := session.Get(ctx)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	secret, qrcodeURL, err := h.userSvc.GenerateTOTPSetup(ctx.Request.Context(), sess.Claims().Uid)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{
+		Data: MfaTotpSetupResponse{
+			Secret:    secret,
+			QRCodeURL: qrcodeURL,
+		},
+	}, nil
+}
+
+func (h *Handler) MfaTotpBind(ctx *ginx.Context, req MfaTotpBindRequest) (ginx.Result, error) {
+	sess, err := session.Get(ctx)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	err = h.userSvc.VerifyAndEnableTOTP(ctx.Request.Context(), sess.Claims().Uid, req.Code, req.Secret)
+	if err != nil {
+		return ginx.Result{Code: 400, Msg: err.Error()}, nil
+	}
+
+	return ginx.Result{Msg: "MFA 开启成功"}, nil
+}
+
+func (h *Handler) MfaDisable(ctx *ginx.Context) (ginx.Result, error) {
+	sess, err := session.Get(ctx)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	err = h.userSvc.DisableMFA(ctx.Request.Context(), sess.Claims().Uid)
+	if err != nil {
+		return ErrInternalServer, err
+	}
+
+	return ginx.Result{Msg: "MFA 已关闭"}, nil
+}
+
+func (h *Handler) LoginMFAVerify(ctx *ginx.Context, req MfaLoginVerifyRequest) (ginx.Result, error) {
+	result, err := h.userSvc.VerifyLoginMFA(ctx.Request.Context(), req.MfaToken, req.Code)
+	if err != nil {
+		if errors.Is(err, usersvc.ErrMfaAttemptsExhausted) || errors.Is(err, usersvc.ErrMfaTokenNotFound) {
+			return ErrMfaTokenInvalid, nil
+		}
+		return ginx.Result{Code: 401, Msg: err.Error()}, nil
+	}
+
+	return h.handleLoginResult(ctx, result)
 }

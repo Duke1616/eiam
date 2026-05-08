@@ -31,6 +31,8 @@ type User struct {
 	Email       string
 	Status      Status
 	Source      Source
+	MfaType     string
+	MfaSecret   string
 	Ctime       int64
 	Utime       int64
 	LastLoginAt int64

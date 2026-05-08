@@ -39,6 +39,7 @@ var BaseSet = wire.NewSet(
 
 	// 其他全局配置注入
 	InitServiceConfig,
+	InitCryptoManager,
 )
 
 func InitLdapUserCache(conn *redisearch.Client) cache.RedisearchLdapUserCache {

@@ -15,6 +15,7 @@ var (
 	// ErrUnauthenticated 权限/安全类错误
 	ErrUnauthenticated = ginx.Result{Code: 4010401, Msg: "请先登录主体账号"}
 	ErrSessionInvalid  = ginx.Result{Code: 4010402, Msg: "会话失效，请重新登录"}
+	ErrMfaTokenInvalid = ginx.Result{Code: 4010403, Msg: "验证失败次数过多，请重新登录"}
 
 	// ErrUserNotFound 资源类错误
 	ErrUserNotFound = ginx.Result{Code: 4010501, Msg: "未找到该用户信息"}

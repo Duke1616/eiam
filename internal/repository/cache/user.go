@@ -35,6 +35,14 @@ type IUserCache interface {
 	SetPasskeyState(ctx context.Context, token string, data webauthn.SessionData) error
 	// GetPasskeyState 获取并删除 Passkey 状态，防止重放攻击
 	GetPasskeyState(ctx context.Context, token string) (webauthn.SessionData, error)
+	// SetMfaToken 存储 MFA 临时令牌 (5分钟过期)
+	SetMfaToken(ctx context.Context, token string, userID int64) error
+	// GetMfaToken 获取 MFA 临时令牌对应的 UID
+	GetMfaToken(ctx context.Context, token string) (int64, error)
+	// DeleteMfaToken 销毁 MFA 临时令牌
+	DeleteMfaToken(ctx context.Context, token string) error
+	// IncMfaAttempts 增加 MFA 验证失败次数
+	IncMfaAttempts(ctx context.Context, token string) (int, error)
 }
 
 // userCache 实现了 IUserCache 接口
@@ -107,4 +115,34 @@ func (c *userCache) failedAttemptsKey(username string) string {
 
 func (c *userCache) lockoutKey(username string) string {
 	return fmt.Sprintf("eiam:user:lockout:%s", username)
+}
+
+func (c *userCache) SetMfaToken(ctx context.Context, token string, userID int64) error {
+	key := fmt.Sprintf("mfa_token:%s", token)
+	return c.client.Set(ctx, key, userID, 5*time.Minute).Err()
+}
+
+func (c *userCache) GetMfaToken(ctx context.Context, token string) (int64, error) {
+	key := fmt.Sprintf("mfa_token:%s", token)
+	return c.client.Get(ctx, key).Int64()
+}
+
+func (c *userCache) DeleteMfaToken(ctx context.Context, token string) error {
+	key := fmt.Sprintf("mfa_token:%s", token)
+	attemptKey := fmt.Sprintf("mfa_attempts:%s", token)
+	_ = c.client.Del(ctx, attemptKey)
+	return c.client.Del(ctx, key).Err()
+}
+
+func (c *userCache) IncMfaAttempts(ctx context.Context, token string) (int, error) {
+	key := fmt.Sprintf("mfa_attempts:%s", token)
+	val, err := c.client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	// 设置 5 分钟过期
+	if val == 1 {
+		c.client.Expire(ctx, key, 5*time.Minute)
+	}
+	return int(val), nil
 }

@@ -57,9 +57,10 @@ func InitApp() (*App, error) {
 	iIdentitySourceDAO := dao.NewIdentitySourceDAO(db)
 	iIdentitySourceCache := cache.NewIdentitySourceCache(cmdable)
 	iIdentitySourceRepository := repository.NewIdentitySourceRepository(iIdentitySourceDAO, iIdentitySourceCache)
-	iService := InitIdentitySourceService(iIdentitySourceRepository)
+	cryptoManager := InitCryptoManager()
+	iService := InitIdentitySourceService(iIdentitySourceRepository, cryptoManager)
 	v2 := InitCredentialProviders(iService)
-	iUserService := user.NewUserService(iUserRepository, iTenantService, iService, v2)
+	iUserService := user.NewUserService(iUserRepository, iTenantService, iService, v2, cryptoManager)
 	client := InitRedisSearch()
 	redisearchLdapUserCache := InitLdapUserCache(client)
 	ldapService := ldap.NewLdapService(iUserRepository, iTenantService, iService, redisearchLdapUserCache)
@@ -108,6 +109,7 @@ var BaseSet = wire.NewSet(
 	InitCredentialProviders,
 
 	InitServiceConfig,
+	InitCryptoManager,
 )
 
 func InitLdapUserCache(conn *redisearch.Client) cache.RedisearchLdapUserCache {

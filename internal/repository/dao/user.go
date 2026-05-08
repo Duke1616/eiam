@@ -98,6 +98,8 @@ type User struct {
 	Email       string `gorm:"type:varchar(128)"`
 	Status      int    `gorm:"type:tinyint"`
 	Source      string `gorm:"type:varchar(32);index;comment:'身份来源: local, ldap等'"`
+	MfaType     string `gorm:"type:varchar(16);comment:'MFA类型: totp等'"`
+	MfaSecret   string `gorm:"type:varchar(255);comment:'MFA密钥'"`
 	Ctime       int64  `gorm:"comment:'创建时间'"`
 	Utime       int64  `gorm:"comment:'更新时间'"`
 	LastLoginAt int64  `gorm:"comment:'最近登录时间'"`
@@ -161,7 +163,7 @@ func (dao *userDAO) Update(ctx context.Context, u User, ui UserProfile) (int64, 
 		now := time.Now().UnixMilli()
 		u.Utime = now
 		// 1. 更新全球 User 基础资料
-		if err := tx.Model(&u).Updates(&u).Error; err != nil {
+		if err := tx.Model(&u).Select("*").Updates(&u).Error; err != nil {
 			return err
 		}
 

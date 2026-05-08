@@ -40,6 +40,8 @@ type User struct {
 	Utime       int64  `json:"utime"`
 	LastLoginAt int64  `json:"last_login_at"`
 
+	MfaType    string     `json:"mfa_type"`
+	MfaBound   bool       `json:"mfa_bound"`
 	Identities []Identity `json:"identities"`
 }
 
@@ -116,6 +118,8 @@ type RetrieveUser struct {
 	MustSelectTenant bool     `json:"must_select_tenant"`
 	MustBind         bool     `json:"must_bind"`
 	BindToken        string   `json:"bind_token,omitempty"`
+	MfaRequired      bool     `json:"mfa_required"`
+	MfaToken         string   `json:"mfa_token,omitempty"`
 }
 
 type UpdatePasswordRequest struct {
@@ -211,4 +215,19 @@ type PasskeyInfo struct {
 	BackupEligible bool   `json:"backup_eligible"`
 	BackupState    bool   `json:"backup_state"`
 	Nickname       string `json:"nickname"`
+}
+
+type MfaTotpSetupResponse struct {
+	Secret    string `json:"secret"`
+	QRCodeURL string `json:"qrcode_url"`
+}
+
+type MfaTotpBindRequest struct {
+	Code   string `json:"code"`
+	Secret string `json:"secret"`
+}
+
+type MfaLoginVerifyRequest struct {
+	MfaToken string `json:"mfa_token"`
+	Code     string `json:"code"`
 }
