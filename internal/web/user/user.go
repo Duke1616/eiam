@@ -215,9 +215,12 @@ func (h *Handler) handleLoginResult(ctx *ginx.Context, result domain.LoginResult
 	return ginx.Result{
 		Msg: fmt.Sprintf("登录成功，欢迎回来：%s", result.User.Username),
 		Data: RetrieveUser{
-			User:            ToUserVO(result.User),
-			Tenants:         ToTenantVOs(result.Tenants),
-			CurrentTenantID: result.TenantID,
+			User:             ToUserVO(result.User),
+			Tenants:          ToTenantVOs(result.Tenants),
+			CurrentTenantID:  result.TenantID,
+			MustSelectTenant: result.MustSelectTenant,
+			MustBind:         result.MustBind,
+			BindToken:        result.BindToken,
 		},
 	}, nil
 }

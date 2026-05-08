@@ -85,17 +85,20 @@ func (s *passkeyService) FinishRegistration(ctx context.Context, user domain.Use
 	newIdentity := domain.UserIdentity{
 		UserID:     user.ID,
 		Provider:   "passkey",
-		IdentityID: base64.StdEncoding.EncodeToString(credential.ID),
+		IdentityID: base64.RawURLEncoding.EncodeToString(credential.ID),
 		PasskeyInfo: domain.PasskeyInfo{
 			PublicKey:       credential.PublicKey,
 			AttestationType: credential.AttestationType,
 			AAGUID:          credential.Authenticator.AAGUID,
 			SignCount:       credential.Authenticator.SignCount,
+			BackupEligible:  credential.Flags.BackupEligible,
+			BackupState:     credential.Flags.BackupState,
 		},
 	}
 
 	return s.repo.BatchUpsert(ctx, []domain.User{{
 		ID:         user.ID,
+		Username:   user.Username,
 		Identities: []domain.UserIdentity{newIdentity},
 	}})
 }
@@ -126,7 +129,7 @@ func (s *passkeyService) FinishLogin(ctx context.Context, sessionData webauthn.S
 	// 2. 定义 User 查找 Handler（Discoverable Login 核心回调）
 	// NOTE: 浏览器会带回 rawID 和 userHandle，我们用 rawID 在 Identity Hub 中反查用户
 	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
-		credentialID := base64.StdEncoding.EncodeToString(rawID)
+		credentialID := base64.RawURLEncoding.EncodeToString(rawID)
 		u, findErr := s.repo.FindByIdentity(ctx, "passkey", credentialID)
 		if findErr != nil {
 			return nil, findErr
@@ -144,10 +147,12 @@ func (s *passkeyService) FinishLogin(ctx context.Context, sessionData webauthn.S
 	user := waUser.(*WebauthnUser).user
 	user.Identities = waUser.(*WebauthnUser).credentials
 
-	credentialID := base64.StdEncoding.EncodeToString(credential.ID)
+	credentialID := base64.RawURLEncoding.EncodeToString(credential.ID)
 	for i := range user.Identities {
 		if user.Identities[i].Provider == "passkey" && user.Identities[i].IdentityID == credentialID {
 			user.Identities[i].PasskeyInfo.SignCount = credential.Authenticator.SignCount
+			user.Identities[i].PasskeyInfo.BackupEligible = credential.Flags.BackupEligible
+			user.Identities[i].PasskeyInfo.BackupState = credential.Flags.BackupState
 			break
 		}
 	}

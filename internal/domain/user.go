@@ -68,6 +68,8 @@ type PasskeyInfo struct {
 	AttestationType string
 	AAGUID          []byte
 	SignCount       uint32
+	BackupEligible  bool
+	BackupState     bool
 }
 
 func (u User) GetPrimaryIdentity(provider string) (UserIdentity, bool) {
@@ -121,6 +123,10 @@ type LoginResult struct {
 	// MFA/Passkey 流程支持
 	MfaRequired bool   `json:"mfa_required"`
 	MfaToken    string `json:"mfa_token"`
+
+	MustSelectTenant bool   `json:"must_select_tenant"`
+	MustBind         bool   `json:"must_bind"`
+	BindToken        string `json:"bind_token"`
 }
 
 // CredentialProvider 外部凭证提供者策略接口。

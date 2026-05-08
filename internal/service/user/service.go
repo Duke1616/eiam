@@ -195,7 +195,12 @@ func (s *userService) postLogin(ctx context.Context, u domain.User) (domain.Logi
 	// 3. 加载租户空间下的完整名片
 	u, _ = s.repo.FindById(ctxutil.WithTenantID(ctx, activeTid), u.ID)
 
-	return domain.LoginResult{User: u, TenantID: activeTid, Tenants: tenants}, nil
+	return domain.LoginResult{
+		User:             u,
+		TenantID:         activeTid,
+		Tenants:          tenants,
+		MustSelectTenant: len(tenants) > 1,
+	}, nil
 }
 
 // getOrInitTenants 获取租户列表，若为空则执行延迟初始化 (JIT)

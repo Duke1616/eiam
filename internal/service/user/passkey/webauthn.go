@@ -43,11 +43,15 @@ func (u *WebauthnUser) WebAuthnCredentials() []webauthn.Credential {
 		if c.Provider != "passkey" {
 			continue
 		}
-		rawID, _ := base64.StdEncoding.DecodeString(c.IdentityID)
+		rawID, _ := base64.RawURLEncoding.DecodeString(c.IdentityID)
 		res = append(res, webauthn.Credential{
 			ID:              rawID,
 			PublicKey:       c.PasskeyInfo.PublicKey,
 			AttestationType: c.PasskeyInfo.AttestationType,
+			Flags: webauthn.CredentialFlags{
+				BackupEligible: c.PasskeyInfo.BackupEligible,
+				BackupState:    c.PasskeyInfo.BackupState,
+			},
 			Authenticator: webauthn.Authenticator{
 				AAGUID:    c.PasskeyInfo.AAGUID,
 				SignCount: c.PasskeyInfo.SignCount,

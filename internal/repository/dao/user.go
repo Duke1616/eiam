@@ -141,6 +141,8 @@ type PasskeyInfo struct {
 	AttestationType string `json:"attestation_type"`
 	AAGUID          []byte `json:"aaguid"`
 	SignCount       uint32 `json:"sign_count"`
+	BackupEligible  bool   `json:"backup_eligible"`
+	BackupState     bool   `json:"backup_state"`
 }
 
 func (dao *userDAO) Create(ctx context.Context, u User) (int64, error) {
