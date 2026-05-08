@@ -2,26 +2,25 @@ package user
 
 import "github.com/Duke1616/eiam/internal/domain"
 
+// BaseUserRequest 用户基础信息请求
+type BaseUserRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Nickname string `json:"nickname"`
+	Avatar   string `json:"avatar"`
+	JobTitle string `json:"job_title"`
+	Phone    string `json:"phone"`
+}
+
 // SignupRequest 注册请求
 type SignupRequest struct {
-	Username        string `json:"username"`
+	BaseUserRequest
 	Password        string `json:"password"`
 	ConfirmPassword string `json:"confirm_password"`
-	Email           string `json:"email"`
-	Nickname        string `json:"nickname"`
-	Avatar          string `json:"avatar"`
-	JobTitle        string `json:"job_title"`
-	Phone           string `json:"phone"`
 }
 
-// LoginLdapRequest LDAP 登录请求
-type LoginLdapRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-// LoginSystemRequest 本地登录请求
-type LoginSystemRequest struct {
+// LoginRequest 登录请求（适用于 LDAP 和本地登录）
+type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -97,13 +96,8 @@ type Tenant struct {
 }
 
 type UpdateUserReq struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Nickname string `json:"nickname"`
-	Avatar   string `json:"avatar"`
-	JobTitle string `json:"job_title"`
-	Phone    string `json:"phone"`
+	ID int64 `json:"id"`
+	BaseUserRequest
 }
 
 type RetrieveUsers[T any] struct {
@@ -128,10 +122,15 @@ type UpdatePasswordRequest struct {
 	ConfirmPassword string `json:"confirm_password"`
 }
 
-type ListUserRequest struct {
+// BaseListRequest 分页列表请求
+type BaseListRequest struct {
 	Offset  int64  `json:"offset"`
 	Limit   int64  `json:"limit"`
 	Keyword string `json:"keyword"`
+}
+
+type ListUserRequest struct {
+	BaseListRequest
 }
 
 type SearchLdapUser struct {
@@ -142,9 +141,7 @@ type SearchLdapUser struct {
 
 type ListRoleUsersRequest struct {
 	RoleCode string `json:"role_code"`
-	Offset   int64  `json:"offset"`
-	Limit    int64  `json:"limit"`
-	Keyword  string `json:"keyword"`
+	BaseListRequest
 }
 
 type SyncLdapUserReq struct {
@@ -196,14 +193,6 @@ type SwitchTenantRequest struct {
 	TenantID int64 `json:"tenant_id"`
 }
 
-type UserVO struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Status   uint8  `json:"status"`
-	Source   string `json:"source"`
-}
-
 type IdentityVo struct {
 	Provider    string      `json:"provider"`
 	IdentityID  string      `json:"identity_id"`
@@ -225,6 +214,12 @@ type MfaTotpSetupResponse struct {
 type MfaTotpBindRequest struct {
 	Code   string `json:"code"`
 	Secret string `json:"secret"`
+}
+
+type ContinueLoginRequest struct {
+	SessionID   string         `json:"session_id"`
+	CurrentStep string         `json:"current_step"`
+	Data        map[string]any `json:"data"`
 }
 
 type MfaLoginVerifyRequest struct {

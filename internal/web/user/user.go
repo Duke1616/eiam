@@ -60,8 +60,8 @@ func NewUserHandler(
 func (h *Handler) PublicRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
 	g.POST("/signup", ginx.B[SignupRequest](h.Signup))
-	g.POST("/ldap/login", ginx.B[LoginLdapRequest](h.LoginLdap))
-	g.POST("/system/login", ginx.B[LoginSystemRequest](h.LoginSystem))
+	g.POST("/ldap/login", ginx.B[LoginRequest](h.LoginLdap))
+	g.POST("/system/login", ginx.B[LoginRequest](h.LoginSystem))
 
 	// OIDC 授权跳转：未登录用户触发，不需要登录态
 	g.GET("/oidc/render", ginx.W(h.OIDCAuthURL))
@@ -149,11 +149,11 @@ func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, err
 	return ginx.Result{Data: id}, nil
 }
 
-func (h *Handler) LoginLdap(ctx *ginx.Context, req LoginLdapRequest) (ginx.Result, error) {
+func (h *Handler) LoginLdap(ctx *ginx.Context, req LoginRequest) (ginx.Result, error) {
 	return h.executeLogin(ctx, "ldap", req.Username, req.Password)
 }
 
-func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginSystemRequest) (ginx.Result, error) {
+func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginRequest) (ginx.Result, error) {
 	return h.executeLogin(ctx, "local", req.Username, req.Password)
 }
 
