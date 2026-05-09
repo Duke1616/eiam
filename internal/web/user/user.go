@@ -186,7 +186,10 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx
 		return ErrTenantAccessDenied, err
 	}
 
-	// 2. 【核心录入点】：重新构建 Session 并注入新的租户 ID
+	// 2. 显式销毁旧 Session，确保切换后旧 Token 失效
+	_ = sess.Destroy(ctx.Request.Context())
+
+	// 3. 【核心录入点】：重新构建 Session 并注入新的租户 ID
 	// 使用 SessionBuilder 签发包含了租户信息的正式 JWT
 	_, err = session.NewSessionBuilder(ctx, uid).
 		SetJwtData(map[string]string{
