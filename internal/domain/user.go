@@ -133,7 +133,6 @@ type LoginResult struct {
 }
 
 // CredentialProvider 外部凭证提供者策略接口。
-// 专门负责处理“账号 + 密码”模式的外部身份核验，如 LDAP、外部数据库直连等。
 type CredentialProvider interface {
 	// Name 返回身份源唯一标识 (ldap 等)
 	Name() string

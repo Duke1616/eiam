@@ -7,7 +7,6 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/user/ldapx"
-	"github.com/ecodeclub/ekit/slice"
 )
 
 type DynamicLdapProvider struct {
@@ -35,20 +34,12 @@ func (d *DynamicLdapProvider) Authenticate(ctx context.Context, username, passwo
 }
 
 func (d *DynamicLdapProvider) getLDAPConfig(ctx context.Context) (domain.LDAPConfig, bool) {
-	sources, err := d.idsSvc.List(ctx)
+	source, err := d.idsSvc.FindEnabled(ctx, domain.LDAP)
 	if err != nil {
 		return domain.LDAPConfig{}, false
 	}
 
-	config, found := slice.Find(sources, func(src domain.IdentitySource) bool {
-		return src.Type == domain.LDAP && src.Enabled
-	})
-
-	if !found {
-		return domain.LDAPConfig{}, false
-	}
-
-	return config.LDAPConfig, true
+	return source.LDAPConfig, true
 }
 
 func (d *DynamicLdapProvider) toLdapxConfig(cfg domain.LDAPConfig) ldapx.Config {

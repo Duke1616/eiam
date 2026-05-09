@@ -11,7 +11,6 @@ import (
 	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user/ldapx"
-	"github.com/ecodeclub/ekit/slice"
 )
 
 type LdapService interface {
@@ -96,20 +95,12 @@ func (l *ldapService) Login(ctx context.Context, username, password string) (dom
 }
 
 func (l *ldapService) getLDAPConfig(ctx context.Context) (domain.LDAPConfig, bool) {
-	sources, err := l.idsSvc.List(ctx)
+	source, err := l.idsSvc.FindEnabled(ctx, domain.LDAP)
 	if err != nil {
 		return domain.LDAPConfig{}, false
 	}
 
-	config, found := slice.Find(sources, func(src domain.IdentitySource) bool {
-		return src.Type == domain.LDAP && src.Enabled
-	})
-
-	if !found {
-		return domain.LDAPConfig{}, false
-	}
-
-	return config.LDAPConfig, true
+	return source.LDAPConfig, true
 }
 
 func (l *ldapService) toLdapxConfig(cfg domain.LDAPConfig) ldapx.Config {

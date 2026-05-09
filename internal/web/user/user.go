@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
@@ -779,35 +778,6 @@ func (h *Handler) ListMyIdentities(ctx *ginx.Context) (ginx.Result, error) {
 			}
 		}),
 	}, nil
-}
-
-// getDeviceName 根据 User-Agent 简单识别设备类型
-func (h *Handler) getDeviceName(ua string) string {
-	if ua == "" {
-		return "未知设备"
-	}
-
-	// 优先级识别
-	if strings.Contains(ua, "iPhone") {
-		return "iPhone"
-	}
-	if strings.Contains(ua, "iPad") {
-		return "iPad"
-	}
-	if strings.Contains(ua, "Android") {
-		return "Android Device"
-	}
-	if strings.Contains(ua, "Macintosh") {
-		return "MacBook / iMac"
-	}
-	if strings.Contains(ua, "Windows") {
-		return "Windows PC"
-	}
-	if strings.Contains(ua, "Linux") {
-		return "Linux PC"
-	}
-
-	return "通用认证器"
 }
 
 func (h *Handler) MfaTotpSetup(ctx *ginx.Context) (ginx.Result, error) {

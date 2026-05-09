@@ -6,6 +6,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
+	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
@@ -24,11 +25,15 @@ type IPasskeyService interface {
 }
 
 type passkeyService struct {
-	repo repository.IUserRepository
+	repo   repository.IUserRepository
+	idsSvc idsource.IService
 }
 
-func NewPasskeyService(repo repository.IUserRepository) IPasskeyService {
-	return &passkeyService{repo: repo}
+func NewPasskeyService(repo repository.IUserRepository, idsSvc idsource.IService) IPasskeyService {
+	return &passkeyService{
+		repo:   repo,
+		idsSvc: idsSvc,
+	}
 }
 
 // getWebAuthnConfig 根据身份源配置构造 WebAuthn 实例
@@ -46,13 +51,20 @@ func (s *passkeyService) getWebAuthnConfig(config domain.PasskeyConfig) (*webaut
 	})
 }
 
+func (s *passkeyService) getPasskeyConfigFromDB(ctx context.Context) (domain.PasskeyConfig, error) {
+	source, err := s.idsSvc.FindEnabled(ctx, domain.PASSKEY)
+	if err != nil {
+		return domain.PasskeyConfig{}, err
+	}
+
+	return source.PasskeyConfig, nil
+}
+
 // BeginRegistration 生成注册挑战码，发送给前端浏览器
 func (s *passkeyService) BeginRegistration(ctx context.Context, user domain.User) (*protocol.CredentialCreation, *webauthn.SessionData, error) {
-	// TODO: 从数据库获取 Passkey 身份源配置，当前暂时硬编码
-	cfg := domain.PasskeyConfig{
-		RPID:      "localhost",
-		RPName:    "EIAM",
-		RPOrigins: []string{"http://localhost:5173"},
+	cfg, err := s.getPasskeyConfigFromDB(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	w, err := s.getWebAuthnConfig(cfg)
@@ -66,10 +78,9 @@ func (s *passkeyService) BeginRegistration(ctx context.Context, user domain.User
 
 // FinishRegistration 校验浏览器的注册响应，将公钥写入 Identity Hub
 func (s *passkeyService) FinishRegistration(ctx context.Context, user domain.User, sessionData webauthn.SessionData, response *protocol.ParsedCredentialCreationData) error {
-	cfg := domain.PasskeyConfig{
-		RPID:      "localhost",
-		RPName:    "EIAM",
-		RPOrigins: []string{"http://localhost:3333"},
+	cfg, err := s.getPasskeyConfigFromDB(ctx)
+	if err != nil {
+		return err
 	}
 
 	w, err := s.getWebAuthnConfig(cfg)
@@ -135,11 +146,9 @@ func (s *passkeyService) BeginLogin(ctx context.Context, identitySource domain.I
 
 // FinishLogin 校验浏览器的登录签名，根据 CredentialID 反查用户
 func (s *passkeyService) FinishLogin(ctx context.Context, sessionData webauthn.SessionData, response *protocol.ParsedCredentialAssertionData) (domain.User, error) {
-	// 1. 获取 Passkey 配置
-	cfg := domain.PasskeyConfig{
-		RPID:      "localhost",
-		RPName:    "EIAM",
-		RPOrigins: []string{"http://localhost:3333"},
+	cfg, err := s.getPasskeyConfigFromDB(ctx)
+	if err != nil {
+		return domain.User{}, err
 	}
 	w, err := s.getWebAuthnConfig(cfg)
 	if err != nil {

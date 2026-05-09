@@ -23,12 +23,14 @@ require (
 	github.com/gotomicro/ego v1.2.6
 	github.com/larksuite/oapi-sdk-go/v3 v3.6.1
 	github.com/open-policy-agent/opa v1.15.1
+	github.com/pquerna/otp v1.4.0
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/samber/lo v1.39.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/sumup/aaguids-go v0.0.0-20251118110537-5a71322266f2
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.50.0
 	golang.org/x/oauth2 v0.36.0
@@ -122,7 +124,6 @@ require (
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/pquerna/otp v1.4.0 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
@@ -144,7 +145,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/sumup/aaguids-go v0.0.0-20251118110537-5a71322266f2 // indirect
 	github.com/tchap/go-patricia/v2 v2.3.3 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.6 // indirect

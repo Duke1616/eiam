@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type IdentitySourceType string
 
@@ -109,4 +112,46 @@ type PasskeyConfig struct {
 	RPOrigins             []string `json:"rp_origins"`
 	AttestationPreference string   `json:"attestation_preference"`
 	UserVerification      string   `json:"user_verification"`
+}
+
+// BuildUserIdentity 根据外部 OIDC 身份标识构建内部 UserIdentity
+func (ident OidcIdentity) BuildUserIdentity() UserIdentity {
+	id := UserIdentity{Provider: ident.Provider}
+	switch ident.Provider {
+	case SourceFeishu.String():
+		id.FeishuInfo = FeishuInfo{
+			UserID:  getClaimString(ident.RawClaims, "user_id"),
+			UnionID: getClaimString(ident.RawClaims, "union_id"),
+			OpenID:  getClaimString(ident.RawClaims, "open_id"),
+		}
+		id.IdentityID = id.FeishuInfo.UserID
+	case SourceWechat.String():
+		id.WechatInfo = WechatInfo{UserID: ident.ExternalID}
+		id.IdentityID = ident.ExternalID
+	default:
+		id.IdentityID = ident.ExternalID
+	}
+	return id
+}
+
+func getClaimString(claims map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		v, ok := claims[key]
+		if !ok || v == nil {
+			continue
+		}
+
+		switch val := v.(type) {
+		case string:
+			if val != "" {
+				return val
+			}
+		case fmt.Stringer:
+			return val.String()
+		default:
+			return fmt.Sprint(val)
+		}
+	}
+
+	return ""
 }

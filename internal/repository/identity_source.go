@@ -25,6 +25,9 @@ type IIdentitySourceRepository interface {
 	// GetEnabledProviderTypes 获取所有已启用的登录提供商类型（用于登录页展示按钮/标签）
 	GetEnabledProviderTypes(ctx context.Context) ([]string, error)
 
+	// GetEnabledByType 获取指定类型且已启用的身份源列表
+	GetEnabledByType(ctx context.Context, sourceType domain.IdentitySourceType) ([]domain.IdentitySource, error)
+
 	// Delete 删除记录
 	Delete(ctx context.Context, id int64) error
 
@@ -106,6 +109,17 @@ func (r *identitySourceRepository) GetState(ctx context.Context, state string) (
 
 func (r *identitySourceRepository) ToggleEnabled(ctx context.Context, id int64) error {
 	return r.dao.ToggleEnabled(ctx, id)
+}
+
+func (r *identitySourceRepository) GetEnabledByType(ctx context.Context, sourceType domain.IdentitySourceType) ([]domain.IdentitySource, error) {
+	sources, err := r.dao.GetEnabledByType(ctx, string(sourceType))
+	if err != nil {
+		return nil, err
+	}
+
+	return lo.Map(sources, func(src dao.IdentitySource, _ int) domain.IdentitySource {
+		return r.toDomain(src)
+	}), nil
 }
 
 func (r *identitySourceRepository) toDao(src domain.IdentitySource) dao.IdentitySource {

@@ -64,7 +64,7 @@ func InitApp() (*App, error) {
 	client := InitRedisSearch()
 	redisearchLdapUserCache := InitLdapUserCache(client)
 	ldapService := ldap.NewLdapService(iUserRepository, iTenantService, iService, redisearchLdapUserCache)
-	iPasskeyService := passkey.NewPasskeyService(iUserRepository)
+	iPasskeyService := passkey.NewPasskeyService(iUserRepository, iService)
 	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, iPasskeyService, provider)
 	iSubjectRegistry := InitSearchSubjectProviders(iRoleService, iUserService)
 	iResourceDAO := dao.NewResourceDAO(db)
