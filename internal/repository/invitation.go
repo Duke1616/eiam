@@ -18,16 +18,16 @@ type IInvitationRepository interface {
 	// IncrUsedCount 原子增加邀请码使用次数
 	IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error)
 	// Delete 删除邀请码（软删除）
-	Delete(ctx context.Context, tenantID int64, code string) error
-	// ListByTenant 分页获取租户下的邀请码列表
-	ListByTenant(ctx context.Context, tenantID int64, offset, limit int) ([]domain.Invitation, int64, error)
+	Delete(ctx context.Context, code string) error
+	// List 分页获取租户下的邀请码列表
+	List(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error)
 	// UpdateStatus 更新邀请码状态
 	UpdateStatus(ctx context.Context, code string, status domain.InvitationStatus) error
 
 	// CreateJoinRequest 创建入驻申请
 	CreateJoinRequest(ctx context.Context, req domain.JoinRequest) (int64, error)
 	// ListJoinRequests 分页获取租户下的入驻申请
-	ListJoinRequests(ctx context.Context, tenantID int64, offset, limit int) ([]domain.JoinRequest, int64, error)
+	ListJoinRequests(ctx context.Context, offset, limit int) ([]domain.JoinRequest, int64, error)
 	// GetJoinRequestByID 根据 ID 获取申请记录
 	GetJoinRequestByID(ctx context.Context, id int64) (domain.JoinRequest, error)
 	// UpdateJoinRequestStatus 更新申请状态
@@ -76,18 +76,18 @@ func (r *invitationRepository) IncrUsedCount(ctx context.Context, code string, m
 	return r.cache.IncrUsedCount(ctx, code, maxUses)
 }
 
-func (r *invitationRepository) Delete(ctx context.Context, tenantID int64, code string) error {
+func (r *invitationRepository) Delete(ctx context.Context, code string) error {
 	// 尝试同步计数回 DB 再删除缓存
 	cached, err := r.cache.Get(ctx, code)
 	if err == nil {
 		_ = r.dao.UpdateUsedCount(ctx, code, cached.UsedCount)
 	}
 
-	_ = r.dao.Delete(ctx, tenantID, code)
-	return r.cache.Delete(ctx, tenantID, code)
+	_ = r.dao.Delete(ctx, code)
+	return r.cache.Delete(ctx, code)
 }
 
-func (r *invitationRepository) ListByTenant(ctx context.Context, tenantID int64, offset, limit int) ([]domain.Invitation, int64, error) {
+func (r *invitationRepository) List(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error) {
 	var (
 		eg    errgroup.Group
 		invs  []dao.Invitation
@@ -96,13 +96,13 @@ func (r *invitationRepository) ListByTenant(ctx context.Context, tenantID int64,
 
 	eg.Go(func() error {
 		var err error
-		invs, err = r.dao.ListByTenant(ctx, tenantID, offset, limit)
+		invs, err = r.dao.List(ctx, offset, limit)
 		return err
 	})
 
 	eg.Go(func() error {
 		var err error
-		total, err = r.dao.CountByTenant(ctx, tenantID)
+		total, err = r.dao.Count(ctx)
 		return err
 	})
 
@@ -132,10 +132,7 @@ func (r *invitationRepository) UpdateStatus(ctx context.Context, code string, st
 	}
 
 	if status == domain.InvitationStatusUsed || status == domain.InvitationStatusExpired {
-		inv, err := r.dao.GetByCode(ctx, code)
-		if err == nil {
-			return r.cache.Delete(ctx, inv.TenantId, code)
-		}
+		return r.cache.Delete(ctx, code)
 	}
 	return nil
 }
@@ -144,7 +141,7 @@ func (r *invitationRepository) CreateJoinRequest(ctx context.Context, req domain
 	return r.dao.InsertJoinRequest(ctx, r.toDaoJoinRequest(req))
 }
 
-func (r *invitationRepository) ListJoinRequests(ctx context.Context, tenantID int64, offset, limit int) ([]domain.JoinRequest, int64, error) {
+func (r *invitationRepository) ListJoinRequests(ctx context.Context, offset, limit int) ([]domain.JoinRequest, int64, error) {
 	var (
 		eg    errgroup.Group
 		reqs  []dao.JoinRequest
@@ -153,13 +150,13 @@ func (r *invitationRepository) ListJoinRequests(ctx context.Context, tenantID in
 
 	eg.Go(func() error {
 		var err error
-		reqs, err = r.dao.ListJoinRequests(ctx, tenantID, offset, limit)
+		reqs, err = r.dao.ListJoinRequests(ctx, offset, limit)
 		return err
 	})
 
 	eg.Go(func() error {
 		var err error
-		total, err = r.dao.CountJoinRequests(ctx, tenantID)
+		total, err = r.dao.CountJoinRequests(ctx)
 		return err
 	})
 

@@ -73,16 +73,35 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 
 	// 登录阶段的 MFA 校验
 	g.POST("/login/mfa/verify", ginx.B[MfaLoginVerifyRequest](h.LoginMFAVerify))
+
+}
+
+func (h *Handler) IdentityRoutes(server *gin.Engine) {
+	g := server.Group("/api/user")
+
+	g.GET("/profile", ginx.W(h.Profile))
+	g.POST("/logout", ginx.W(h.Logout))
+
+	// Passkey 注册流程 (个人自服务)
+	g.POST("/passkey/register/start", ginx.W(h.PasskeyRegisterStart))
+	g.POST("/passkey/register/finish", ginx.W(h.PasskeyRegisterFinish))
+
+	// MFA 二次验证 (设置类接口，需登录)
+	g.GET("/mfa/totp/setup", ginx.W(h.MfaTotpSetup))
+	g.POST("/mfa/totp/bind", ginx.B[MfaTotpBindRequest](h.MfaTotpBind))
+	g.POST("/mfa/disable", ginx.W(h.MfaDisable))
+
+	// 切换租户不需要管理权限，只需拥有该租户的 Membership 即可
+	g.POST("/switch-tenant", ginx.B[SwitchTenantRequest](h.SwitchTenant))
+
+	// 绑定第三方登录方式
+	g.POST("/identity/bind", ginx.B[BindIdentityRequest](h.BindIdentity))
+	g.POST("/identity/unbind", ginx.B[UnbindIdentityRequest](h.UnbindIdentity))
+	g.GET("/identity/list", ginx.W(h.ListMyIdentities))
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
-	g.GET("/profile", h.Capability("查看个人资料", "profile").
-		Handle(ginx.W(h.Profile)),
-	)
-	g.POST("/logout", h.Capability("退出登录", "logout").
-		Handle(ginx.W(h.Logout)),
-	)
 
 	g.POST("/password/update", ginx.B[UpdatePasswordRequest](h.UpdatePassword))
 
@@ -112,27 +131,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/ldap/refresh_cache", h.Capability("刷新 LDAP 缓存", "ldap_refresh").
 		Handle(ginx.W(h.LdapRefreshCache)),
 	)
-	g.POST("/identity/bind", h.Capability("绑定外部身份", "bind_identity").
-		Handle(ginx.B[BindIdentityRequest](h.BindIdentity)),
-	)
-	g.POST("/identity/unbind", h.Capability("解绑外部身份", "unbind_identity").
-		Handle(ginx.B[UnbindIdentityRequest](h.UnbindIdentity)),
-	)
+	// 绑定第三方身份，为了做一些消息通知使用
 	g.POST("/identity/manage", h.Capability("治理外部身份", "manage_identity").
 		Handle(ginx.B[ManageIdentitiesRequest](h.ManageIdentities)),
 	)
-	g.GET("/identity/list", ginx.W(h.ListMyIdentities))
-	// 【核心：自服务接口】切换租户不需要管理权限，只需拥有该租户的 Membership 即可
-	g.POST("/switch-tenant", ginx.B[SwitchTenantRequest](h.SwitchTenant))
-
-	// Passkey 注册流程 (个人自服务)
-	g.POST("/passkey/register/start", ginx.W(h.PasskeyRegisterStart))
-	g.POST("/passkey/register/finish", ginx.W(h.PasskeyRegisterFinish))
-
-	// MFA 二次验证 (设置类接口，需登录)
-	g.GET("/mfa/totp/setup", ginx.W(h.MfaTotpSetup))
-	g.POST("/mfa/totp/bind", ginx.B[MfaTotpBindRequest](h.MfaTotpBind))
-	g.POST("/mfa/disable", ginx.W(h.MfaDisable))
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {

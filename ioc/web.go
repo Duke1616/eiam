@@ -7,13 +7,13 @@ import (
 	"github.com/Duke1616/eiam/internal/pkg/middleware"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
+	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
-	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-contrib/cors"
@@ -48,6 +48,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 
 	// 3. 基础权限层：仅需登录即可访问的私有接口 (如获取菜单)
 	permissionHdl.IdentityRoutes(server.Engine)
+	userHdl.IdentityRoutes(server.Engine)
 
 	// 4. API 业务鉴权层：基于 RBAC/OPA 的细粒度权限校验
 	server.Use(middleware.CheckPermission(permSvc))

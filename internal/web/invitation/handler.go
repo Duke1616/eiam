@@ -49,7 +49,7 @@ func (h *Handler) CreateInvitation(ctx *ginx.Context, req CreateInvitationReq) (
 		return ginx.Result{}, err
 	}
 
-	tenantID := ctxutil.GetTenantID(ctx).Int64()
+	tenantID := h.resolveTenantID(ctx, req.TenantID)
 	uid := sess.Claims().Uid
 
 	var expireAt int64
@@ -57,7 +57,9 @@ func (h *Handler) CreateInvitation(ctx *ginx.Context, req CreateInvitationReq) (
 		expireAt = time.Now().AddDate(0, 0, req.ExpiryDays).UnixMilli()
 	}
 
-	code, err := h.svc.CreateInvitation(ctx.Request.Context(), tenantID, uid, req.MaxUses, expireAt, req.RoleCodes, req.RequireApproval)
+	// 注入租户 ID 到 Context
+	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
+	code, err := h.svc.CreateInvitation(targetCtx, uid, req.MaxUses, expireAt, req.RoleCodes, req.RequireApproval)
 	if err != nil {
 		return ErrInvitationCreateFailed, err
 	}
@@ -129,8 +131,10 @@ func (h *Handler) AcceptInvitation(ctx *ginx.Context, req AcceptInvitationReq) (
 }
 
 func (h *Handler) ListInvitations(ctx *ginx.Context, req Page) (ginx.Result, error) {
-	tenantID := ctxutil.GetTenantID(ctx).Int64()
-	invs, total, err := h.svc.ListInvitations(ctx.Request.Context(), tenantID, req.Offset, req.Limit)
+	tenantID := h.resolveTenantID(ctx, req.TenantID)
+	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
+
+	invs, total, err := h.svc.ListInvitations(targetCtx, req.Offset, req.Limit)
 	if err != nil {
 		return ErrInvitationListFailed, err
 	}
@@ -159,8 +163,13 @@ func (h *Handler) RevokeInvitation(ctx *ginx.Context) (ginx.Result, error) {
 	if err != nil {
 		return ginx.Result{}, err
 	}
-	tenantID := ctxutil.GetTenantID(ctx).Int64()
-	err = h.svc.RevokeInvitation(ctx.Request.Context(), tenantID, code)
+
+	// 支持从 Query 获取 tenant_id，方便超管跨租户撤回
+	targetTid, _ := ctx.Query("tenant_id").AsInt64()
+	tenantID := h.resolveTenantID(ctx, targetTid)
+	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
+
+	err = h.svc.RevokeInvitation(targetCtx, code)
 	if err != nil {
 		return ErrInvitationRevokeFailed, err
 	}
@@ -181,8 +190,9 @@ func (h *Handler) ListJoinRequests(ctx *ginx.Context, req Page) (ginx.Result, er
 		req.Offset = (req.Page - 1) * req.Limit
 	}
 
-	tenantID := ctxutil.GetTenantID(ctx).Int64()
-	reqs, total, err := h.svc.ListJoinRequests(ctx.Request.Context(), tenantID, req.Offset, req.Limit)
+	tenantID := h.resolveTenantID(ctx, req.TenantID)
+	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
+	reqs, total, err := h.svc.ListJoinRequests(targetCtx, req.Offset, req.Limit)
 	if err != nil {
 		return ErrJoinRequestListFailed, err
 	}
@@ -206,8 +216,9 @@ func (h *Handler) ListJoinRequests(ctx *ginx.Context, req Page) (ginx.Result, er
 }
 
 func (h *Handler) HandleJoinRequest(ctx *ginx.Context, req HandleJoinRequestReq) (ginx.Result, error) {
-	tenantID := ctxutil.GetTenantID(ctx).Int64()
-	err := h.svc.HandleJoinRequest(ctx.Request.Context(), tenantID, req.ID, req.Approve)
+	tenantID := h.resolveTenantID(ctx, req.TenantID)
+	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
+	err := h.svc.HandleJoinRequest(targetCtx, req.ID, req.Approve)
 	if err != nil {
 		if errors.Is(err, errs.ErrUnauthorizedHandle) {
 			return ErrUnauthorized, err
@@ -221,4 +232,14 @@ func (h *Handler) HandleJoinRequest(ctx *ginx.Context, req HandleJoinRequestReq)
 	return ginx.Result{
 		Msg: "处理成功",
 	}, nil
+}
+
+// resolveTenantID 智能解析目标租户 ID
+// 逻辑：如果当前用户是系统超管 (TID=1) 且请求中指定了目标租户，则使用目标租户；否则强制使用当前租户。
+func (h *Handler) resolveTenantID(ctx *ginx.Context, targetTid int64) int64 {
+	currentTid := ctxutil.GetTenantID(ctx).Int64()
+	if currentTid == ctxutil.SystemTenantID && targetTid != 0 {
+		return targetTid
+	}
+	return currentTid
 }

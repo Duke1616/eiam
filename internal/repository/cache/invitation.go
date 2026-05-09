@@ -8,6 +8,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -50,7 +51,7 @@ type IInvitationCache interface {
 	// IncrUsedCount 原子增加使用次数并检查上限（Lua 脚本实现）
 	IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error)
 	// Delete 清理邀请码缓存数据
-	Delete(ctx context.Context, tenantID int64, code string) error
+	Delete(ctx context.Context, code string) error
 }
 
 type invitationCache struct {
@@ -61,16 +62,18 @@ func NewInvitationCache(client redis.Cmdable) IInvitationCache {
 	return &invitationCache{client: client}
 }
 
-func (c *invitationCache) key(code string) string {
-	return fmt.Sprintf("eiam:invitation:%s:valid", code)
+func (c *invitationCache) key(ctx context.Context, code string) string {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	return fmt.Sprintf("eiam:tenant:%d:invitation:%s:valid", tid, code)
 }
 
-func (c *invitationCache) countKey(code string) string {
-	return fmt.Sprintf("eiam:invitation:%s:count", code)
+func (c *invitationCache) countKey(ctx context.Context, code string) string {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	return fmt.Sprintf("eiam:tenant:%d:invitation:%s:count", tid, code)
 }
 
 func (c *invitationCache) Set(ctx context.Context, inv domain.Invitation) error {
-	key := c.key(inv.Code)
+	key := c.key(ctx, inv.Code)
 	var expiration time.Duration
 	if inv.ExpireAt > 0 {
 		remaining := time.Until(time.UnixMilli(inv.ExpireAt))
@@ -86,15 +89,15 @@ func (c *invitationCache) Set(ctx context.Context, inv domain.Invitation) error 
 	_, err := c.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.Set(ctx, key, "1", expiration)
 		// 初始化计数器（如果不存在）
-		pipe.SetNX(ctx, c.countKey(inv.Code), 0, expiration)
+		pipe.SetNX(ctx, c.countKey(ctx, inv.Code), 0, expiration)
 		return nil
 	})
 	return err
 }
 
 func (c *invitationCache) Get(ctx context.Context, code string) (domain.Invitation, error) {
-	key := c.key(code)
-	cntKey := c.countKey(code)
+	key := c.key(ctx, code)
+	cntKey := c.countKey(ctx, code)
 
 	// 获取标识位和实时计数
 	cmds, err := c.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
@@ -126,7 +129,7 @@ func (c *invitationCache) Get(ctx context.Context, code string) (domain.Invitati
 }
 
 func (c *invitationCache) IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error) {
-	val, err := luaIncrUsedCount.Run(ctx, c.client, []string{c.countKey(code), c.key(code)}, maxUses).Int()
+	val, err := luaIncrUsedCount.Run(ctx, c.client, []string{c.countKey(ctx, code), c.key(ctx, code)}, maxUses).Int()
 	if err != nil {
 		return 0, err
 	}
@@ -141,10 +144,10 @@ func (c *invitationCache) IncrUsedCount(ctx context.Context, code string, maxUse
 	}
 }
 
-func (c *invitationCache) Delete(ctx context.Context, tenantID int64, code string) error {
+func (c *invitationCache) Delete(ctx context.Context, code string) error {
 	_, err := c.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Del(ctx, c.key(code))
-		pipe.Del(ctx, c.countKey(code))
+		pipe.Del(ctx, c.key(ctx, code))
+		pipe.Del(ctx, c.countKey(ctx, code))
 		return nil
 	})
 	return err

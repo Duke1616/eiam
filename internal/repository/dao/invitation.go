@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Duke1616/eiam/pkg/gormx"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"gorm.io/gorm"
 )
@@ -38,7 +39,7 @@ type JoinRequest struct {
 type IInvitationDAO interface {
 	// Insert 插入新邀请码记录
 	Insert(ctx context.Context, inv Invitation) (int64, error)
-	// GetByCode 根据邀请码获取详情
+	// GetByCode 根据邀请码获取详情 (全局查找，用于公开校验)
 	GetByCode(ctx context.Context, code string) (Invitation, error)
 	// IncrUsedCount 原子增加使用次数（数据库端）
 	IncrUsedCount(ctx context.Context, code string) error
@@ -46,19 +47,19 @@ type IInvitationDAO interface {
 	UpdateUsedCount(ctx context.Context, code string, count int) error
 	// UpdateStatus 更新邀请码状态
 	UpdateStatus(ctx context.Context, code string, status uint8) error
-	// ListByTenant 分页查询租户下的邀请码列表
-	ListByTenant(ctx context.Context, tenantID int64, offset, limit int) ([]Invitation, error)
-	// CountByTenant 统计租户下的邀请码总数
-	CountByTenant(ctx context.Context, tenantID int64) (int64, error)
+	// List 分页查询租户下的邀请码列表
+	List(ctx context.Context, offset, limit int) ([]Invitation, error)
+	// Count 统计租户下的邀请码总数
+	Count(ctx context.Context) (int64, error)
 	// Delete 软删除邀请码记录
-	Delete(ctx context.Context, tenantID int64, code string) error
+	Delete(ctx context.Context, code string) error
 
 	// InsertJoinRequest 插入新的入驻申请
 	InsertJoinRequest(ctx context.Context, req JoinRequest) (int64, error)
 	// ListJoinRequests 分页获取待处理申请列表
-	ListJoinRequests(ctx context.Context, tenantID int64, offset, limit int) ([]JoinRequest, error)
+	ListJoinRequests(ctx context.Context, offset, limit int) ([]JoinRequest, error)
 	// CountJoinRequests 统计待处理申请总数
-	CountJoinRequests(ctx context.Context, tenantID int64) (int64, error)
+	CountJoinRequests(ctx context.Context) (int64, error)
 	// GetJoinRequestByID 根据 ID 获取申请记录
 	GetJoinRequestByID(ctx context.Context, id int64) (JoinRequest, error)
 	// UpdateJoinRequestStatus 更新申请处理状态
@@ -83,7 +84,8 @@ func (d *invitationDAO) Insert(ctx context.Context, inv Invitation) (int64, erro
 
 func (d *invitationDAO) GetByCode(ctx context.Context, code string) (Invitation, error) {
 	var res Invitation
-	err := d.db.WithContext(ctx).Where("code = ?", code).First(&res).Error
+	// 邀请码校验是公开行为，可能在无租户上下文时触发，需跳过插件隔离执行全局查找
+	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Where("code = ?", code).First(&res).Error
 	return res, err
 }
 
@@ -95,16 +97,16 @@ func (d *invitationDAO) InsertJoinRequest(ctx context.Context, req JoinRequest) 
 	return req.Id, err
 }
 
-func (d *invitationDAO) ListJoinRequests(ctx context.Context, tenantID int64, offset, limit int) ([]JoinRequest, error) {
+func (d *invitationDAO) ListJoinRequests(ctx context.Context, offset, limit int) ([]JoinRequest, error) {
 	var res []JoinRequest
-	err := d.db.WithContext(ctx).Where("tenant_id = ? AND status = ?", tenantID, 1).
+	err := d.db.WithContext(ctx).Where("status = ?", 1).
 		Offset(offset).Limit(limit).Order("id DESC").Find(&res).Error
 	return res, err
 }
 
-func (d *invitationDAO) CountJoinRequests(ctx context.Context, tenantID int64) (int64, error) {
+func (d *invitationDAO) CountJoinRequests(ctx context.Context) (int64, error) {
 	var res int64
-	err := d.db.WithContext(ctx).Model(&JoinRequest{}).Where("tenant_id = ? AND status = ?", tenantID, 1).Count(&res).Error
+	err := d.db.WithContext(ctx).Model(&JoinRequest{}).Where("status = ?", 1).Count(&res).Error
 	return res, err
 }
 
@@ -149,19 +151,18 @@ func (d *invitationDAO) UpdateStatus(ctx context.Context, code string, status ui
 		}).Error
 }
 
-func (d *invitationDAO) ListByTenant(ctx context.Context, tenantID int64, offset, limit int) ([]Invitation, error) {
+func (d *invitationDAO) List(ctx context.Context, offset, limit int) ([]Invitation, error) {
 	var res []Invitation
-	err := d.db.WithContext(ctx).Where("tenant_id = ?", tenantID).
-		Offset(offset).Limit(limit).Order("id DESC").Find(&res).Error
+	err := d.db.WithContext(ctx).Offset(offset).Limit(limit).Order("id DESC").Find(&res).Error
 	return res, err
 }
 
-func (d *invitationDAO) CountByTenant(ctx context.Context, tenantID int64) (int64, error) {
+func (d *invitationDAO) Count(ctx context.Context) (int64, error) {
 	var res int64
-	err := d.db.WithContext(ctx).Model(&Invitation{}).Where("tenant_id = ?", tenantID).Count(&res).Error
+	err := d.db.WithContext(ctx).Model(&Invitation{}).Count(&res).Error
 	return res, err
 }
 
-func (d *invitationDAO) Delete(ctx context.Context, tenantID int64, code string) error {
-	return d.db.WithContext(ctx).Where("tenant_id = ? AND code = ?", tenantID, code).Delete(&Invitation{}).Error
+func (d *invitationDAO) Delete(ctx context.Context, code string) error {
+	return d.db.WithContext(ctx).Where("code = ?", code).Delete(&Invitation{}).Error
 }

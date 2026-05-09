@@ -350,6 +350,32 @@ func (s *permissionService) AssignRoleToUser(ctx context.Context, username strin
 	)
 }
 
+func (s *permissionService) AssignRolesToUser(ctx context.Context, username string, roleCodes []string) (bool, error) {
+	if len(roleCodes) == 0 {
+		return true, nil
+	}
+
+	// 1. 批量校验角色合法性
+	if _, err := s.roleSvc.ListByIncludeCodes(ctx, roleCodes); err != nil {
+		return false, err
+	}
+
+	// 2. 构造 Casbin 批量规则
+	tid := ctxutil.GetTenantID(ctx).String()
+	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	rules := make([][]string, 0, len(roleCodes))
+	for _, rc := range roleCodes {
+		rules = append(rules, []string{
+			domain.UserSubject(username),
+			domain.RoleSubject(rc),
+			tid,
+			now,
+		})
+	}
+
+	return s.enforcer.AddGroupingPolicies(rules)
+}
+
 func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) (bool, error) {
 	tid := ctxutil.GetTenantID(ctx).String()
 	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
