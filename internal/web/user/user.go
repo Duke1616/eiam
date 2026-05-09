@@ -292,7 +292,7 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 	)
 
 	// 2. 执行登录与 JIT 开户
-	result, err := h.userSvc.LoginWithExternal(ctx.Request.Context(), ident)
+	result, err := h.userSvc.LoginWithExternal(ctx.Request.Context(), ident, true)
 	if err != nil {
 		// 如果是未绑定且禁用了 JIT，则走“登录页绑定”流程
 		if errors.Is(err, errs.ErrUserNotLinked) {
@@ -736,7 +736,7 @@ func (h *Handler) PasskeyLoginFinish(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrUnauthorized, err
 	}
 
-	result, err := h.userSvc.LoginWithoutPassword(ctx.Request.Context(), u.ID)
+	result, err := h.userSvc.LoginWithoutPassword(ctx.Request.Context(), u.ID, false)
 	if err != nil {
 		return ErrInternalServer, err
 	}

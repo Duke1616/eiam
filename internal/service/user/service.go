@@ -22,7 +22,7 @@ type IUserService interface {
 	// Login 认证成功后，同步返回封装好的 LoginResult
 	Login(ctx context.Context, provider, username, password string) (domain.LoginResult, error)
 	// LoginWithoutPassword 用于 Passkey/OIDC 等已经完成身份验证的场景，直接执行登录后置逻辑
-	LoginWithoutPassword(ctx context.Context, uid int64) (domain.LoginResult, error)
+	LoginWithoutPassword(ctx context.Context, uid int64, requireMfa bool) (domain.LoginResult, error)
 
 	// GetById 根据 ID 获取用户信息
 	GetById(ctx context.Context, id int64) (domain.User, error)
@@ -60,7 +60,7 @@ type IUserService interface {
 	// ManageIdentities 批量治理/管理用户的外部身份绑定关系
 	ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error
 	// LoginWithExternal 处理外部身份源登录 (JIT 开户)
-	LoginWithExternal(ctx context.Context, ident domain.OidcIdentity) (domain.LoginResult, error)
+	LoginWithExternal(ctx context.Context, ident domain.OidcIdentity, requireMfa bool) (domain.LoginResult, error)
 	// GenerateBindToken 生成临时绑定令牌并存入缓存
 	GenerateBindToken(ctx context.Context, ident domain.OidcIdentity) (string, error)
 	// ConsumeBindToken 消费令牌并执行绑定

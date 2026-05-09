@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -108,7 +109,7 @@ func (c *invitationCache) Get(ctx context.Context, code string) (domain.Invitati
 
 	// 检查标识位是否存在
 	if _, err := cmds[0].(*redis.StringCmd).Result(); err != nil {
-		return domain.Invitation{}, domain.ErrInvitationNotFound
+		return domain.Invitation{}, errs.ErrInvitationNotFound
 	}
 
 	var res domain.Invitation
@@ -132,9 +133,9 @@ func (c *invitationCache) IncrUsedCount(ctx context.Context, code string, maxUse
 
 	switch val {
 	case -1:
-		return 0, domain.ErrInvitationNotFound
+		return 0, errs.ErrInvitationNotFound
 	case -2:
-		return 0, domain.ErrInvitationFull
+		return 0, errs.ErrInvitationFull
 	default:
 		return val, nil
 	}

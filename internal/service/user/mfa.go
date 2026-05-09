@@ -109,5 +109,5 @@ func (s *userService) VerifyLoginMFA(ctx context.Context, token, code string) (d
 	_ = s.repo.DeleteMfaToken(ctx, token)
 
 	// 5. 执行后续登录逻辑
-	return s.postLogin(ctx, u, true)
+	return s.postLogin(ctx, u, false)
 }

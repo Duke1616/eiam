@@ -1,12 +1,5 @@
 package domain
 
-import "errors"
-
-var (
-	ErrInvitationNotFound = errors.New("邀请不存在或已过期")
-	ErrInvitationFull     = errors.New("邀请次数已达上限")
-)
-
 type InvitationStatus uint8
 
 const (

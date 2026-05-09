@@ -23,12 +23,12 @@ func (s *userService) Login(ctx context.Context, provider, username, password st
 	return s.loginWithProvider(ctx, provider, username, password)
 }
 
-func (s *userService) LoginWithoutPassword(ctx context.Context, uid int64) (domain.LoginResult, error) {
+func (s *userService) LoginWithoutPassword(ctx context.Context, uid int64, requireMfa bool) (domain.LoginResult, error) {
 	u, err := s.repo.FindById(ctx, uid)
 	if err != nil {
 		return domain.LoginResult{}, err
 	}
-	return s.postLogin(ctx, u, false)
+	return s.postLogin(ctx, u, requireMfa)
 }
 
 func (s *userService) loginLocal(ctx context.Context, username, password string) (domain.LoginResult, error) {
@@ -58,7 +58,7 @@ func (s *userService) loginLocal(ctx context.Context, username, password string)
 		_ = s.repo.ClearFailedAttempts(ctx, username)
 	}
 
-	return s.postLogin(ctx, u, false)
+	return s.postLogin(ctx, u, true)
 }
 
 func (s *userService) loginWithProvider(ctx context.Context, providerName string, username, password string) (domain.LoginResult, error) {
@@ -91,16 +91,16 @@ func (s *userService) loginWithProvider(ctx context.Context, providerName string
 	}
 
 	// 5. 统一执行登录后置逻辑 (包含 MFA 校验和租户初始化)
-	return s.postLogin(ctx, localUser, false)
+	return s.postLogin(ctx, localUser, true)
 }
 
-func (s *userService) LoginWithExternal(ctx context.Context, ident domain.OidcIdentity) (domain.LoginResult, error) {
+func (s *userService) LoginWithExternal(ctx context.Context, ident domain.OidcIdentity, requireMfa bool) (domain.LoginResult, error) {
 	identity := ident.BuildUserIdentity()
 
 	// 1. 查找已绑定的本地用户
 	u, err := s.repo.FindUserByIdentity(ctx, identity.Provider, identity.IdentityKey())
 	if err == nil {
-		return s.postLogin(ctx, u, false)
+		return s.postLogin(ctx, u, requireMfa)
 	}
 
 	// 2. 检查身份源是否允许 JIT
@@ -124,11 +124,11 @@ func (s *userService) LoginWithExternal(ctx context.Context, ident domain.OidcId
 		return domain.LoginResult{}, err
 	}
 
-	return s.postLogin(ctx, u, false)
+	return s.postLogin(ctx, u, requireMfa)
 }
 
 // postLogin 认证后公共逻辑
-func (s *userService) postLogin(ctx context.Context, u domain.User, skipMfa bool) (domain.LoginResult, error) {
+func (s *userService) postLogin(ctx context.Context, u domain.User, requireMfa bool) (domain.LoginResult, error) {
 	_ = s.repo.UpdateLastLoginAt(ctx, u.ID, time.Now().UnixMilli())
 
 	tenants, err := s.getOrInitTenants(ctx, u.ID, u.Username)
@@ -146,7 +146,7 @@ func (s *userService) postLogin(ctx context.Context, u domain.User, skipMfa bool
 		MustSelectTenant: len(tenants) > 1,
 	}
 
-	if !skipMfa && u.MfaType != "" {
+	if requireMfa && u.MfaType != "" {
 		res.MfaRequired = true
 		token := uuid.New().String()
 		_ = s.repo.SetMfaToken(ctx, token, u.ID)

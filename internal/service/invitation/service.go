@@ -2,9 +2,9 @@ package invitation
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/user"
@@ -70,15 +70,15 @@ func (s *invitationService) CreateInvitation(ctx context.Context, tenantID, invi
 func (s *invitationService) VerifyInvitation(ctx context.Context, code string) (domain.Invitation, error) {
 	inv, err := s.repo.GetByCode(ctx, code)
 	if err != nil {
-		return domain.Invitation{}, domain.ErrInvitationNotFound
+		return domain.Invitation{}, errs.ErrInvitationNotFound
 	}
 
 	if !inv.CanUse() {
-		return domain.Invitation{}, domain.ErrInvitationFull
+		return domain.Invitation{}, errs.ErrInvitationFull
 	}
 
 	if inv.IsExpired() {
-		return domain.Invitation{}, domain.ErrInvitationNotFound
+		return domain.Invitation{}, errs.ErrInvitationNotFound
 	}
 
 	// 补充租户名称，方便前端展示
@@ -99,7 +99,7 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 	// 1. 检查是否已经入驻
 	_, err = s.tenantRepo.GetMembership(ctx, inv.TenantID, userID)
 	if err == nil {
-		return false, fmt.Errorf("您已是该租户成员，无需重复加入")
+		return false, errs.ErrAlreadyMember
 	}
 
 	// 2. 如果需要审批，则创建申请记录
@@ -177,11 +177,11 @@ func (s *invitationService) HandleJoinRequest(ctx context.Context, tenantID, req
 	}
 
 	if req.TenantID != tenantID {
-		return fmt.Errorf("无权处理该申请")
+		return errs.ErrUnauthorizedHandle
 	}
 
 	if req.Status != domain.JoinRequestStatusPending {
-		return fmt.Errorf("申请已处理")
+		return errs.ErrJoinRequestHandled
 	}
 
 	if !approve {

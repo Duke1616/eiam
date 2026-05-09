@@ -1,9 +1,11 @@
 package invitation
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/ecodeclub/ginx"
@@ -57,7 +59,7 @@ func (h *Handler) CreateInvitation(ctx *ginx.Context, req CreateInvitationReq) (
 
 	code, err := h.svc.CreateInvitation(ctx.Request.Context(), tenantID, uid, req.MaxUses, expireAt, req.RoleCodes, req.RequireApproval)
 	if err != nil {
-		return ginx.Result{}, err
+		return ErrInvitationCreateFailed, err
 	}
 
 	return ginx.Result{
@@ -72,7 +74,13 @@ func (h *Handler) VerifyInvitation(ctx *ginx.Context) (ginx.Result, error) {
 	}
 	inv, err := h.svc.VerifyInvitation(ctx.Request.Context(), code)
 	if err != nil {
-		return ginx.Result{}, err
+		if errors.Is(err, errs.ErrInvitationNotFound) {
+			return ErrInvitationNotFound, err
+		}
+		if errors.Is(err, errs.ErrInvitationFull) {
+			return ErrInvitationFull, err
+		}
+		return ErrInvitationVerifyFailed, err
 	}
 
 	return ginx.Result{
@@ -97,7 +105,16 @@ func (h *Handler) AcceptInvitation(ctx *ginx.Context, req AcceptInvitationReq) (
 
 	requireApproval, err := h.svc.AcceptInvitation(ctx.Request.Context(), req.Code, uid, username)
 	if err != nil {
-		return ginx.Result{}, err
+		if errors.Is(err, errs.ErrInvitationNotFound) {
+			return ErrInvitationNotFound, err
+		}
+		if errors.Is(err, errs.ErrInvitationFull) {
+			return ErrInvitationFull, err
+		}
+		if errors.Is(err, errs.ErrAlreadyMember) {
+			return ErrAlreadyMember, err
+		}
+		return ErrInvitationAcceptFailed, err
 	}
 
 	msg := "成功加入租户"
@@ -115,7 +132,7 @@ func (h *Handler) ListInvitations(ctx *ginx.Context, req Page) (ginx.Result, err
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	invs, total, err := h.svc.ListInvitations(ctx.Request.Context(), tenantID, req.Offset, req.Limit)
 	if err != nil {
-		return ginx.Result{}, err
+		return ErrInvitationListFailed, err
 	}
 
 	return ginx.Result{
@@ -145,7 +162,7 @@ func (h *Handler) RevokeInvitation(ctx *ginx.Context) (ginx.Result, error) {
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	err = h.svc.RevokeInvitation(ctx.Request.Context(), tenantID, code)
 	if err != nil {
-		return ginx.Result{}, err
+		return ErrInvitationRevokeFailed, err
 	}
 
 	return ginx.Result{
@@ -167,7 +184,7 @@ func (h *Handler) ListJoinRequests(ctx *ginx.Context, req Page) (ginx.Result, er
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	reqs, total, err := h.svc.ListJoinRequests(ctx.Request.Context(), tenantID, req.Offset, req.Limit)
 	if err != nil {
-		return ginx.Result{}, err
+		return ErrJoinRequestListFailed, err
 	}
 
 	return ginx.Result{
@@ -192,7 +209,13 @@ func (h *Handler) HandleJoinRequest(ctx *ginx.Context, req HandleJoinRequestReq)
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	err := h.svc.HandleJoinRequest(ctx.Request.Context(), tenantID, req.ID, req.Approve)
 	if err != nil {
-		return ginx.Result{}, err
+		if errors.Is(err, errs.ErrUnauthorizedHandle) {
+			return ErrUnauthorized, err
+		}
+		if errors.Is(err, errs.ErrJoinRequestHandled) {
+			return ErrJoinRequestHandled, err
+		}
+		return ErrJoinRequestHandleFailed, err
 	}
 
 	return ginx.Result{
