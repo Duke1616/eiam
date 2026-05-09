@@ -20,8 +20,12 @@ const (
 	PagingSize        = 1000
 )
 
+// RedisearchLdapUserCache 基于 RediSearch 的 LDAP 用户搜索缓存
+// 提供高性能的关键词模糊搜索和分页查询能力
 type RedisearchLdapUserCache interface {
+	// Document 将 LDAP 用户数据批量同步到 RediSearch 索引中
 	Document(ctx context.Context, tid int64, users []domain.User) error
+	// Query 执行基于关键词的 LDAP 用户搜索
 	Query(ctx context.Context, tid int64, keywords string, offset, limit int) ([]domain.User, int, error)
 }
 

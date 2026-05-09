@@ -14,6 +14,7 @@ import (
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/service/user/passkey"
+	invitationsvc "github.com/Duke1616/eiam/internal/service/invitation"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
@@ -21,6 +22,7 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
+	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
 )
@@ -54,6 +56,7 @@ func InitApp() (*App, error) {
 		InitLdapUserCache,
 		cache.NewIdentitySourceCache,
 		cache.NewUserCache,
+		cache.NewInvitationCache,
 
 		// DAOs
 		dao.NewUserDAO,
@@ -64,6 +67,7 @@ func InitApp() (*App, error) {
 		dao.NewServiceDAO,
 		dao.NewPolicyDAO,
 		dao.NewIdentitySourceDAO,
+		dao.NewInvitationDAO,
 
 		// Repositories
 		repository.NewUserRepository,
@@ -74,6 +78,7 @@ func InitApp() (*App, error) {
 		repository.NewServiceRepository,
 		repository.NewPolicyRepository,
 		repository.NewIdentitySourceRepository,
+		repository.NewInvitationRepository,
 
 		// Services
 		usersvc.NewUserService,
@@ -85,6 +90,7 @@ func InitApp() (*App, error) {
 		resource.NewResourceInitializer,
 		permission.NewPermissionService,
 		policysvc.NewPolicyService,
+		invitationsvc.NewInvitationService,
 		InitIdentitySourceService,
 
 		// Handlers
@@ -93,6 +99,7 @@ func InitApp() (*App, error) {
 		tenanthdl.NewHandler,
 		resourcehdl.NewHandler,
 		idhdl.NewHandler,
+		invitationhdl.NewHandler,
 		// Handlers (Capabilities)
 		permissionhdl.NewHandler,
 		rolehdl.NewHandler,

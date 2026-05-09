@@ -3,6 +3,7 @@ package policy
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
@@ -58,6 +59,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	g.POST("/batch-attach", h.Capability("批量绑定策略", "batch-attach").
 		Handle(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
+	)
+	g.POST("/batch-detach", h.Capability("批量解绑策略", "batch-detach").
+		Handle(ginx.B[BatchAttachPolicyReq](h.BatchDetachPolicy)),
 	)
 	// 查询特定用户的关联策略 (管理侧使用)
 	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user_policies").
@@ -196,24 +200,36 @@ func (h *Handler) DetachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Res
 
 func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq) (ginx.Result, error) {
 	subjects := slice.Map(req.Subjects, func(idx int, src SubjectItem) domain.Subject {
-		return domain.Subject{
-			Type: src.Type,
-			ID:   src.Code,
-		}
+		return domain.Subject{Type: src.Type, ID: src.Code}
 	})
 
 	res, err := h.svc.BatchAttachPolicies(ctx.Request.Context(), subjects, req.PolicyCodes)
 	if err != nil {
-		return ErrBatchAttachPolicyFailed, err
+		return ginx.Result{}, err
 	}
 
 	return ginx.Result{
-		Msg: "批量绑定成功",
 		Data: BatchAttachPolicyRes{
 			Total:    res.Total,
 			Inserted: res.Inserted,
 			Ignored:  res.Ignored,
 		},
+	}, nil
+}
+
+func (h *Handler) BatchDetachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq) (ginx.Result, error) {
+	subjects := slice.Map(req.Subjects, func(idx int, src SubjectItem) domain.Subject {
+		return domain.Subject{Type: src.Type, ID: src.Code}
+	})
+
+	affected, err := h.svc.BatchDetachPolicies(ctx.Request.Context(), subjects, req.PolicyCodes)
+	if err != nil {
+		return ginx.Result{}, err
+	}
+
+	return ginx.Result{
+		Msg:  fmt.Sprintf("成功解绑 %d 条策略关联", affected),
+		Data: affected,
 	}, nil
 }
 

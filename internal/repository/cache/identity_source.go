@@ -8,8 +8,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// IIdentitySourceCache 身份源相关的缓存接口
+// 主要用于存储 OIDC 登录流程中的中间状态（State/Nonce），防止 CSRF 和重放攻击
 type IIdentitySourceCache interface {
+	// SetState 存储 OIDC 状态
 	SetState(ctx context.Context, state string, sourceID int64, nonce string) error
+	// GetState 获取并销毁 OIDC 状态，确保 State 是一次性的
 	GetState(ctx context.Context, state string) (sourceID int64, nonce string, err error)
 }
 

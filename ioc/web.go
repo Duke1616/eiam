@@ -13,6 +13,7 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
+	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-contrib/cors"
@@ -26,7 +27,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	userHdl *user.Handler, policyHdl *policy.Handler,
 	tenantHdl *tenanthdl.Handler, permissionHdl *permissionhdl.Handler,
 	roleHdl *rolehdl.Handler, resourceHdl *resourcehdl.Handler,
-	identitySourceHdl *idhdl.Handler,
+	identitySourceHdl *idhdl.Handler, invitationHdl *invitationhdl.Handler,
 	permSvc permission.IPermissionService) *egin.Component {
 	session.SetDefaultProvider(sp)
 
@@ -40,6 +41,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	resourceHdl.PublicRoutes(server.Engine)
 	permissionHdl.PublicRoutes(server.Engine)
 	identitySourceHdl.PublicRoutes(server.Engine)
+	invitationHdl.PublicRoutes(server.Engine)
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())
@@ -58,6 +60,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	resourceHdl.PrivateRoutes(server.Engine)
 	permissionHdl.PrivateRoutes(server.Engine)
 	identitySourceHdl.PrivateRoutes(server.Engine)
+	invitationHdl.PrivateRoutes(server.Engine)
 
 	return server
 }

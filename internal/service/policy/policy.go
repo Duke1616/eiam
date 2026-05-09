@@ -46,6 +46,8 @@ type IPolicyService interface {
 	// BatchAttachPolicies 批量绑定策略到多个主体
 	// 返回成功绑定的详细结果统计
 	BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
+	// BatchDetachPolicies 批量解绑策略
+	BatchDetachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
 }
 
 type policyService struct {
@@ -177,6 +179,14 @@ func (s *policyService) BatchAttachPolicies(ctx context.Context, subjects []doma
 	}
 
 	return s.repo.BatchAttach(ctx, subjects, policyCodes)
+}
+
+func (s *policyService) BatchDetachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error) {
+	if len(subjects) == 0 || len(policyCodes) == 0 {
+		return 0, nil
+	}
+
+	return s.repo.BatchDetach(ctx, subjects, policyCodes)
 }
 
 func (s *policyService) ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error) {

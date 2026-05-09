@@ -10,6 +10,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
@@ -19,6 +20,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/service/user/passkey"
 	"github.com/Duke1616/eiam/internal/web/identity_source"
+	invitation2 "github.com/Duke1616/eiam/internal/web/invitation"
 	permission2 "github.com/Duke1616/eiam/internal/web/permission"
 	policy2 "github.com/Duke1616/eiam/internal/web/policy"
 	resource2 "github.com/Duke1616/eiam/internal/web/resource"
@@ -84,7 +86,12 @@ func InitApp() (*App, error) {
 	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, iResourceService, string2)
 	resourceHandler := resource2.NewHandler(iInitializer)
 	identity_sourceHandler := identity_source.NewHandler(iService)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, resourceHandler, identity_sourceHandler, iPermissionService)
+	iInvitationDAO := dao.NewInvitationDAO(db)
+	iInvitationCache := cache.NewInvitationCache(cmdable)
+	iInvitationRepository := repository.NewInvitationRepository(iInvitationDAO, iInvitationCache)
+	iInvitationService := invitation.NewInvitationService(iInvitationRepository, iTenantRepository, iPermissionService, iUserService)
+	invitationHandler := invitation2.NewHandler(iInvitationService, provider)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, resourceHandler, identity_sourceHandler, invitationHandler, iPermissionService)
 	v3 := InitProviders()
 	app := &App{
 		Web:         component,

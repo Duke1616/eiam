@@ -76,6 +76,8 @@ type IPolicyDAO interface {
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error)
 	// BatchBind 批量绑定策略到多个主体
 	BatchBind(ctx context.Context, assignments []PolicyAssignment) (BatchBindResult, error)
+	// BatchUnbind 批量解绑策略
+	BatchUnbind(ctx context.Context, assignments []PolicyAssignment) (int64, error)
 	// CountAssignmentsByPolicyCodes 批量获取策略关联的数量
 	CountAssignmentsByPolicyCodes(ctx context.Context, codes []string) (map[string]int64, error)
 }
@@ -313,6 +315,24 @@ func (d *policyDAO) BatchBind(ctx context.Context, assignments []PolicyAssignmen
 		Inserted: result.RowsAffected,
 		Ignored:  int64(len(assignments)) - result.RowsAffected,
 	}, result.Error
+}
+
+func (d *policyDAO) BatchUnbind(ctx context.Context, assignments []PolicyAssignment) (int64, error) {
+	if len(assignments) == 0 {
+		return 0, nil
+	}
+
+	// 构造元组 (sub_type, sub_code, policy_code) 用于批量删除
+	values := make([][]any, len(assignments))
+	for i, a := range assignments {
+		values[i] = []any{a.SubType, a.SubCode, a.PolicyCode}
+	}
+
+	result := d.db.WithContext(ctx).
+		Where("(sub_type, sub_code, policy_code) IN ?", values).
+		Delete(&PolicyAssignment{})
+
+	return result.RowsAffected, result.Error
 }
 
 func (d *policyDAO) CountAssignmentsByPolicyCodes(ctx context.Context, codes []string) (map[string]int64, error) {

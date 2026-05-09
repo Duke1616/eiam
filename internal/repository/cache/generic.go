@@ -24,6 +24,7 @@ func NewStateCache[T any](client redis.Cmdable, prefix string, ttl time.Duration
 	}
 }
 
+// Set 存储临时状态
 func (c *StateCache[T]) Set(ctx context.Context, key string, val T) error {
 	data, err := json.Marshal(val)
 	if err != nil {
@@ -32,6 +33,7 @@ func (c *StateCache[T]) Set(ctx context.Context, key string, val T) error {
 	return c.client.Set(ctx, c.key(key), data, c.ttl).Err()
 }
 
+// Get 获取并删除临时状态，确保“读后即焚”
 func (c *StateCache[T]) Get(ctx context.Context, key string) (T, error) {
 	k := c.key(key)
 	val, err := c.client.Get(ctx, k).Result()

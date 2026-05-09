@@ -21,6 +21,8 @@ func InitTables(db *gorm.DB) error {
 		&Menu{},
 		&API{},
 		&Service{},
+		&Invitation{},
+		&JoinRequest{},
 		&gormAdapter.CasbinRule{},
 	)
 }

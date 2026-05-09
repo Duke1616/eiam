@@ -40,6 +40,8 @@ type IPolicyRepository interface {
 	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error)
 	// BatchAttach 批量绑定策略到多个主体
 	BatchAttach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
+	// BatchDetach 批量解绑策略
+	BatchDetach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
 	// FillAssignmentCounts 为策略列表填充授权计数值
 	FillAssignmentCounts(ctx context.Context, ps []domain.Policy) error
 }
@@ -285,6 +287,50 @@ func (r *policyRepository) BatchAttach(ctx context.Context, subjects []domain.Su
 	}
 
 	return res, nil
+}
+
+func (r *policyRepository) BatchDetach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error) {
+	if len(subjects) == 0 || len(policyCodes) == 0 {
+		return 0, nil
+	}
+
+	var totalAffected int64
+	assignments := make([]dao.PolicyAssignment, 0, buildBatchSize)
+
+	flush := func() error {
+		if len(assignments) == 0 {
+			return nil
+		}
+		affected, err := r.dao.BatchUnbind(ctx, assignments)
+		if err != nil {
+			return err
+		}
+		totalAffected += affected
+		assignments = assignments[:0]
+		return nil
+	}
+
+	for i := range subjects {
+		for j := range policyCodes {
+			assignments = append(assignments, dao.PolicyAssignment{
+				SubType:    subjects[i].Type,
+				SubCode:    subjects[i].ID,
+				PolicyCode: policyCodes[j],
+			})
+
+			if len(assignments) >= buildBatchSize {
+				if err := flush(); err != nil {
+					return totalAffected, err
+				}
+			}
+		}
+	}
+
+	if err := flush(); err != nil {
+		return totalAffected, err
+	}
+
+	return totalAffected, nil
 }
 
 func (r *policyRepository) FillAssignmentCounts(ctx context.Context, ps []domain.Policy) error {
