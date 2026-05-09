@@ -34,6 +34,7 @@ type User struct {
 	Avatar      string `json:"avatar"`
 	JobTitle    string `json:"job_title"`
 	Phone       string `json:"phone"`
+	Status      string `json:"status"`
 	Source      string `json:"source"`
 	Ctime       int64  `json:"ctime"`
 	Utime       int64  `json:"utime"`

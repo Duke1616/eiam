@@ -45,6 +45,7 @@ func ToUserVO(u domain.User) User {
 		Avatar:      u.Profile.Avatar,
 		JobTitle:    u.Profile.JobTitle,
 		Phone:       u.Profile.Phone,
+		Status:      u.Status.String(),
 		Source:      u.Source.String(),
 		Ctime:       u.Ctime,
 		Utime:       u.Utime,
@@ -108,5 +109,6 @@ func (u User) ToDomain() domain.User {
 			Phone:    u.Phone,
 		},
 		Identities: identities,
+		Status:     domain.StatusActive, // 默认为激活，TODO: 后续根据 VO 的具体值映射
 	}
 }

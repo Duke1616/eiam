@@ -10,6 +10,17 @@ const (
 	StatusDisable Status = 2
 )
 
+func (s Status) String() string {
+	switch s {
+	case StatusActive:
+		return "active"
+	case StatusDisable:
+		return "disable"
+	default:
+		return "unknown"
+	}
+}
+
 type Source string
 
 const (
