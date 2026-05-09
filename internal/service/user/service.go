@@ -11,7 +11,6 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
-	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -31,7 +30,7 @@ type IUserService interface {
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
 
 	// SwitchTenant 切换当前激活的租户空间
-	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error)
+	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) error
 	// Invite 邀请用户进入系统
 	Invite(ctx context.Context, username string) error
 
@@ -108,18 +107,18 @@ func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantServic
 	}
 }
 
-func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) (domain.User, error) {
+func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) error {
 	// 直接复用 CheckUserTenantAccess 校验 Membership 合约是否存在
 	hasAccess, err := s.tenantSvc.CheckUserTenantAccess(ctx, uid, targetTenantID)
 	if err != nil {
-		return domain.User{}, err
+		return err
 	}
 
 	if !hasAccess {
-		return domain.User{}, errs.ErrTenantAccessDenied
+		return errs.ErrTenantAccessDenied
 	}
 
-	return s.repo.FindById(ctxutil.WithTenantID(ctx, targetTenantID), uid)
+	return nil
 }
 
 func (s *userService) Invite(ctx context.Context, username string) error {

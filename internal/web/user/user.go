@@ -177,22 +177,25 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx
 		return ErrUnauthenticated, err
 	}
 
+	uid := sess.Claims().Uid
+	username, _ := sess.Get(ctx.Request.Context(), "username").AsString()
+
 	// 1. 安全校验：确认该用户是否真的属于目标租户
-	u, err := h.userSvc.SwitchTenant(ctx.Request.Context(), sess.Claims().Uid, req.TenantID)
+	err = h.userSvc.SwitchTenant(ctx.Request.Context(), uid, req.TenantID)
 	if err != nil {
 		return ErrTenantAccessDenied, err
 	}
 
 	// 2. 【核心录入点】：重新构建 Session 并注入新的租户 ID
 	// 使用 SessionBuilder 签发包含了租户信息的正式 JWT
-	_, err = session.NewSessionBuilder(ctx, sess.Claims().Uid).
+	_, err = session.NewSessionBuilder(ctx, uid).
 		SetJwtData(map[string]string{
 			"tenant_id": strconv.FormatInt(req.TenantID, 10),
-			"username":  u.Username,
+			"username":  username,
 		}).
 		SetSessData(map[string]any{
 			"tenant_id": req.TenantID,
-			"username":  u.Username,
+			"username":  username,
 		}).
 		Build()
 
@@ -200,20 +203,7 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx
 		return ErrTenantSwitchFailed, err
 	}
 
-	// 3. 获取该用户关联的所有租户（用于对齐登录后的返回结构）
-	tenants, err := h.tenantSvc.GetTenantsByUserId(ctx.Request.Context(), u.ID)
-	if err != nil {
-		return ErrInternalServer, err
-	}
-
-	return ginx.Result{
-		Msg: "成功切换至新租户空间",
-		Data: RetrieveUser{
-			User:            ToUserVO(u),
-			Tenants:         ToTenantVOs(tenants),
-			CurrentTenantID: req.TenantID,
-		},
-	}, nil
+	return ginx.Result{Msg: "成功切换至新租户空间"}, nil
 }
 
 // handleLoginResult 统一处理登录后的路由决策
