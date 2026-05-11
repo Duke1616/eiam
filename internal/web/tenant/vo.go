@@ -92,3 +92,8 @@ type AssignUserReq struct {
 	TenantID int64 `json:"tenant_id" binding:"required"`
 	UserID   int64 `json:"user_id" binding:"required"`
 }
+
+type RemoveMemberReq struct {
+	TenantID int64 `json:"tenant_id" binding:"required"`
+	UserID   int64 `json:"user_id" binding:"required"`
+}

@@ -35,6 +35,7 @@ type InvitationVO struct {
 	UsedCount       int      `json:"used_count"`
 	ExpireAt        int64    `json:"expire_at"`
 	RequireApproval bool     `json:"require_approval"`
+	IsMember        bool     `json:"is_member"` // 当前用户是否已经是成员
 }
 
 type JoinRequestVO struct {

@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 type InvitationStatus uint8
 
 const (
@@ -48,7 +50,7 @@ type JoinRequest struct {
 }
 
 func (i Invitation) IsExpired() bool {
-	return i.ExpireAt > 0 && i.ExpireAt < 1000000000000 // 简单的 Unix 时间戳校验逻辑
+	return i.ExpireAt > 0 && i.ExpireAt < time.Now().UnixMilli()
 }
 
 func (i Invitation) CanUse() bool {

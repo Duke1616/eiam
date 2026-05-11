@@ -17,6 +17,8 @@ type IInvitationRepository interface {
 	GetByCode(ctx context.Context, code string) (domain.Invitation, error)
 	// IncrUsedCount 原子增加邀请码使用次数
 	IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error)
+	// DecrUsedCount 原子减少邀请码使用次数
+	DecrUsedCount(ctx context.Context, code string) (int, error)
 	// Delete 删除邀请码（软删除）
 	Delete(ctx context.Context, code string) error
 	// List 分页获取租户下的邀请码列表
@@ -67,13 +69,29 @@ func (r *invitationRepository) GetByCode(ctx context.Context, code string) (doma
 	cachedInv, err := r.cache.Get(ctx, code)
 	if err == nil {
 		res.UsedCount = cachedInv.UsedCount
+	} else {
+		// 读修复：如果缓存失效，将数据库数据同步回缓存，确保后续 Incr 操作正常
+		_ = r.cache.Set(ctx, res)
 	}
 
 	return res, nil
 }
 
 func (r *invitationRepository) IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error) {
-	return r.cache.IncrUsedCount(ctx, code, maxUses)
+	count, err := r.cache.IncrUsedCount(ctx, code, maxUses)
+	if err == nil {
+		// 准实时同步数据库，防止 Redis 重启导致计数重置
+		_ = r.dao.UpdateUsedCount(ctx, code, count)
+	}
+	return count, err
+}
+
+func (r *invitationRepository) DecrUsedCount(ctx context.Context, code string) (int, error) {
+	count, err := r.cache.DecrUsedCount(ctx, code)
+	if err == nil {
+		_ = r.dao.UpdateUsedCount(ctx, code, count)
+	}
+	return count, err
 }
 
 func (r *invitationRepository) Delete(ctx context.Context, code string) error {

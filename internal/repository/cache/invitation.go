@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"strconv"
 	"time"
@@ -13,34 +14,13 @@ import (
 )
 
 var (
-	luaIncrUsedCount = redis.NewScript(`
-local count_key = KEYS[1]
-local valid_key = KEYS[2]
-local max_uses = tonumber(ARGV[1])
+	//go:embed lua/invitation_incr.lua
+	luaIncrUsedCountScript string
+	luaIncrUsedCount       = redis.NewScript(luaIncrUsedCountScript)
 
--- 1. 检查有效性
-if redis.call("EXISTS", valid_key) == 0 then
-    return -1
-end
-
--- 2. 检查上限
-if max_uses > 0 then
-    local count = tonumber(redis.call("GET", count_key) or "0")
-    if count >= max_uses then
-        return -2
-    end
-end
-
--- 3. 增加计数
-local new_count = redis.call("INCR", count_key)
-
--- 4. 如果达到上限，立即标记失效
-if max_uses > 0 and new_count >= max_uses then
-    redis.call("DEL", valid_key)
-end
-
-return new_count
-`)
+	//go:embed lua/invitation_decr.lua
+	luaDecrUsedCountScript string
+	luaDecrUsedCount       = redis.NewScript(luaDecrUsedCountScript)
 )
 
 type IInvitationCache interface {
@@ -50,6 +30,8 @@ type IInvitationCache interface {
 	Get(ctx context.Context, code string) (domain.Invitation, error)
 	// IncrUsedCount 原子增加使用次数并检查上限（Lua 脚本实现）
 	IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error)
+	// DecrUsedCount 原子减少使用次数（用于业务回滚）
+	DecrUsedCount(ctx context.Context, code string) (int, error)
 	// Delete 清理邀请码缓存数据
 	Delete(ctx context.Context, code string) error
 }
@@ -89,7 +71,7 @@ func (c *invitationCache) Set(ctx context.Context, inv domain.Invitation) error 
 	_, err := c.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.Set(ctx, key, "1", expiration)
 		// 初始化计数器（如果不存在）
-		pipe.SetNX(ctx, c.countKey(ctx, inv.Code), 0, expiration)
+		pipe.SetNX(ctx, c.countKey(ctx, inv.Code), inv.UsedCount, expiration)
 		return nil
 	})
 	return err
@@ -129,19 +111,38 @@ func (c *invitationCache) Get(ctx context.Context, code string) (domain.Invitati
 }
 
 func (c *invitationCache) IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error) {
-	val, err := luaIncrUsedCount.Run(ctx, c.client, []string{c.countKey(ctx, code), c.key(ctx, code)}, maxUses).Int()
+	res, err := luaIncrUsedCount.Run(ctx, c.client, []string{c.countKey(ctx, code), c.key(ctx, code)}, maxUses).Result()
 	if err != nil {
 		return 0, err
 	}
 
-	switch val {
-	case -1:
+	resStr, ok := res.(string)
+	if !ok {
+		return 0, fmt.Errorf("unexpected return type from lua: %T", res)
+	}
+
+	switch resStr {
+	case "NOT_FOUND":
 		return 0, errs.ErrInvitationNotFound
-	case -2:
+	case "FULL":
 		return 0, errs.ErrInvitationFull
 	default:
-		return val, nil
+		return strconv.Atoi(resStr)
 	}
+}
+
+func (c *invitationCache) DecrUsedCount(ctx context.Context, code string) (int, error) {
+	res, err := luaDecrUsedCount.Run(ctx, c.client, []string{c.countKey(ctx, code), c.key(ctx, code)}).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	resStr, ok := res.(string)
+	if !ok {
+		return 0, fmt.Errorf("unexpected return type from lua: %T", res)
+	}
+
+	return strconv.Atoi(resStr)
 }
 
 func (c *invitationCache) Delete(ctx context.Context, code string) error {

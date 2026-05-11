@@ -74,6 +74,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/assign", h.Capability("加入租户", "assign").
 		Handle(ginx.B[AssignUserReq](h.AssignUser)),
 	)
+	g.POST("/remove/member", h.Capability("移除租户成员", "remove_member").
+		Handle(ginx.B[RemoveMemberReq](h.RemoveMember)),
+	)
 }
 
 func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Result, error) {
@@ -275,5 +278,16 @@ func (h *Handler) GetTenantsByUserId(ctx *ginx.Context, req ListUserTenantsReq, 
 			Total:   total,
 			Tenants: ToTenantVOs(tenants),
 		},
+	}, nil
+}
+
+func (h *Handler) RemoveMember(ctx *ginx.Context, req RemoveMemberReq) (ginx.Result, error) {
+	err := h.svc.RemoveMember(ctx.Context, req.TenantID, req.UserID)
+	if err != nil {
+		return ErrTenantRemoveMember, err
+	}
+
+	return ginx.Result{
+		Msg: "成功将用户从租户空间移除",
 	}, nil
 }

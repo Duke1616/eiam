@@ -11,7 +11,7 @@ import (
 
 type Invitation struct {
 	Id              int64                     `gorm:"primaryKey;autoIncrement"`
-	TenantId        int64                     `gorm:"type:bigint;not null;index;comment:'租户ID'"`
+	TenantId        int64                     `gorm:"type:bigint;not null;index;comment:'租户ID'" eiam:"private"`
 	InviterId       int64                     `gorm:"type:bigint;not null;comment:'发起人UID'"`
 	Code            string                    `gorm:"type:varchar(64);not null;uniqueIndex;comment:'随机邀请短码'"`
 	RoleCodes       sqlx.JSONColumn[[]string] `gorm:"type:json;comment:'自动赋予的角色代码'"`
@@ -27,7 +27,7 @@ type Invitation struct {
 
 type JoinRequest struct {
 	Id             int64                     `gorm:"primaryKey;autoIncrement"`
-	TenantId       int64                     `gorm:"type:bigint;not null;index;comment:'租户ID'"`
+	TenantId       int64                     `gorm:"type:bigint;not null;index;comment:'租户ID'" eiam:"private"`
 	UserId         int64                     `gorm:"type:bigint;not null;index;comment:'申请人UID'"`
 	InvitationCode string                    `gorm:"type:varchar(64);not null;comment:'邀请特征码'"`
 	RoleCodes      sqlx.JSONColumn[[]string] `gorm:"type:json;comment:'预设角色代码'"`

@@ -36,8 +36,8 @@ type ITenantService interface {
 	Delete(ctx context.Context, id int64) error
 	// GetByID 获取租户详情
 	GetByID(ctx context.Context, id int64) (domain.Tenant, error)
-	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
-	FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error)
+	// ListBindsByUserIds 批量检索一组用户的入驻关联记录
+	ListBindsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error)
 	// CheckUsersInTenant 批量判断一组用户是否已入驻指定租户，返回 map[userID]bool
 	CheckUsersInTenant(ctx context.Context, userIds []int64, tenantId int64) (map[int64]bool, error)
 	// BatchInitPersonalTenant 批量为用户初始化个人空间
@@ -46,6 +46,8 @@ type ITenantService interface {
 	ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	// AssignUser 分配用户到租户空间
 	AssignUser(ctx context.Context, userID int64) error
+	// RemoveMember 从租户空间移除成员
+	RemoveMember(ctx context.Context, tenantID, userID int64) error
 }
 
 type tenantService struct {
@@ -77,7 +79,7 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code, username s
 	}
 
 	// 2. 将创建者加入该租户
-	err = s.repo.AddMembership(ctx, userID, tenantID)
+	err = s.repo.CreateBind(ctx, userID, tenantID)
 	if err != nil {
 		return 0, err
 	}
@@ -105,7 +107,7 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 	}
 
 	// 2. 建立契约
-	err = s.repo.AddMembership(ctx, userId, tenantID)
+	err = s.repo.CreateBind(ctx, userId, tenantID)
 	if err != nil {
 		return 0, err
 	}
@@ -134,7 +136,7 @@ func (s *tenantService) BatchInitPersonalTenant(ctx context.Context, users []dom
 		return u.ID
 	})
 
-	membershipMap, err := s.FindMembershipsByUserIds(ctx, userIDs)
+	membershipMap, err := s.ListBindsByUserIds(ctx, userIDs)
 	if err != nil {
 		return err
 	}
@@ -170,7 +172,7 @@ func (s *tenantService) BatchInitPersonalTenant(ctx context.Context, users []dom
 		}
 	})
 
-	if err = s.repo.BatchAddMemberships(ctx, memberships); err != nil {
+	if err = s.repo.BatchCreateBinds(ctx, memberships); err != nil {
 		return err
 	}
 
@@ -193,7 +195,7 @@ func (s *tenantService) GetTenantsByUserId(ctx context.Context, userId int64) ([
 
 func (s *tenantService) CheckUserTenantAccess(ctx context.Context, userId, tenantId int64) (bool, error) {
 	// 维持原状：契约存在即代表有权进入 (Context 入场券)
-	_, err := s.repo.GetMembership(ctx, tenantId, userId)
+	_, err := s.repo.GetBind(ctx, tenantId, userId)
 	if err != nil {
 		return false, nil
 	}
@@ -224,8 +226,8 @@ func (s *tenantService) Delete(ctx context.Context, id int64) error {
 func (s *tenantService) GetByID(ctx context.Context, id int64) (domain.Tenant, error) {
 	return s.repo.FindById(ctx, id)
 }
-func (s *tenantService) FindMembershipsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error) {
-	ms, err := s.repo.FindMembershipsByUserIds(ctx, userIds)
+func (s *tenantService) ListBindsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error) {
+	ms, err := s.repo.ListBindsByUserIds(ctx, userIds)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +248,7 @@ func (s *tenantService) CheckUsersInTenant(ctx context.Context, userIds []int64,
 	if len(userIds) == 0 {
 		return res, nil
 	}
-	ms, err := s.repo.FindMembershipsByUsersAndTenant(ctx, userIds, tenantId)
+	ms, err := s.repo.ListBindsByUsersAndTenant(ctx, userIds, tenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -286,5 +288,23 @@ func (s *tenantService) ListMembers(ctx context.Context, offset, limit int64, ke
 
 func (s *tenantService) AssignUser(ctx context.Context, userID int64) error {
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
-	return s.repo.AddMembership(ctx, userID, tenantID)
+	return s.repo.CreateBind(ctx, userID, tenantID)
+}
+
+func (s *tenantService) RemoveMember(ctx context.Context, tenantID, userID int64) error {
+	// 1. 获取用户信息（用于清理权限）
+	u, err := s.userRepo.FindById(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 清理该用户在该租户下的所有角色授权
+	// 注意：Casbin 的 DeleteRolesForUser 在有 domain 的情况下是：DeleteRolesForUser(user, domain)
+	_, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(u.Username), ctxutil.ContextID(tenantID).String())
+	if err != nil {
+		return err
+	}
+
+	// 3. 移除成员契约
+	return s.repo.DeleteBind(ctx, tenantID, userID)
 }

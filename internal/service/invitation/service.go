@@ -9,15 +9,15 @@ import (
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/ecodeclub/ekit/slice"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 )
 
 type IInvitationService interface {
 	// CreateInvitation 创建邀请码
 	CreateInvitation(ctx context.Context, inviterID int64, maxUses int, expireAt int64, roleCodes []string, requireApproval bool) (string, error)
-	// VerifyInvitation 校验邀请码有效性
-	VerifyInvitation(ctx context.Context, code string) (domain.Invitation, error)
+	// VerifyInvitation 校验邀请码有效性并返回详细信息，可选传入 userID 校验成员资格
+	VerifyInvitation(ctx context.Context, code string, userID int64) (domain.Invitation, bool, error)
 	// AcceptInvitation 接受邀请，完成入驻或提交申请
 	AcceptInvitation(ctx context.Context, code string, userID int64, username string) (bool, error)
 	// ListInvitations 获取当前租户下所有活跃的邀请链接
@@ -67,18 +67,18 @@ func (s *invitationService) CreateInvitation(ctx context.Context, inviterID int6
 	return code, err
 }
 
-func (s *invitationService) VerifyInvitation(ctx context.Context, code string) (domain.Invitation, error) {
+func (s *invitationService) VerifyInvitation(ctx context.Context, code string, userID int64) (domain.Invitation, bool, error) {
 	inv, err := s.repo.GetByCode(ctx, code)
 	if err != nil {
-		return domain.Invitation{}, errs.ErrInvitationNotFound
+		return domain.Invitation{}, false, errs.ErrInvitationNotFound
 	}
 
 	if !inv.CanUse() {
-		return domain.Invitation{}, errs.ErrInvitationFull
+		return domain.Invitation{}, false, errs.ErrInvitationFull
 	}
 
 	if inv.IsExpired() {
-		return domain.Invitation{}, errs.ErrInvitationNotFound
+		return domain.Invitation{}, false, errs.ErrInvitationNotFound
 	}
 
 	// 补充租户名称，方便前端展示
@@ -87,51 +87,64 @@ func (s *invitationService) VerifyInvitation(ctx context.Context, code string) (
 		inv.TenantName = t.Name
 	}
 
-	return inv, nil
+	// 校验当前用户是否已经是成员
+	isMember := false
+	if userID != 0 {
+		_, err = s.tenantRepo.GetBind(ctx, inv.TenantID, userID)
+		isMember = err == nil
+	}
+
+	return inv, isMember, nil
 }
 
 func (s *invitationService) AcceptInvitation(ctx context.Context, code string, userID int64, username string) (bool, error) {
-	inv, err := s.VerifyInvitation(ctx, code)
+	inv, _, err := s.VerifyInvitation(ctx, code, userID)
 	if err != nil {
 		return false, err
 	}
 
-	// NOTE: 接受邀请时，当前用户可能未登录（无租户环境），必须从邀请码中获取 TenantID 并显式包装 Context 传给下游
-	targetCtx := ctxutil.WithTenantID(ctx, inv.TenantID)
+	// 1. 预占用名额
+	if _, err = s.repo.IncrUsedCount(ctx, code, inv.MaxUses); err != nil {
+		return false, err
+	}
 
-	// 1. 检查是否已经入驻
-	_, err = s.tenantRepo.GetMembership(targetCtx, inv.TenantID, userID)
+	// 定义回滚闭包
+	rollback := func() {
+		_, _ = s.repo.DecrUsedCount(ctx, code)
+	}
+
+	// 2. 幂等性与成员检查
+	_, err = s.tenantRepo.GetBind(ctx, inv.TenantID, userID)
 	if err == nil {
+		rollback()
 		return false, errs.ErrAlreadyMember
 	}
 
-	// 2. 如果需要审批，则创建申请记录
+	// 3. 如果需要审批，则创建申请记录
 	if inv.RequireApproval {
-		_, err = s.repo.CreateJoinRequest(targetCtx, domain.JoinRequest{
+		_, err = s.repo.CreateJoinRequest(ctx, domain.JoinRequest{
 			TenantID:       inv.TenantID,
 			UserID:         userID,
 			InvitationCode: inv.Code,
 			RoleCodes:      inv.RoleCodes,
 			Status:         domain.JoinRequestStatusPending,
 		})
-		return true, err
+		if err != nil {
+			rollback()
+			return false, err
+		}
+		return true, nil
 	}
 
-	// 3. 执行自动入驻逻辑
-	err = s.tenantRepo.AddMembership(targetCtx, userID, inv.TenantID)
-	if err != nil {
+	// 4. 执行自动入驻逻辑
+	if err = s.tenantRepo.CreateBind(ctx, userID, inv.TenantID); err != nil {
+		rollback()
 		return false, err
 	}
 
 	// 自动授予角色
-	for _, rc := range inv.RoleCodes {
-		_, _ = s.permSvc.AssignRoleToUser(ctxutil.WithTenantID(targetCtx, inv.TenantID), username, rc)
-	}
-
-	// 4. 更新使用计数
-	usedCount, _ := s.repo.IncrUsedCount(targetCtx, code, inv.MaxUses)
-	if inv.MaxUses > 0 && usedCount >= inv.MaxUses {
-		_ = s.repo.Delete(targetCtx, code)
+	if len(inv.RoleCodes) > 0 {
+		_, _ = s.permSvc.AssignRolesToUser(ctx, username, inv.RoleCodes)
 	}
 
 	return false, nil
@@ -155,21 +168,28 @@ func (s *invitationService) ListJoinRequests(ctx context.Context, offset, limit 
 		return []domain.JoinRequest{}, total, nil
 	}
 
-	// 补充用户信息
-	var eg errgroup.Group
-	for i := range reqs {
-		idx := i
-		eg.Go(func() error {
-			u, err := s.userSvc.GetById(ctx, reqs[idx].UserID)
-			if err == nil {
-				reqs[idx].Username = u.Username
-				reqs[idx].Nickname = u.Profile.Nickname
-			}
-			return nil
-		})
+	// 获取用户信息
+	userIds := slice.Map(reqs, func(idx int, src domain.JoinRequest) int64 {
+		return src.UserID
+	})
+	users, err := s.userSvc.GetByIDs(ctx, userIds)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	_ = eg.Wait()
+	// 构建 map 提升查找效率
+	userMap := slice.ToMap(users, func(element domain.User) int64 {
+		return element.ID
+	})
+
+	// 回填用户信息
+	for i := range reqs {
+		if u, ok := userMap[reqs[i].UserID]; ok {
+			reqs[i].Username = u.Username
+			reqs[i].Nickname = u.Profile.Nickname
+		}
+	}
+
 	return reqs, total, nil
 }
 
@@ -184,8 +204,11 @@ func (s *invitationService) HandleJoinRequest(ctx context.Context, requestID int
 		return errs.ErrJoinRequestHandled
 	}
 
-	// 2. 拒绝逻辑：直接更新状态并返回
+	// 2. 拒绝逻辑：更新状态并归还预占用名额
 	if !approve {
+		if req.InvitationCode != "" {
+			_, _ = s.repo.DecrUsedCount(ctx, req.InvitationCode)
+		}
 		return s.repo.UpdateJoinRequestStatus(ctx, requestID, domain.JoinRequestStatusRejected)
 	}
 
@@ -195,11 +218,8 @@ func (s *invitationService) HandleJoinRequest(ctx context.Context, requestID int
 
 // approveJoinRequest 执行申请通过后的核心业务链
 func (s *invitationService) approveJoinRequest(ctx context.Context, req domain.JoinRequest) error {
-	// 准备目标租户上下文
-	targetCtx := ctxutil.WithTenantID(ctx, req.TenantID)
-
 	// 1. 加入租户成员
-	if err := s.tenantRepo.AddMembership(targetCtx, req.UserID, req.TenantID); err != nil {
+	if err := s.tenantRepo.CreateBind(ctx, req.UserID, req.TenantID); err != nil {
 		return err
 	}
 
@@ -207,29 +227,10 @@ func (s *invitationService) approveJoinRequest(ctx context.Context, req domain.J
 	if len(req.RoleCodes) > 0 {
 		u, err := s.userSvc.GetById(ctx, req.UserID)
 		if err == nil {
-			_, _ = s.permSvc.AssignRolesToUser(targetCtx, u.Username, req.RoleCodes)
+			_, _ = s.permSvc.AssignRolesToUser(ctx, u.Username, req.RoleCodes)
 		}
 	}
 
-	// 3. 闭环邀请码逻辑（如果是通过邀请码进来的）
-	if req.InvitationCode != "" {
-		s.handleInvitationClosure(ctx, req.InvitationCode)
-	}
-
-	// 4. 更新申请单状态为“已通过”
+	// 3. 更新申请单状态为“已通过”
 	return s.repo.UpdateJoinRequestStatus(ctx, req.ID, domain.JoinRequestStatusApproved)
-}
-
-// handleInvitationClosure 处理邀请码的使用计数与自动失效逻辑
-func (s *invitationService) handleInvitationClosure(ctx context.Context, code string) {
-	inv, err := s.repo.GetByCode(ctx, code)
-	if err != nil {
-		return
-	}
-
-	targetCtx := ctxutil.WithTenantID(ctx, inv.TenantID)
-	usedCount, err := s.repo.IncrUsedCount(targetCtx, code, inv.MaxUses)
-	if err == nil && inv.MaxUses > 0 && usedCount >= inv.MaxUses {
-		_ = s.repo.Delete(targetCtx, code)
-	}
 }

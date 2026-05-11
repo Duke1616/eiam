@@ -29,26 +29,24 @@ type ITenantDAO interface {
 	// BatchCreate 批量创建新租户
 	BatchCreate(ctx context.Context, ts []Tenant) ([]Tenant, error)
 
-	// --- Membership 持久化 ---
+	// --- Bind (人空间关联) 持久化 ---
 
-	// InsertMembership 插入用户与租户的关联映射（入驻记录）
-	InsertMembership(ctx context.Context, m Membership) error
-	// BatchInsertMemberships 批量插入用户与租户的关联映射
-	BatchInsertMemberships(ctx context.Context, ms []Membership) error
-	// AddMembership 插入单条成员关联逻辑
-	AddMembership(ctx context.Context, userID, tenantID int64) error
-	// DeleteMembership 移除用户与租户的关联映射
-	DeleteMembership(ctx context.Context, tenantID, userID int64) error
-	// GetMembership 精确查询特定租户下特定用户的入驻信息
-	GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error)
-	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
-	FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error)
-	// FindMembershipsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系
-	FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error)
+	// CreateBind 建立用户与租户的关联记录
+	CreateBind(ctx context.Context, m Membership) error
+	// BatchCreateBinds 批量建立关联记录
+	BatchCreateBinds(ctx context.Context, ms []Membership) error
+	// DeleteBind 移除用户与租户的关联记录
+	DeleteBind(ctx context.Context, tenantID, userID int64) error
+	// GetBind 精确查询特定租户下特定用户的入驻信息
+	GetBind(ctx context.Context, tenantId, userId int64) (Membership, error)
+	// ListBindsByUserIds 批量检索一组用户的入驻关联记录
+	ListBindsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error)
+	// ListBindsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系
+	ListBindsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error)
 	// FindTenantsByIDs 根据 ID 列表批量检索租户详情
 	FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error)
-	// FindTenantIDsByUserId 查询指定用户所属的所有租户 ID 列表
-	FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error)
+	// ListTenantIDsByUser 查询指定用户所属的所有租户 ID 列表
+	ListTenantIDsByUser(ctx context.Context, userId int64) ([]int64, error)
 	// GetAttachedTenantsWithFilter 分页模糊查询关联用户的租户
 	GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]Tenant, int64, error)
 }
@@ -101,57 +99,51 @@ func (d *TenantDAO) BatchCreate(ctx context.Context, ts []Tenant) ([]Tenant, err
 	return ts, err
 }
 
-func (d *TenantDAO) InsertMembership(ctx context.Context, m Membership) error {
-	m.Ctime = time.Now().UnixMilli()
-	return d.db.WithContext(ctx).Create(&m).Error
+func (d *TenantDAO) membershipDB(ctx context.Context) *gorm.DB {
+	return d.db.WithContext(ctx).Model(&Membership{}).Scopes(gormx.IgnoreTenant())
 }
 
-func (d *TenantDAO) BatchInsertMemberships(ctx context.Context, ms []Membership) error {
+func (d *TenantDAO) CreateBind(ctx context.Context, m Membership) error {
+	m.Ctime = time.Now().UnixMilli()
+	return d.membershipDB(ctx).Create(&m).Error
+}
+
+func (d *TenantDAO) BatchCreateBinds(ctx context.Context, ms []Membership) error {
 	now := time.Now().UnixMilli()
 	for i := range ms {
 		ms[i].Ctime = now
 	}
-	return d.db.WithContext(ctx).Create(&ms).Error
+	return d.membershipDB(ctx).Create(&ms).Error
 }
 
-func (d *TenantDAO) AddMembership(ctx context.Context, userID, tenantID int64) error {
-	return d.db.WithContext(ctx).Create(&Membership{
-		UserID:   userID,
-		TenantID: tenantID,
-		Ctime:    time.Now().UnixMilli(),
-	}).Error
-}
-
-func (d *TenantDAO) DeleteMembership(ctx context.Context, tenantID, userID int64) error {
-	return d.db.WithContext(ctx).
+func (d *TenantDAO) DeleteBind(ctx context.Context, tenantID, userID int64) error {
+	return d.membershipDB(ctx).
 		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
 		Delete(&Membership{}).Error
 }
 
-func (d *TenantDAO) GetMembership(ctx context.Context, tenantId, userId int64) (Membership, error) {
+func (d *TenantDAO) GetBind(ctx context.Context, tenantId, userId int64) (Membership, error) {
 	var m Membership
-	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).
+	err := d.membershipDB(ctx).
 		Where("tenant_id = ? AND user_id = ?", tenantId, userId).First(&m).Error
 	return m, err
 }
 
-func (d *TenantDAO) FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error) {
+func (d *TenantDAO) ListBindsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error) {
 	var ms []Membership
 	if len(userIds) == 0 {
 		return ms, nil
 	}
-	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Where("user_id IN ?", userIds).Find(&ms).Error
+	err := d.membershipDB(ctx).Where("user_id IN ?", userIds).Find(&ms).Error
 	return ms, err
 }
 
-// FindMembershipsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系，
-// 防止超管在系统空间下被趟户插件豁免后拿到多租户记录导致判断错乱
-func (d *TenantDAO) FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error) {
+func (d *TenantDAO) ListBindsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error) {
 	var ms []Membership
 	if len(userIds) == 0 {
 		return ms, nil
 	}
-	err := d.db.WithContext(ctx).
+	err := d.membershipDB(ctx).
 		Where("user_id IN ? AND tenant_id = ?", userIds, tenantId).
 		Find(&ms).Error
 	return ms, err
@@ -195,9 +187,9 @@ func (d *TenantDAO) Delete(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Delete(&Tenant{}, id).Error
 }
 
-func (d *TenantDAO) FindTenantIDsByUserId(ctx context.Context, userId int64) ([]int64, error) {
+func (d *TenantDAO) ListTenantIDsByUser(ctx context.Context, userId int64) ([]int64, error) {
 	var ms []Membership
-	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Select("tenant_id").Where("user_id = ?", userId).Find(&ms).Error
+	err := d.membershipDB(ctx).Select("tenant_id").Where("user_id = ?", userId).Find(&ms).Error
 	if err != nil {
 		return nil, err
 	}

@@ -20,6 +20,7 @@ const (
 // SharedConfig 共享规则配置
 type SharedConfig struct {
 	IsShared  bool
+	IsPrivate bool
 	Condition string
 }
 
@@ -119,12 +120,18 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	db.InstanceSet(injectedKey, true)
 
 	// 3. 核心判定规则：
+	// 如果是私有模式，强制执行严格隔离
+	if conf.IsPrivate {
+		db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid.Int64())
+		return
+	}
+
 	// 如果是系统租户且当前模型未标记为“共享资源 (IsShared)”，则认为是在操作基础库，执行上帝视角豁免。
 	if tid.Int64() == ctxutil.SystemTenantID && !conf.IsShared {
 		return
 	}
 
-	// 4. 如果开启了私有模式，强制不应用 shared 配置，只查当前租户
+	// 4. 如果开启了私有模式（Context 级别），强制不应用 shared 配置，只查当前租户
 	if tid != 0 && ctxutil.IsPrivateOnly(db.Statement.Context) {
 		db.Where(fmt.Sprintf("%s = ?", tenantColumn), tid.Int64())
 		return
@@ -203,11 +210,14 @@ func (p *TenantPlugin) getSharedConfig(sch *schema.Schema) SharedConfig {
 func (p *TenantPlugin) parseEiamTag(tag string) SharedConfig {
 	conf := SharedConfig{}
 	parts := strings.SplitN(tag, ":", 2)
-	if parts[0] == "shared" {
+	switch parts[0] {
+	case "shared":
 		conf.IsShared = true
 		if len(parts) > 1 {
 			conf.Condition = parts[1]
 		}
+	case "private":
+		conf.IsPrivate = true
 	}
 	return conf
 }

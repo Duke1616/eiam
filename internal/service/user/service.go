@@ -26,6 +26,10 @@ type IUserService interface {
 
 	// GetById 根据 ID 获取用户信息
 	GetById(ctx context.Context, id int64) (domain.User, error)
+
+	// GetByIDs 根据 IDS 获取用户列表
+	GetByIDs(ctx context.Context, ids []int64) ([]domain.User, error)
+
 	// GetByUsername 根据用户名获取用户信息
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
 
@@ -90,6 +94,10 @@ type userService struct {
 	idsSvc              idsource.IService
 	credentialProviders map[string]domain.CredentialProvider
 	cm                  *cryptox.CryptoManager
+}
+
+func (s *userService) GetByIDs(ctx context.Context, ids []int64) ([]domain.User, error) {
+	return s.repo.FindByIds(ctx, ids)
 }
 
 func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService,

@@ -27,22 +27,24 @@ type ITenantRepository interface {
 	// BatchCreate 批量创建租户
 	BatchCreate(ctx context.Context, ts []domain.Tenant) ([]domain.Tenant, error)
 
-	// --- Membership 纯净契约管理 ---
+	// --- Bind (人空间关联) 纯净契约管理 ---
 
-	// AddMembership 建立用户与租户的关联契约（入驻）
-	AddMembership(ctx context.Context, userID, tenantID int64) error
-	// BatchAddMemberships 批量增加成员
-	BatchAddMemberships(ctx context.Context, ms []domain.Membership) error
-	// GetMembership 获取用户在特定租户下的契约详情
-	GetMembership(ctx context.Context, tenantId, userId int64) (domain.Membership, error)
+	// CreateBind 建立用户与租户的关联契约（入驻）
+	CreateBind(ctx context.Context, userID, tenantID int64) error
+	// BatchCreateBinds 批量增加成员关联
+	BatchCreateBinds(ctx context.Context, ms []domain.Membership) error
+	// DeleteBind 移除用户与租户的关联契约（退出/移除）
+	DeleteBind(ctx context.Context, tenantID, userID int64) error
+	// GetBind 获取用户在特定租户下的契约详情
+	GetBind(ctx context.Context, tenantId, userId int64) (domain.Membership, error)
 	// FindTenantsByUserId 获取指定用户关联的所有租户领域模型列表
 	FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error)
 	// GetAttachedTenantsWithFilter 分页模糊查询关联用户的租户
 	GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error)
-	// FindMembershipsByUserIds 批量检索一组用户的入驻关联记录
-	FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error)
-	// FindMembershipsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系
-	FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]domain.Membership, error)
+	// ListBindsByUserIds 批量检索一组用户的入驻关联记录
+	ListBindsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error)
+	// ListBindsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系
+	ListBindsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]domain.Membership, error)
 }
 
 type TenantRepository struct {
@@ -62,15 +64,19 @@ func (r *TenantRepository) Create(ctx context.Context, t domain.Tenant) (int64, 
 	})
 }
 
-func (r *TenantRepository) AddMembership(ctx context.Context, userID, tenantID int64) error {
-	return r.dao.InsertMembership(ctx, dao.Membership{
+func (r *TenantRepository) CreateBind(ctx context.Context, userID, tenantID int64) error {
+	return r.dao.CreateBind(ctx, dao.Membership{
 		TenantID: tenantID,
 		UserID:   userID,
 	})
 }
 
-func (r *TenantRepository) GetMembership(ctx context.Context, tenantId, userId int64) (domain.Membership, error) {
-	m, err := r.dao.GetMembership(ctx, tenantId, userId)
+func (r *TenantRepository) DeleteBind(ctx context.Context, tenantID, userID int64) error {
+	return r.dao.DeleteBind(ctx, tenantID, userID)
+}
+
+func (r *TenantRepository) GetBind(ctx context.Context, tenantId, userId int64) (domain.Membership, error) {
+	m, err := r.dao.GetBind(ctx, tenantId, userId)
 	if err != nil {
 		return domain.Membership{}, err
 	}
@@ -130,7 +136,7 @@ func (r *TenantRepository) Delete(ctx context.Context, id int64) error {
 
 func (r *TenantRepository) FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {
 	// 从 membership 表查出该用户入驻的所有租户 ID
-	ids, err := r.dao.FindTenantIDsByUserId(ctx, userId)
+	ids, err := r.dao.ListTenantIDsByUser(ctx, userId)
 	if err != nil || len(ids) == 0 {
 		return nil, err
 	}
@@ -187,8 +193,8 @@ func (r *TenantRepository) toDomainMembership(m dao.Membership) domain.Membershi
 	}
 }
 
-func (r *TenantRepository) FindMembershipsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error) {
-	ms, err := r.dao.FindMembershipsByUserIds(ctx, userIds)
+func (r *TenantRepository) ListBindsByUserIds(ctx context.Context, userIds []int64) ([]domain.Membership, error) {
+	ms, err := r.dao.ListBindsByUserIds(ctx, userIds)
 	if err != nil {
 		return nil, err
 	}
@@ -198,8 +204,8 @@ func (r *TenantRepository) FindMembershipsByUserIds(ctx context.Context, userIds
 	}), nil
 }
 
-func (r *TenantRepository) FindMembershipsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]domain.Membership, error) {
-	ms, err := r.dao.FindMembershipsByUsersAndTenant(ctx, userIds, tenantId)
+func (r *TenantRepository) ListBindsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]domain.Membership, error) {
+	ms, err := r.dao.ListBindsByUsersAndTenant(ctx, userIds, tenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +230,7 @@ func (r *TenantRepository) BatchCreate(ctx context.Context, ts []domain.Tenant) 
 	}), nil
 }
 
-func (r *TenantRepository) BatchAddMemberships(ctx context.Context, ms []domain.Membership) error {
+func (r *TenantRepository) BatchCreateBinds(ctx context.Context, ms []domain.Membership) error {
 	daoMs := slice.Map(ms, func(idx int, m domain.Membership) dao.Membership {
 		return dao.Membership{
 			UserID:   m.UserID,
@@ -232,5 +238,5 @@ func (r *TenantRepository) BatchAddMemberships(ctx context.Context, ms []domain.
 		}
 	})
 
-	return r.dao.BatchInsertMemberships(ctx, daoMs)
+	return r.dao.BatchCreateBinds(ctx, daoMs)
 }
