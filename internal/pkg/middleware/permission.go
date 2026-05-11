@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
@@ -48,7 +48,7 @@ func CheckPermission(svc permission.IPermissionService) gin.HandlerFunc {
 		ok, err = svc.CheckAPI(ctx.Request.Context(), username, info.Service, ctx.Request.Method, ctx.FullPath())
 		if err != nil {
 			// 如果是明确的越权拦截错误，返回 403
-			if errors.Is(err, domain.ErrForbidden) {
+			if errors.Is(err, errs.ErrForbidden) {
 				ctx.AbortWithStatusJSON(http.StatusForbidden, ginx.Result{
 					Code: 403001,
 					Msg:  err.Error(),

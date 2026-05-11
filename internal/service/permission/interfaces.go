@@ -18,6 +18,8 @@ type IPermissionService interface {
 	CheckPermission(ctx context.Context, username string, action, resourceURN string) (bool, error)
 	// GetAuthorizedMenus 过滤用户拥有的前端菜单
 	GetAuthorizedMenus(ctx context.Context, username string) (domain.MenuTree, error)
+	// GetAuthorizedCodes 获取用户拥有的所有逻辑权限代码 (离散化列表，用于前端显隐控制)
+	GetAuthorizedCodes(ctx context.Context, username string) ([]string, error)
 
 	// --- 2. 能力中心 (Admin) ---
 

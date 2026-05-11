@@ -2,14 +2,8 @@ package domain
 
 import (
 	"database/sql/driver"
-	"errors"
 	"slices"
 	"strings"
-)
-
-var (
-	ErrDuplicatePolicyCode = errors.New("策略标识码已存在，请更换后重试或避免与系统预置策略冲突")
-	ErrForbidden           = errors.New("越权操作：包含超出当前租户范围的受限权限")
 )
 
 // ===========================================================================

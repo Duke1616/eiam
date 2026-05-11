@@ -17,7 +17,7 @@ type Handler struct {
 func NewHandler(svc idsvc.IService) *Handler {
 	return &Handler{
 		svc:       svc,
-		IRegistry: capability.NewRegistry("iam", "identity_source", "身份源管理"),
+		IRegistry: capability.NewRegistry("iam", "identity_source", "身份源管理").DefaultScope(capability.ScopeSystem),
 	}
 }
 
@@ -38,7 +38,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.DELETE("/delete/:id", h.Capability("删除身份源", "delete").
 		Handle(ginx.W(h.Delete)),
 	)
-	g.GET("/detail/:id", h.Capability("身份源详情", "view").
+	g.GET("/detail/:id", h.Capability("身份源详情", "detail").
 		Handle(ginx.W(h.Detail)),
 	)
 	g.POST("/test", h.Capability("测试身份源连接", "test").

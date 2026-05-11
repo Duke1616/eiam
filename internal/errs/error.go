@@ -30,4 +30,10 @@ var (
 	ErrUnauthorizedHandle = errors.New("无权处理该申请")
 	ErrJoinRequestHandled = errors.New("申请已处理")
 	ErrApiNotFound        = errors.New("请求的接口未注册或不存在")
+
+	// 策略管理相关错误
+	ErrDuplicatePolicyCode = errors.New("策略标识码已存在，请更换后重试或避免与系统预置策略冲突")
+	ErrForbidden           = errors.New("越权操作：包含超出当前租户范围的受限权限")
+	ErrPolicyInUse         = errors.New("策略正在使用中，请先解除所有关联（用户或角色）后再重试删除")
+	ErrDeleteSystemPolicy  = errors.New("系统预置策略禁止删除")
 )

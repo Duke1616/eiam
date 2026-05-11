@@ -119,7 +119,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.DELETE("/delete/:id", h.Capability("删除用户", "delete").
 		Handle(ginx.W(h.Delete)),
 	)
-	g.POST("/list/attached/role", h.Capability("角色关联用户列表", "view").
+	g.POST("/list/attached/role", h.Capability("角色关联用户列表", "view_role_members").
 		Handle(ginx.B[ListRoleUsersRequest](h.ListAttachedRole)),
 	)
 	// LDAP 管理接口
@@ -321,6 +321,7 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 
 	tenantID, _ := sess.Get(ctx.Request.Context(), "tenant_id").AsInt64()
 	roles, _ := h.permSvc.GetRolesForUser(ctx.Request.Context(), u.Username)
+	permissions, _ := h.permSvc.GetAuthorizedCodes(ctx.Request.Context(), u.Username)
 
 	return ginx.Result{
 		Data: RetrieveUser{
@@ -328,6 +329,7 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 			Tenants:         ToTenantVOs(tenants),
 			CurrentTenantID: tenantID,
 			IsAdmin:         lo.Contains(roles, domain.RoleAdmin),
+			Permissions:     permissions,
 		},
 	}, nil
 }

@@ -3,6 +3,7 @@ package permission
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,6 +27,19 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/samber/lo"
+)
+
+var (
+	// actionPriorityRules 预编译动作优先级正则，提升排序性能
+	actionPriorityRules = []struct {
+		pattern *regexp.Regexp
+		weight  int
+	}{
+		{pattern: regexp.MustCompile(`^(view|list|get|manifest|show).*`), weight: 100},
+		{pattern: regexp.MustCompile(`^(add|create|save|new).*`), weight: 90},
+		{pattern: regexp.MustCompile(`^(edit|update|modify|toggle|change).*`), weight: 80},
+		{pattern: regexp.MustCompile(`^(delete|revoke|remove|drop).*`), weight: 70},
+	}
 )
 
 type permissionService struct {
@@ -146,6 +160,40 @@ func (s *permissionService) CheckPermission(ctx context.Context, username string
 		Actions:  []string{action},
 		Resource: resourceURN,
 		Policies: policies,
+	})
+}
+
+// GetAuthorizedCodes 获取用户拥有的所有逻辑权限代码 (走 OPA 批量裁决)
+func (s *permissionService) GetAuthorizedCodes(ctx context.Context, username string) ([]string, error) {
+	// 1. 获取全量可见清单 (已处理租户边界)
+	manifest, err := s.GetPermissionManifest(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 准备判定参数
+	allCodes := lo.Map(manifest.Permissions, func(p domain.Permission, _ int) string {
+		return p.Code
+	})
+
+	// 3. 获取用户策略
+	policies, err := s.getEffectivePolicies(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. 执行 OPA 批量裁决
+	// 策略：我们将每一个权限码（Code）伪装成一个资源（Resource）进行判定
+	// OPA 的 AuthorizeBatch 会返回所有“允许访问”的资源名，这些资源名刚好就是我们要的权限码
+	resourceActions := make(map[string][]string, len(allCodes))
+	for _, code := range allCodes {
+		resourceActions[code] = []string{code}
+	}
+
+	return s.authorizer.AuthorizeBatch(ctx, authz.AuthInput{
+		BatchResources:  allCodes,
+		ResourceActions: resourceActions,
+		Policies:        policies,
 	})
 }
 
@@ -337,7 +385,6 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 		perms, err = s.permRepo.ListAllPermissions(ctx)
 		return err
 	})
-
 	eg.Go(func() error {
 		var err error
 		svcMetas, err = s.resourceSvc.ListServices(ctx)
@@ -348,66 +395,95 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 		return domain.PermissionManifest{}, err
 	}
 
-	// 执行作用域过滤：非系统租户只能看到 ScopeTenant 权限
-	if ctxutil.GetTenantID(ctx).Int64() != ctxutil.SystemTenantID {
-		perms = lo.Filter(perms, func(p domain.Permission, _ int) bool {
-			return p.Scope == domain.ScopeTenant
-		})
-	}
-
-	// 排序权限列表
-	slices.SortFunc(perms, func(a, b domain.Permission) int {
-		return strings.Compare(a.Code, b.Code)
-	})
-
-	// 2. 构建基础索引
+	// 2. 数据预处理
+	perms = s.filterByScope(ctx, perms)
 	svcMap := slice.ToMap(svcMetas, func(s domain.Service) string { return s.Code })
 
-	// 3. 链式逻辑变换：按 Service -> Group 维度进行二级聚合
-	svcGroups := lo.GroupBy(perms, func(p domain.Permission) string { return p.Service })
-
-	serviceNodes := lo.MapToSlice(svcGroups, func(svcCode string, permsInSvc []domain.Permission) domain.ServiceNode {
-		// 二级聚合：按 Group 维度
-		gGroups := lo.GroupBy(permsInSvc, func(p domain.Permission) string { return p.Group })
-
-		// 补全服务显示名称
-		svcName := strings.ToUpper(svcCode)
-		if meta, ok := svcMap[svcCode]; ok && meta.Name != "" {
-			svcName = meta.Name
-		}
-
-		groups := lo.MapToSlice(gGroups, func(gName string, gPerms []domain.Permission) domain.GroupNode {
-			actions := lo.Map(gPerms, func(p domain.Permission, _ int) string { return p.Code })
-			// 3. 动作层级排序
-			slices.Sort(actions)
-
-			return domain.GroupNode{
-				Name:    gName,
-				Actions: actions,
-			}
-		})
-
-		// 2. 分组层级排序
-		slices.SortFunc(groups, func(a, b domain.GroupNode) int {
-			return strings.Compare(a.Name, b.Name)
-		})
-
-		return domain.ServiceNode{
-			Code:   svcCode,
-			Name:   svcName,
-			Groups: groups,
-		}
-	})
-
-	// 1. 服务层级排序
-	slices.SortFunc(serviceNodes, func(a, b domain.ServiceNode) int {
-		return strings.Compare(a.Code, b.Code)
-	})
+	// 3. 构建资产树
+	serviceNodes := s.toServiceNodes(perms, svcMap)
 
 	return domain.PermissionManifest{
 		Permissions: perms,
 		Services:    serviceNodes,
 	}, nil
+}
+
+// filterByScope 租户隔离过滤
+func (s *permissionService) filterByScope(ctx context.Context, perms []domain.Permission) []domain.Permission {
+	if ctxutil.GetTenantID(ctx).Int64() == ctxutil.SystemTenantID {
+		return perms
+	}
+	return lo.Filter(perms, func(p domain.Permission, _ int) bool {
+		return p.Scope == domain.ScopeTenant
+	})
+}
+
+// toServiceNodes 核心变换逻辑：按 Service -> Group 聚合
+func (s *permissionService) toServiceNodes(perms []domain.Permission, svcMap map[string]domain.Service) []domain.ServiceNode {
+	svcGroups := lo.GroupBy(perms, func(p domain.Permission) string { return p.Service })
+
+	nodes := lo.MapToSlice(svcGroups, func(svcCode string, permsInSvc []domain.Permission) domain.ServiceNode {
+		svcName := strings.ToUpper(svcCode)
+		if meta, ok := svcMap[svcCode]; ok && meta.Name != "" {
+			svcName = meta.Name
+		}
+
+		return domain.ServiceNode{
+			Code:   svcCode,
+			Name:   svcName,
+			Groups: s.buildGroupNodes(permsInSvc),
+		}
+	})
+
+	// 服务层级排序
+	slices.SortFunc(nodes, func(a, b domain.ServiceNode) int {
+		return strings.Compare(a.Code, b.Code)
+	})
+	return nodes
+}
+
+// buildGroupNodes 分组聚合逻辑
+func (s *permissionService) buildGroupNodes(perms []domain.Permission) []domain.GroupNode {
+	gGroups := lo.GroupBy(perms, func(p domain.Permission) string { return p.Group })
+
+	groups := lo.MapToSlice(gGroups, func(gName string, gPerms []domain.Permission) domain.GroupNode {
+		actions := lo.Map(gPerms, func(p domain.Permission, _ int) string { return p.Code })
+		s.sortActions(actions)
+
+		return domain.GroupNode{
+			Name:    gName,
+			Actions: actions,
+		}
+	})
+
+	// 分组层级排序
+	slices.SortFunc(groups, func(a, b domain.GroupNode) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	return groups
+}
+
+// sortActions 动作权重排序算法 (支持正则匹配)
+func (s *permissionService) sortActions(actions []string) {
+	priority := func(code string) int {
+		parts := strings.Split(code, ":")
+		action := parts[len(parts)-1]
+
+		for _, r := range actionPriorityRules {
+			if r.pattern.MatchString(action) {
+				return r.weight
+			}
+		}
+		return 0
+	}
+
+	slices.SortFunc(actions, func(a, b string) int {
+		pa, pb := priority(a), priority(b)
+		if pa != pb {
+			return pb - pa
+		}
+		return strings.Compare(a, b)
+	})
 }
 
 func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error {

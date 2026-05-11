@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	permsvc "github.com/Duke1616/eiam/internal/service/permission"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
@@ -48,7 +49,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list", h.Capability("策略列表", "view").
 		Handle(ginx.B[ListPolicyReq](h.ListPolicies)),
 	)
-	g.GET("/detail/:code", h.Capability("策略详情", "view").
+	g.GET("/detail/:code", h.Capability("策略详情", "detail").
 		Handle(ginx.W(h.GetPolicyDetail)),
 	)
 	g.POST("/attach", h.Capability("绑定策略", "attach").
@@ -70,6 +71,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	// 查询特定角色的关联策略 (管理侧使用)
 	g.POST("/list/attached/role", h.Capability("查询角色策略", "view_role_policies").
 		Handle(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
+	)
+	// 删除策略 (物理删除，需校验引用)
+	g.DELETE("/delete/:code", h.Capability("删除策略", "delete").
+		Handle(ginx.W(h.DeletePolicy)),
 	)
 }
 
@@ -143,7 +148,7 @@ func (h *Handler) CreatePolicy(ctx *ginx.Context, req CreatePolicyReq) (ginx.Res
 		}),
 	})
 	if err != nil {
-		if errors.Is(err, domain.ErrDuplicatePolicyCode) {
+		if errors.Is(err, errs.ErrDuplicatePolicyCode) {
 			return ErrDuplicatePolicyCode, err
 		}
 		return ErrCreatePolicyFailed, err
@@ -319,6 +324,24 @@ func (h *Handler) toVO(p domain.Policy) Policy {
 			}
 		}),
 	}
+}
+
+func (h *Handler) DeletePolicy(ctx *ginx.Context) (ginx.Result, error) {
+	code, err := ctx.Param("code").AsString()
+	if err != nil {
+		return ErrInvalidPolicyCode, nil
+	}
+
+	if err = h.svc.DeletePolicy(ctx.Request.Context(), code); err != nil {
+		if errors.Is(err, errs.ErrPolicyInUse) {
+			return ErrPolicyInUse, nil
+		}
+		return ErrDeletePolicyFailed, err
+	}
+
+	return ginx.Result{
+		Msg: "删除成功",
+	}, nil
 }
 
 func (h *Handler) toStatementDomain(s Statement) domain.Statement {

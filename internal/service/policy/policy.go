@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
@@ -19,7 +20,7 @@ type IPolicyService interface {
 	ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error)
 	// SearchPolicies 关键词与类型搜索列表
 	SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
-	// CreatePolicy 修改权限策略
+	// UpdatePolicy 修改权限策略
 	UpdatePolicy(ctx context.Context, p domain.Policy) error
 	// AttachPolicyToUser 挂载托管策略到用户，用户将立即获得该策略定义的权限
 	AttachPolicyToUser(ctx context.Context, username, policyCode string) error
@@ -50,6 +51,8 @@ type IPolicyService interface {
 	BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
 	// BatchDetachPolicies 批量解绑策略
 	BatchDetachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
+	// DeletePolicy 删除权限策略
+	DeletePolicy(ctx context.Context, code string) error
 }
 
 type policyService struct {
@@ -73,7 +76,7 @@ func (s *policyService) CreatePolicy(ctx context.Context, p domain.Policy) (int6
 	// 2. 冲突检测：防止当前租户自定义策略与当前租户已有策略，或与系统的公共预置策略（Type 1）冲突
 	_, err := s.repo.GetPolicyByCode(ctx, p.Code)
 	if err == nil {
-		return 0, domain.ErrDuplicatePolicyCode
+		return 0, errs.ErrDuplicatePolicyCode
 	}
 
 	return s.repo.CreatePolicy(ctx, p)
@@ -217,4 +220,29 @@ func (s *policyService) ListByTypes(ctx context.Context, types []domain.PolicyTy
 		return []domain.Policy{}, nil
 	}
 	return s.repo.ListByTypes(ctx, types)
+}
+
+func (s *policyService) DeletePolicy(ctx context.Context, code string) error {
+	// 1. 获取策略元数据，判定类型
+	p, err := s.repo.GetPolicyByCode(ctx, code)
+	if err != nil {
+		return err
+	}
+
+	// 1.1 禁止删除系统预置策略
+	if p.Type == domain.SystemPolicy {
+		return errs.ErrDeleteSystemPolicy
+	}
+
+	// 2. 引用计数校验：获取该策略当前的绑定数量
+	ps := []domain.Policy{p}
+	if err = s.repo.FillAssignmentCounts(ctx, ps); err != nil {
+		return err
+	}
+
+	if ps[0].AssignmentCount > 0 {
+		return errs.ErrPolicyInUse
+	}
+
+	return s.repo.DeletePolicy(ctx, code)
 }

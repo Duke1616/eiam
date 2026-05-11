@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 )
@@ -42,7 +43,7 @@ func (c *boundaryChecker) ValidateActionScopes(ctx context.Context, actions []st
 	// 边界判定：普通租户严禁使用任何标记为 ScopeSystem 的权限点
 	for _, p := range perms {
 		if p.Scope == domain.ScopeSystem {
-			return domain.ErrForbidden
+			return errs.ErrForbidden
 		}
 	}
 

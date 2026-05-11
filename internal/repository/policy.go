@@ -44,6 +44,8 @@ type IPolicyRepository interface {
 	BatchDetach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
 	// FillAssignmentCounts 为策略列表填充授权计数值
 	FillAssignmentCounts(ctx context.Context, ps []domain.Policy) error
+	// DeletePolicy 删除策略实体
+	DeletePolicy(ctx context.Context, code string) error
 }
 
 type policyRepository struct {
@@ -348,4 +350,8 @@ func (r *policyRepository) FillAssignmentCounts(ctx context.Context, ps []domain
 		ps[i].AssignmentCount = counts[ps[i].Code]
 	}
 	return nil
+}
+
+func (r *policyRepository) DeletePolicy(ctx context.Context, code string) error {
+	return r.dao.Delete(ctx, code)
 }

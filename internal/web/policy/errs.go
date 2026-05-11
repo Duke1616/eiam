@@ -28,4 +28,7 @@ var (
 	ErrDetachPolicyFailed      = ginx.Result{Code: 4050011, Msg: "解绑策略失败"}
 	ErrBatchAttachPolicyFailed = ginx.Result{Code: 4050012, Msg: "批量绑定策略失败"}
 	ErrDuplicatePolicyCode     = ginx.Result{Code: 4050013, Msg: "策略标识码已存在(请勿与系统级策略冲突)"}
+	ErrDeletePolicyFailed      = ginx.Result{Code: 4050015, Msg: "删除策略失败"}
+	ErrPolicyInUse             = ginx.Result{Code: 4050016, Msg: "策略正在使用中，无法删除"}
+	ErrDeleteSystemPolicy      = ginx.Result{Code: 4050017, Msg: "系统预置策略禁止删除"}
 )

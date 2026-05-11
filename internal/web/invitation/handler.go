@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/service/invitation"
+	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -14,14 +15,16 @@ import (
 )
 
 type Handler struct {
+	capability.IRegistry
 	svc invitation.IInvitationService
 	sp  session.Provider
 }
 
 func NewHandler(svc invitation.IInvitationService, sp session.Provider) *Handler {
 	return &Handler{
-		svc: svc,
-		sp:  sp,
+		IRegistry: capability.NewRegistry("iam", "invitation", "成员治理"),
+		svc:       svc,
+		sp:        sp,
 	}
 }
 
@@ -32,14 +35,27 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/invitation")
-	g.POST("/create", ginx.B[CreateInvitationReq](h.CreateInvitation))
-	g.POST("/accept", ginx.B[AcceptInvitationReq](h.AcceptInvitation))
-	g.POST("/list", ginx.B[Page](h.ListInvitations))
-	g.DELETE("/revoke/:code", ginx.W(h.RevokeInvitation))
+
+	g.POST("/create", h.Capability("创建邀请", "add").
+		Handle(ginx.B[CreateInvitationReq](h.CreateInvitation)),
+	)
+	g.POST("/accept", h.Capability("接受邀请", "accept").
+		NoSync().Handle(ginx.B[AcceptInvitationReq](h.AcceptInvitation)),
+	)
+	g.POST("/list", h.Capability("邀请列表", "view").
+		Handle(ginx.B[Page](h.ListInvitations)),
+	)
+	g.DELETE("/revoke/:code", h.Capability("撤回邀请", "delete").
+		Handle(ginx.W(h.RevokeInvitation)),
+	)
 
 	// 申请管理
-	g.POST("/requests", ginx.B[Page](h.ListJoinRequests))
-	g.POST("/requests/handle", ginx.B[HandleJoinRequestReq](h.HandleJoinRequest))
+	g.POST("/requests", h.Capability("申请列表", "view_requests").
+		Handle(ginx.B[Page](h.ListJoinRequests)),
+	)
+	g.POST("/requests/handle", h.Capability("处理申请", "handle_request").
+		Handle(ginx.B[HandleJoinRequestReq](h.HandleJoinRequest)),
+	)
 }
 
 func (h *Handler) CreateInvitation(ctx *ginx.Context, req CreateInvitationReq) (ginx.Result, error) {

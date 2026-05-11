@@ -613,7 +613,7 @@
     platforms: ["system"]
   children:
   - name: AuthorizationManager
-    permission_code: "iam:authorization:view"
+    permission_code: "iam:permission:view_authorizations"
     path: /iam/permission/authorization
     component: /pages/iam/authorization/index.vue
     meta:
