@@ -155,6 +155,7 @@ func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService s
 			Name:    p.Name,
 			Group:   p.Group,
 			Needs:   p.Needs,
+			Scope:   p.Scope,
 		}
 	})
 

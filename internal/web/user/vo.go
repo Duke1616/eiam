@@ -115,6 +115,7 @@ type RetrieveUser struct {
 	BindToken        string   `json:"bind_token,omitempty"`
 	MfaRequired      bool     `json:"mfa_required"`
 	MfaToken         string   `json:"mfa_token,omitempty"`
+	IsAdmin          bool     `json:"is_admin"`
 }
 
 type UpdatePasswordRequest struct {

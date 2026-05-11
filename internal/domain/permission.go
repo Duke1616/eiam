@@ -25,6 +25,11 @@ const (
 )
 
 const (
+	ScopeSystem = "system" // 仅系统租户可见
+	ScopeTenant = "tenant" // 所有租户可见
+)
+
+const (
 	SubjectTypeUser   = "user"
 	SubjectTypeRole   = "role"
 	SubjectTypePolicy = "policy"
@@ -75,6 +80,7 @@ type Permission struct {
 	Group   string   `json:"group"`   // 所属分组：如 "用户管理"
 	Desc    string   `json:"desc"`    // 业务描述信息
 	Needs   []string `json:"needs"`   // 依赖能力项
+	Scope   string   `json:"scope"`   // 作用域 (system/tenant)
 
 	// Bindings 权限项包含的物理资源映射 (全局通用，不分租户)
 	Bindings []ResourceBinding `json:"bindings"`

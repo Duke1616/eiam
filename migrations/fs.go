@@ -3,7 +3,7 @@ package migrations
 
 import "embed"
 
-// FS 包含 deploy/migrations 目录下所有 .sql 迁移文件。
+// FS 包含 migrations 目录下所有 .sql 迁移文件。
 //
 //go:embed *.sql
 var FS embed.FS

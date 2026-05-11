@@ -25,14 +25,32 @@ type Handler struct {
 
 func NewHandler(svc tenant.ITenantService, permSvc permission.IPermissionService, sess session.Provider) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("iam", "tenant", "租户管理"),
-		svc:       svc,
-		permSvc:   permSvc,
-		sess:      sess,
+		IRegistry: capability.NewRegistry("iam", "tenant", "租户管理").
+			DefaultScope(capability.ScopeSystem),
+		svc:     svc,
+		permSvc: permSvc,
+		sess:    sess,
 	}
 }
 
 func (h *Handler) PublicRoutes(server *gin.Engine) {
+}
+
+func (h *Handler) IdentityRoutes(server *gin.Engine) {
+	g := server.Group("/api/tenant")
+	// 获取我所属的所有租户列表 (用于下拉框展示)
+	// 该接口为基础身份能力，不参与权限系统同步
+	g.GET("/list/mine", h.Capability("查询我的租户列表", "view_mine").
+		Scope(capability.ScopeTenant).NoSync().
+		Handle(ginx.W(h.ListMyTenants)),
+	)
+
+	// 【核心：租户上下文切换】
+	// 跨租户切换需要特殊放行中间件拦截
+	g.POST("/switch", h.Capability("切换租户空间", "switch").
+		AllowCrossTenant().Scope(capability.ScopeTenant).NoSync().
+		Handle(ginx.B[SwitchTenantReq](h.SwitchTenant)),
+	)
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
@@ -41,14 +59,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/create", h.Capability("创建租户空间", "add").
 		Handle(ginx.BS[CreateTenantReq](h.CreateTenant)),
 	)
-	// 获取我所属的所有租户列表 (用于下拉框展示)
-	g.GET("/list/mine", h.Capability("查询我的租户列表", "view_mine").
-		Handle(ginx.W(h.ListMyTenants)),
-	)
-	// 【核心：租户上下文切换】
-	g.POST("/switch", h.Capability("切换租户空间", "switch").
-		Handle(ginx.B[SwitchTenantReq](h.SwitchTenant)),
-	)
+
 	// 租户管理 (全量列表/更新/删除/详情)
 	g.POST("/list", h.Capability("全量租户列表", "view").
 		Handle(ginx.B[ListTenantReq](h.ListTenants)),
@@ -66,14 +77,18 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list/attached/user", h.Capability("查询用户所属租户", "view_user_tenants").
 		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId)),
 	)
+
 	// 租户成员管理
 	g.POST("/members", h.Capability("查看租户成员", "view_members").
+		Scope(capability.ScopeTenant).
 		Handle(ginx.B[ListMembersReq](h.ListMembers)),
 	)
 	g.POST("/assign", h.Capability("加入租户", "assign").
+		Scope(capability.ScopeTenant).
 		Handle(ginx.B[AssignUserReq](h.AssignUser)),
 	)
 	g.POST("/remove/member", h.Capability("移除租户成员", "remove_member").
+		Scope(capability.ScopeTenant).
 		Handle(ginx.B[RemoveMemberReq](h.RemoveMember)),
 	)
 }
@@ -165,22 +180,29 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantReq) (ginx.Res
 		return ErrUnauthorized, err
 	}
 
+	uid := sess.Claims().Uid
+	username, _ := sess.Get(ctx.Context, "username").AsString()
+
 	// 1. 安全校验：确认该用户是否真的属于目标租户
-	hasAccess, err := h.svc.CheckUserTenantAccess(ctx, sess.Claims().Uid)
+	hasAccess, err := h.svc.CheckUserTenantAccess(ctx, uid)
 	if err != nil || !hasAccess {
 		return ErrTenantAccess, nil
 	}
 
-	// 2. 【核心录入点】：重新构建 Session 并注入新的租户 ID
-	jwtData := map[string]string{
-		"tenant_id": strconv.FormatInt(req.TenantID, 10),
-		"username":  sess.Claims().Data["username"],
-	}
+	// 2. 显式销毁旧 Session，确保切换后旧 Token 失效 (安全防范)
+	_ = sess.Destroy(ctx.Context)
 
-	// 重新 Build Session (Renew Token with new identity)
-	// 原 session 框架会重新签发包含了租户信息的 JWT 给前端
-	_, err = session.NewSessionBuilder(&gctx.Context{Context: ctx.Context}, sess.Claims().Uid).
-		SetJwtData(jwtData).
+	// 3. 【核心录入点】：重新构建 Session 并注入新的租户 ID
+	// 使用 SessionBuilder 签发包含了租户信息的正式 JWT
+	_, err = session.NewSessionBuilder(&gctx.Context{Context: ctx.Context}, uid).
+		SetJwtData(map[string]string{
+			"tenant_id": strconv.FormatInt(req.TenantID, 10),
+			"username":  username,
+		}).
+		SetSessData(map[string]any{
+			"tenant_id": req.TenantID,
+			"username":  username,
+		}).
 		Build()
 
 	if err != nil {

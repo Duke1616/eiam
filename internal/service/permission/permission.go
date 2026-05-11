@@ -3,6 +3,7 @@ package permission
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/pkg/searcher"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/ecodeclub/ekit/set"
 	"golang.org/x/sync/errgroup"
@@ -36,6 +38,7 @@ type permissionService struct {
 
 	// registry 注册中心 (组合模式处理：全域搜索与计数聚合)
 	registry searcher.ISubjectRegistry
+	boundary checker.IBoundaryChecker
 }
 
 func NewPermissionService(
@@ -45,7 +48,8 @@ func NewPermissionService(
 	registry searcher.ISubjectRegistry,
 	resourceSvc resource.IResourceService,
 	permRepo repository.IPermissionRepository,
-	auth authz.IAuthorizer) IPermissionService {
+	auth authz.IAuthorizer,
+	boundary checker.IBoundaryChecker) IPermissionService {
 	if en == nil {
 		panic("权限服务初始化失败: Casbin Enforcer 为空，请检查数据库与配置文件")
 	}
@@ -58,6 +62,7 @@ func NewPermissionService(
 		resourceSvc: resourceSvc,
 		permRepo:    permRepo,
 		authorizer:  auth,
+		boundary:    boundary,
 	}
 }
 
@@ -94,28 +99,38 @@ func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, 
 
 // CheckAPI 针对物理接口访问进行判定
 func (s *permissionService) CheckAPI(ctx context.Context, username string, serviceName, method, path string) (bool, error) {
-	// 1. 物理层拦截
+	// 1. 资产发现
 	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
 	if err != nil || api.ID == 0 {
+		return false, errs.ErrApiNotFound
+	}
+
+	// 2. 映射发现
+	urn := api.URN()
+	codes, err := s.permRepo.FindCodesByResource(ctx, urn)
+	if err != nil {
 		return false, err
 	}
 
-	// 2. 映射层发现
-	codes, err := s.permRepo.FindCodesByResource(ctx, api.URN())
-	if err != nil || len(codes) == 0 {
-		return false, nil
+	// 3. 放行逻辑：未绑定权限代码的资源视为公共资产，仅需登录即可访问
+	if len(codes) == 0 {
+		return true, nil
 	}
 
-	// 3. 策略获取 (getEffectivePolicies 内部已自动处理身份漫游)
+	// 4. 边界拦截：普通租户严禁访问系统级权限点
+	if err = s.boundary.ValidateActionScopes(ctx, codes); err != nil {
+		return false, err
+	}
+
+	// 5. 业务鉴权：执行精准的 OPA 策略判定
 	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
 		return false, err
 	}
 
-	// 4. OPA 裁决
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
 		Actions:  codes,
-		Resource: api.URN(),
+		Resource: urn,
 		Policies: policies,
 	})
 }
@@ -149,12 +164,17 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, username str
 		return nil, err
 	}
 
+	// 3. 边界预过滤：非系统租户剔除掉所有包含 ScopeSystem 权限的菜单 URN
+	if menuURNs, err = s.filterByBoundary(ctx, menuURNs, codesMap); err != nil {
+		return nil, err
+	}
+
 	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. 执行 OPA 批量裁决 (性能优化：全量菜单一次性判定)
+	// 4. 执行 OPA 批量裁决 (性能优化：全量菜单一次性判定)
 	allowedURNs, err := s.authorizer.AuthorizeBatch(ctx, authz.AuthInput{
 		BatchResources:  menuURNs,
 		ResourceActions: s.buildResourceActionMap(menuURNs, codesMap),
@@ -164,9 +184,33 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, username str
 		return nil, err
 	}
 
-	// 4. 执行可见性过滤与拓扑恢复
+	// 5. 执行可见性过滤与拓扑恢复
 	filtered := s.filterAccessibleMenus(allMenus, codesMap, allowedURNs)
 	return domain.MenuList(filtered).ToTree(), nil
+}
+
+// filterByBoundary 根据系统边界定义，剔除当前租户无权查看的 URN 列表
+func (s *permissionService) filterByBoundary(ctx context.Context, urns []string, codesMap map[string][]string) ([]string, error) {
+	if ctxutil.GetTenantID(ctx).Int64() == ctxutil.SystemTenantID || len(urns) == 0 {
+		return urns, nil
+	}
+
+	// 1. 批量识别哪些动作代码属于“系统级受限”
+	allCodes := lo.Uniq(lo.Flatten(lo.Values(codesMap)))
+	forbidden, err := s.boundary.GetForbiddenActions(ctx, allCodes)
+	if err != nil || len(forbidden) == 0 {
+		return urns, err
+	}
+
+	// 2. 内存级快速过滤
+	forbiddenSet := set.NewMapSet[string](len(forbidden))
+	for _, fc := range forbidden {
+		forbiddenSet.Add(fc)
+	}
+
+	return lo.Filter(urns, func(u string, _ int) bool {
+		return !slice.ContainsFunc(codesMap[u], forbiddenSet.Exist)
+	}), nil
 }
 
 // buildResourceActionMap 构建 URN -> 动作候选集的映射表
@@ -304,6 +348,18 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 		return domain.PermissionManifest{}, err
 	}
 
+	// 执行作用域过滤：非系统租户只能看到 ScopeTenant 权限
+	if ctxutil.GetTenantID(ctx).Int64() != ctxutil.SystemTenantID {
+		perms = lo.Filter(perms, func(p domain.Permission, _ int) bool {
+			return p.Scope == domain.ScopeTenant
+		})
+	}
+
+	// 排序权限列表
+	slices.SortFunc(perms, func(a, b domain.Permission) int {
+		return strings.Compare(a.Code, b.Code)
+	})
+
 	// 2. 构建基础索引
 	svcMap := slice.ToMap(svcMetas, func(s domain.Service) string { return s.Code })
 
@@ -320,16 +376,32 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 			svcName = meta.Name
 		}
 
+		groups := lo.MapToSlice(gGroups, func(gName string, gPerms []domain.Permission) domain.GroupNode {
+			actions := lo.Map(gPerms, func(p domain.Permission, _ int) string { return p.Code })
+			// 3. 动作层级排序
+			slices.Sort(actions)
+
+			return domain.GroupNode{
+				Name:    gName,
+				Actions: actions,
+			}
+		})
+
+		// 2. 分组层级排序
+		slices.SortFunc(groups, func(a, b domain.GroupNode) int {
+			return strings.Compare(a.Name, b.Name)
+		})
+
 		return domain.ServiceNode{
-			Code: svcCode,
-			Name: svcName,
-			Groups: lo.MapToSlice(gGroups, func(gName string, gPerms []domain.Permission) domain.GroupNode {
-				return domain.GroupNode{
-					Name:    gName,
-					Actions: lo.Map(gPerms, func(p domain.Permission, _ int) string { return p.Code }),
-				}
-			}),
+			Code:   svcCode,
+			Name:   svcName,
+			Groups: groups,
 		}
+	})
+
+	// 1. 服务层级排序
+	slices.SortFunc(serviceNodes, func(a, b domain.ServiceNode) int {
+		return strings.Compare(a.Code, b.Code)
 	})
 
 	return domain.PermissionManifest{

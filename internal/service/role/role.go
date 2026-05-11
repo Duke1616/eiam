@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	"github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"golang.org/x/sync/errgroup"
@@ -39,13 +40,15 @@ type IRoleService interface {
 type roleService struct {
 	repo      repository.IRoleRepository
 	policySvc policy.IPolicyService
+	boundary  checker.IBoundaryChecker
 }
 
 // NewRoleService 创建角色服务实例
-func NewRoleService(repo repository.IRoleRepository, policySvc policy.IPolicyService) IRoleService {
+func NewRoleService(repo repository.IRoleRepository, policySvc policy.IPolicyService, boundary checker.IBoundaryChecker) IRoleService {
 	return &roleService{
 		repo:      repo,
 		policySvc: policySvc,
+		boundary:  boundary,
 	}
 }
 
@@ -86,6 +89,13 @@ func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) 
 }
 
 func (s *roleService) UpdateInlinePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error {
+	// 1. 安全校验：防止通过内联策略非法注入系统级权限
+	for _, p := range policies {
+		if err := s.boundary.ValidateActionScopes(ctx, p.CollectActions()); err != nil {
+			return err
+		}
+	}
+
 	return s.repo.UpdateInlinePolicies(ctx, roleCode, policies)
 }
 

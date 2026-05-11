@@ -6,7 +6,9 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	invitationsvc "github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	role "github.com/Duke1616/eiam/internal/service/role"
@@ -14,15 +16,14 @@ import (
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/service/user/passkey"
-	invitationsvc "github.com/Duke1616/eiam/internal/service/invitation"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
+	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
-	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
 )
@@ -88,6 +89,7 @@ func InitApp() (*App, error) {
 		resource.NewResourceService,
 		resource.NewResourceInitializer,
 		permission.NewPermissionService,
+		checker.NewBoundaryChecker,
 		policysvc.NewPolicyService,
 		invitationsvc.NewInvitationService,
 		InitIdentitySourceService,

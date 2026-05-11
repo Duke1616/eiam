@@ -8,6 +8,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
+	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
@@ -32,6 +33,7 @@ type Handler struct {
 	ldapSvc    ldap.LdapService
 	idsSvc     idsource.IService
 	passkeySvc passkey.IPasskeyService
+	permSvc    permission.IPermissionService
 	sp         session.Provider
 	logger     *elog.Component
 }
@@ -42,6 +44,7 @@ func NewUserHandler(
 	ldapSvc ldap.LdapService,
 	idsSvc idsource.IService,
 	passkeySvc passkey.IPasskeyService,
+	permSvc permission.IPermissionService,
 	sp session.Provider,
 ) *Handler {
 	return &Handler{
@@ -51,6 +54,7 @@ func NewUserHandler(
 		ldapSvc:    ldapSvc,
 		idsSvc:     idsSvc,
 		passkeySvc: passkeySvc,
+		permSvc:    permSvc,
 		sp:         sp,
 		logger:     elog.DefaultLogger,
 	}
@@ -90,12 +94,6 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 	g.GET("/mfa/totp/setup", ginx.W(h.MfaTotpSetup))
 	g.POST("/mfa/totp/bind", ginx.B[MfaTotpBindRequest](h.MfaTotpBind))
 	g.POST("/mfa/disable", ginx.W(h.MfaDisable))
-
-	// 切换租户不需要管理权限，只需拥有该租户的 Membership 即可
-	g.POST("/switch-tenant", h.Capability("切换租户", "switch").
-		AllowCrossTenant().NoSync().
-		Handle(ginx.B[SwitchTenantRequest](h.SwitchTenant)),
-	)
 
 	// 绑定第三方登录方式
 	g.POST("/identity/bind", ginx.B[BindIdentityRequest](h.BindIdentity))
@@ -174,44 +172,6 @@ func (h *Handler) executeLogin(ctx *ginx.Context, provider, username, password s
 	}
 
 	return h.handleLoginResult(ctx, result)
-}
-
-func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantRequest) (ginx.Result, error) {
-	sess, err := h.sp.Get(ctx)
-	if err != nil {
-		return ErrUnauthenticated, err
-	}
-
-	uid := sess.Claims().Uid
-	username, _ := sess.Get(ctx.Request.Context(), "username").AsString()
-
-	// 1. 安全校验：确认该用户是否真的属于目标租户
-	err = h.userSvc.SwitchTenant(ctx.Request.Context(), uid, req.TenantID)
-	if err != nil {
-		return ErrTenantAccessDenied, err
-	}
-
-	// 2. 显式销毁旧 Session，确保切换后旧 Token 失效
-	_ = sess.Destroy(ctx.Request.Context())
-
-	// 3. 【核心录入点】：重新构建 Session 并注入新的租户 ID
-	// 使用 SessionBuilder 签发包含了租户信息的正式 JWT
-	_, err = session.NewSessionBuilder(ctx, uid).
-		SetJwtData(map[string]string{
-			"tenant_id": strconv.FormatInt(req.TenantID, 10),
-			"username":  username,
-		}).
-		SetSessData(map[string]any{
-			"tenant_id": req.TenantID,
-			"username":  username,
-		}).
-		Build()
-
-	if err != nil {
-		return ErrTenantSwitchFailed, err
-	}
-
-	return ginx.Result{Msg: "成功切换至新租户空间"}, nil
 }
 
 // handleLoginResult 统一处理登录后的路由决策
@@ -360,12 +320,14 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	tenantID, _ := sess.Get(ctx.Request.Context(), "tenant_id").AsInt64()
+	roles, _ := h.permSvc.GetRolesForUser(ctx.Request.Context(), u.Username)
 
 	return ginx.Result{
 		Data: RetrieveUser{
 			User:            ToUserVO(u),
 			Tenants:         ToTenantVOs(tenants),
 			CurrentTenantID: tenantID,
+			IsAdmin:         lo.Contains(roles, domain.RoleAdmin),
 		},
 	}, nil
 }

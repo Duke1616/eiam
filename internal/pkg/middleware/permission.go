@@ -1,11 +1,15 @@
 package middleware
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"reflect"
 
+	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -43,12 +47,26 @@ func CheckPermission(svc permission.IPermissionService) gin.HandlerFunc {
 		// 执行逻辑：物理资产发现 -> 逻辑权限匹配 -> OPA 策略演算
 		ok, err = svc.CheckAPI(ctx.Request.Context(), username, info.Service, ctx.Request.Method, ctx.FullPath())
 		if err != nil {
+			// 如果是明确的越权拦截错误，返回 403
+			if errors.Is(err, domain.ErrForbidden) {
+				ctx.AbortWithStatusJSON(http.StatusForbidden, ginx.Result{
+					Code: 403001,
+					Msg:  err.Error(),
+				})
+				return
+			}
+
+			// 其他未知错误，打印日志并返回 500
+			log.Printf("鉴权检查异常: [method=%s, path=%s, user=%s] err: %v", ctx.Request.Method, ctx.Request.URL.Path, username, err)
 			ctx.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
 		if !ok {
-			ctx.AbortWithStatus(http.StatusForbidden)
+			ctx.AbortWithStatusJSON(http.StatusForbidden, ginx.Result{
+				Code: 403001,
+				Msg:  "无权执行该操作，请联系管理员授权",
+			})
 			return
 		}
 

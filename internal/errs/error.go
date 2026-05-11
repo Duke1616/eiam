@@ -29,4 +29,5 @@ var (
 	ErrAlreadyMember      = errors.New("您已是该租户成员，无需重复加入")
 	ErrUnauthorizedHandle = errors.New("无权处理该申请")
 	ErrJoinRequestHandled = errors.New("申请已处理")
+	ErrApiNotFound        = errors.New("请求的接口未注册或不存在")
 )

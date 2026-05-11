@@ -7,6 +7,11 @@ import (
 )
 
 // Permission 权限项定义 (逻辑权限项)
+const (
+	ScopeSystem = "system" // 仅系统租户 (TID=1) 可见/可用
+	ScopeTenant = "tenant" // 所有租户可见/可用 (默认)
+)
+
 type Permission struct {
 	Service string   `json:"service"`
 	Code    string   `json:"code"`
@@ -14,6 +19,7 @@ type Permission struct {
 	Group   string   `json:"group"`
 	Needs   []string `json:"needs"`
 	NoSync  bool     `json:"no_sync"` // 标识该权限项是否不进行数据库同步
+	Scope   string   `json:"scope"`   // 权限作用域
 }
 
 // PermissionProvider 定义了逻辑权限能力项的供应接口
@@ -57,6 +63,7 @@ type Builder struct {
 	needs            []string
 	allowCrossTenant bool
 	noSync           bool
+	scope            string
 }
 
 // Group 设置权限所属分组
@@ -92,6 +99,15 @@ func (b *Builder) NoSync() *Builder {
 	return b
 }
 
+// Scope 设置权限作用域
+func (b *Builder) Scope(scope string) *Builder {
+	b.scope = scope
+	if b.registry != nil {
+		b.registry.updatePermissionScope(b.code, scope)
+	}
+	return b
+}
+
 // Handle 将能力声明应用到指定的 Gin Handler 上
 func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
@@ -113,33 +129,44 @@ type IRegistry interface {
 	Capability(name, code string) *Builder
 	// Declare 仅在注册中心声明一个逻辑权限（如菜单权限），不直接绑定到 API
 	Declare(name, code string) *Builder
+	// DefaultScope 设置注册中心默认权限作用域
+	DefaultScope(scope string) IRegistry
 	// updatePermissionGroup 内部方法：用于在链式调用中同步更新权限分组
 	updatePermissionGroup(code string, group string)
 	// updatePermissionNeeds 内部方法：用于在链式调用中同步更新权限依赖
 	updatePermissionNeeds(code string, needs []string)
 	// updatePermissionNoSync 内部方法：用于在链式调用中同步更新同步标志
 	updatePermissionNoSync(code string, noSync bool)
+	// updatePermissionScope 内部方法：用于在链式调用中同步更新作用域
+	updatePermissionScope(code string, scope string)
 }
 
 // registry 权限注册中心默认实现
 type registry struct {
-	service     string
-	module      string
-	group       string
-	permissions map[string]Permission
+	service      string
+	module       string
+	group        string
+	defaultScope string
+	permissions  map[string]Permission
 }
 
 // NewRegistry 创建一个新的权限注册中心实例
 func NewRegistry(service, module, group string) IRegistry {
 	r := &registry{
-		service:     service,
-		module:      module,
-		group:       group,
-		permissions: make(map[string]Permission),
+		service:      service,
+		module:       module,
+		group:        group,
+		defaultScope: ScopeTenant,
+		permissions:  make(map[string]Permission),
 	}
 
 	// 自动注册到全局列表，实现零配置自动发现
 	globalRegistries = append(globalRegistries, r)
+	return r
+}
+
+func (r *registry) DefaultScope(scope string) IRegistry {
+	r.defaultScope = scope
 	return r
 }
 
@@ -150,6 +177,7 @@ func (r *registry) Capability(name, code string) *Builder {
 		Code:    fullCode,
 		Name:    name,
 		Group:   r.group,
+		Scope:   r.defaultScope,
 	}
 	return &Builder{
 		registry: r,
@@ -157,6 +185,7 @@ func (r *registry) Capability(name, code string) *Builder {
 		name:     name,
 		code:     fullCode,
 		group:    r.group,
+		scope:    r.defaultScope,
 	}
 }
 
@@ -210,6 +239,13 @@ func (r *registry) updatePermissionNeeds(code string, needs []string) {
 func (r *registry) updatePermissionNoSync(code string, noSync bool) {
 	if p, ok := r.permissions[code]; ok {
 		p.NoSync = noSync
+		r.permissions[code] = p
+	}
+}
+
+func (r *registry) updatePermissionScope(code string, scope string) {
+	if p, ok := r.permissions[code]; ok {
+		p.Scope = scope
 		r.permissions[code] = p
 	}
 }

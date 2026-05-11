@@ -9,8 +9,8 @@ VALUES
      '[{"name":"ROOT全量授权","code":"FullAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
      FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000)),
     (1, 'admin', '租户管理员', 1,
-     '租户内最高管理权限，负责本租户内的资源管理、身份授权及安全治理，受限于平台全局合规性策略。',
-     '[{"name":"全量授权","code":"AllAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]},{"name":"敏感权限熔断策略","code":"AdminStandard","type":1,"statement":[{"effect":"Deny","action":["iam:tenant:*","iam:permission:global:*"],"resource":["*"]}]}]',
+     '租户内最高管理权限，负责本租户内的资源管理、身份授权及安全治理。安全边界由系统 Boundary 机制自动约束，禁止访问跨租户或系统级资源。',
+     '[{"name":"租户内全量授权","code":"TenantAllAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
      FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
     ON DUPLICATE KEY UPDATE
                          `name`            = VALUES(`name`),

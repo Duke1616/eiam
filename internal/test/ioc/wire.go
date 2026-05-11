@@ -8,6 +8,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
@@ -56,6 +57,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		resource.NewResourceService,
 		permission.NewPermissionService,
 		policysvc.NewPolicyService,
+		checker.NewBoundaryChecker,
 		tenant.NewTenantService,
 
 		// 组装返回结构

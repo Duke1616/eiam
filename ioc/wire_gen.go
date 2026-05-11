@@ -12,6 +12,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	"github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/role"
@@ -52,8 +53,11 @@ func InitApp() (*App, error) {
 	iRoleRepository := repository.NewRoleRepository(iRoleDAO)
 	iPolicyDAO := dao.NewPolicyDAO(db)
 	iPolicyRepository := repository.NewPolicyRepository(iPolicyDAO)
-	iPolicyService := policy.NewPolicyService(iPolicyRepository)
-	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService)
+	iPermissionDAO := dao.NewPermissionDAO(db)
+	iPermissionRepository := repository.NewPermissionRepository(iPermissionDAO)
+	iBoundaryChecker := checker.NewBoundaryChecker(iPermissionRepository)
+	iPolicyService := policy.NewPolicyService(iPolicyRepository, iBoundaryChecker)
+	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService, iBoundaryChecker)
 	syncedEnforcer := InitCasbin(db)
 	iTenantService := tenant.NewTenantService(iTenantRepository, iUserRepository, iRoleService, syncedEnforcer)
 	iIdentitySourceDAO := dao.NewIdentitySourceDAO(db)
@@ -67,17 +71,15 @@ func InitApp() (*App, error) {
 	redisearchLdapUserCache := InitLdapUserCache(client)
 	ldapService := ldap.NewLdapService(iUserRepository, iTenantService, iService, redisearchLdapUserCache)
 	iPasskeyService := passkey.NewPasskeyService(iUserRepository, iService)
-	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, iPasskeyService, provider)
 	iSubjectRegistry := InitSearchSubjectProviders(iRoleService, iUserService)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)
 	iServiceDAO := dao.NewServiceDAO(db)
 	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
 	iResourceService := resource.NewResourceService(iResourceRepository, iServiceRepository)
-	iPermissionDAO := dao.NewPermissionDAO(db)
-	iPermissionRepository := repository.NewPermissionRepository(iPermissionDAO)
 	iAuthorizer := InitOPA()
-	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer)
+	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer, iBoundaryChecker)
+	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, iPasskeyService, iPermissionService, provider)
 	policyHandler := policy2.NewHandler(iPolicyService, iUserService, iPermissionService)
 	tenantHandler := tenant2.NewHandler(iTenantService, iPermissionService, provider)
 	permissionHandler := permission2.NewHandler(iPermissionService, provider)

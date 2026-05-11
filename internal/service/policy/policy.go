@@ -6,6 +6,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/internal/service/permission/checker"
 )
 
 // IPolicyService 策略管理服务：提供权限策略的生命周期管理与授权绑定逻辑
@@ -18,6 +19,7 @@ type IPolicyService interface {
 	ListPolicies(ctx context.Context, offset, limit int64) ([]domain.Policy, int64, error)
 	// SearchPolicies 关键词与类型搜索列表
 	SearchPolicies(ctx context.Context, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
+	// CreatePolicy 修改权限策略
 	UpdatePolicy(ctx context.Context, p domain.Policy) error
 	// AttachPolicyToUser 挂载托管策略到用户，用户将立即获得该策略定义的权限
 	AttachPolicyToUser(ctx context.Context, username, policyCode string) error
@@ -51,21 +53,39 @@ type IPolicyService interface {
 }
 
 type policyService struct {
-	repo repository.IPolicyRepository
+	repo     repository.IPolicyRepository
+	boundary checker.IBoundaryChecker
 }
 
-func NewPolicyService(repo repository.IPolicyRepository) IPolicyService {
-	return &policyService{repo: repo}
+func NewPolicyService(repo repository.IPolicyRepository, boundary checker.IBoundaryChecker) IPolicyService {
+	return &policyService{
+		repo:     repo,
+		boundary: boundary,
+	}
 }
 
 func (s *policyService) CreatePolicy(ctx context.Context, p domain.Policy) (int64, error) {
-	// 防止当前租户自定义策略与当前租户已有策略，或与系统的公共预置策略（Type 1）冲突
+	// 1. 安全校验：防止非法注入系统级权限
+	if err := s.boundary.ValidateActionScopes(ctx, p.CollectActions()); err != nil {
+		return 0, err
+	}
+
+	// 2. 冲突检测：防止当前租户自定义策略与当前租户已有策略，或与系统的公共预置策略（Type 1）冲突
 	_, err := s.repo.GetPolicyByCode(ctx, p.Code)
 	if err == nil {
 		return 0, domain.ErrDuplicatePolicyCode
 	}
 
 	return s.repo.CreatePolicy(ctx, p)
+}
+
+func (s *policyService) UpdatePolicy(ctx context.Context, p domain.Policy) error {
+	// 1. 安全校验：防止非法注入系统级权限
+	if err := s.boundary.ValidateActionScopes(ctx, p.CollectActions()); err != nil {
+		return err
+	}
+
+	return s.repo.UpdatePolicy(ctx, p)
 }
 
 func (s *policyService) GetPolicy(ctx context.Context, code string) (domain.Policy, error) {
@@ -109,10 +129,6 @@ func (s *policyService) SearchPolicies(ctx context.Context, offset, limit int64,
 	}
 
 	return ps, total, nil
-}
-
-func (s *policyService) UpdatePolicy(ctx context.Context, p domain.Policy) error {
-	return s.repo.UpdatePolicy(ctx, p)
 }
 
 func (s *policyService) AttachPolicyToUser(ctx context.Context, username, policyCode string) error {

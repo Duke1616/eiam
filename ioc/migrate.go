@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/Duke1616/eiam/deploy/migrations"
+	"github.com/Duke1616/eiam/migrations"
 	"github.com/pressly/goose/v3"
 	"gorm.io/gorm"
 )
@@ -18,7 +18,7 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	if err = runGooseMigrations(sqlDB, db.Dialector.Name()); err != nil {
-		return fmt.Errorf("数据库迁移失败（请检查 deploy/migrations/ 下的脚本）: %w", err)
+		return fmt.Errorf("数据库迁移失败（请检查 migrations/ 下的脚本）: %w", err)
 	}
 
 	return nil

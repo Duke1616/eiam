@@ -58,6 +58,7 @@ func (r *PermissionRepository) CreatePermission(ctx context.Context, p domain.Pe
 		Name:    p.Name,
 		Group:   p.Group,
 		Needs:   p.Needs,
+		Scope:   p.Scope,
 	})
 }
 
@@ -70,6 +71,7 @@ func (r *PermissionRepository) BatchCreatePermission(ctx context.Context, perms 
 			Name:    p.Name,
 			Group:   p.Group,
 			Needs:   p.Needs,
+			Scope:   p.Scope,
 		})
 	}
 
@@ -107,6 +109,7 @@ func (r *PermissionRepository) toDomain(p dao.Permission) domain.Permission {
 		Name:    p.Name,
 		Group:   p.Group,
 		Needs:   p.Needs,
+		Scope:   p.Scope,
 	}
 }
 

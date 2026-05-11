@@ -51,6 +51,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	// 3. 基础权限层：仅需登录即可访问的私有接口 (如获取菜单)
 	permissionHdl.IdentityRoutes(server.Engine)
 	userHdl.IdentityRoutes(server.Engine)
+	tenantHdl.IdentityRoutes(server.Engine)
 
 	// 4. API 业务鉴权层：基于 RBAC/OPA 的细粒度权限校验
 	server.Use(middleware.CheckPermission(permSvc))

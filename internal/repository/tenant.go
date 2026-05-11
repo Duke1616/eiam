@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/ecodeclub/ekit/slice"
 )
 
@@ -66,7 +67,8 @@ func (r *TenantRepository) Create(ctx context.Context, t domain.Tenant) (int64, 
 
 func (r *TenantRepository) CreateBind(ctx context.Context, userID int64) error {
 	return r.dao.CreateBind(ctx, dao.Membership{
-		UserID: userID,
+		UserID:   userID,
+		TenantID: ctxutil.GetTenantID(ctx).Int64(),
 	})
 }
 
