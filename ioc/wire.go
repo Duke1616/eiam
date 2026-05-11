@@ -56,7 +56,6 @@ func InitApp() (*App, error) {
 		InitLdapUserCache,
 		cache.NewIdentitySourceCache,
 		cache.NewUserCache,
-		cache.NewInvitationCache,
 
 		// DAOs
 		dao.NewUserDAO,

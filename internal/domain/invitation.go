@@ -30,9 +30,10 @@ type Invitation struct {
 type JoinRequestStatus uint8
 
 const (
-	JoinRequestStatusPending  JoinRequestStatus = 1
-	JoinRequestStatusApproved JoinRequestStatus = 2
-	JoinRequestStatusRejected JoinRequestStatus = 3
+	JoinRequestStatusPending     JoinRequestStatus = 1
+	JoinRequestStatusApproved    JoinRequestStatus = 2
+	JoinRequestStatusRejected    JoinRequestStatus = 3
+	JoinRequestStatusInvalidated JoinRequestStatus = 4 // 因邀请链接撤回而失效
 )
 
 type JoinRequest struct {

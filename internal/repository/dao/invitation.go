@@ -41,10 +41,10 @@ type IInvitationDAO interface {
 	Insert(ctx context.Context, inv Invitation) (int64, error)
 	// GetByCode 根据邀请码获取详情 (全局查找，用于公开校验)
 	GetByCode(ctx context.Context, code string) (Invitation, error)
-	// IncrUsedCount 原子增加使用次数（数据库端）
-	IncrUsedCount(ctx context.Context, code string) error
-	// UpdateUsedCount 覆盖更新使用次数（用于缓存同步）
-	UpdateUsedCount(ctx context.Context, code string, count int) error
+	// IncrUsedCount 原子增加使用次数并校验上限
+	IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error)
+	// DecrUsedCount 原子减少使用次数（用于回滚）
+	DecrUsedCount(ctx context.Context, code string) (int, error)
 	// UpdateStatus 更新邀请码状态
 	UpdateStatus(ctx context.Context, code string, status uint8) error
 	// List 分页查询租户下的邀请码列表
@@ -124,22 +124,55 @@ func (d *invitationDAO) UpdateJoinRequestStatus(ctx context.Context, id int64, s
 		}).Error
 }
 
-func (d *invitationDAO) IncrUsedCount(ctx context.Context, code string) error {
-	return d.db.WithContext(ctx).Model(&Invitation{}).
-		Where("code = ?", code).
-		Updates(map[string]any{
-			"used_count": gorm.Expr("used_count + 1"),
-			"utime":      time.Now().UnixMilli(),
-		}).Error
+func (d *invitationDAO) IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error) {
+	var usedCount int
+	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var inv Invitation
+		// 1. 锁行，防止并发。使用 IgnoreTenant 确保即使在公开校验阶段也能准确获取记录。
+		if err := tx.Scopes(gormx.IgnoreTenant()).Where("code = ?", code).
+			Set("gorm:query_option", "FOR UPDATE").First(&inv).Error; err != nil {
+			return err
+		}
+
+		// 2. 校验上限
+		if maxUses > 0 && inv.UsedCount >= maxUses {
+			return gorm.ErrInvalidData
+		}
+
+		// 3. 更新
+		inv.UsedCount++
+		inv.Utime = time.Now().UnixMilli()
+		if err := tx.Save(&inv).Error; err != nil {
+			return err
+		}
+
+		usedCount = inv.UsedCount
+		return nil
+	})
+	return usedCount, err
 }
 
-func (d *invitationDAO) UpdateUsedCount(ctx context.Context, code string, count int) error {
-	return d.db.WithContext(ctx).Model(&Invitation{}).
-		Where("code = ?", code).
-		Updates(map[string]any{
-			"used_count": count,
-			"utime":      time.Now().UnixMilli(),
-		}).Error
+func (d *invitationDAO) DecrUsedCount(ctx context.Context, code string) (int, error) {
+	var usedCount int
+	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var inv Invitation
+		if err := tx.Scopes(gormx.IgnoreTenant()).Where("code = ?", code).
+			Set("gorm:query_option", "FOR UPDATE").First(&inv).Error; err != nil {
+			return err
+		}
+
+		if inv.UsedCount > 0 {
+			inv.UsedCount--
+			inv.Utime = time.Now().UnixMilli()
+			if err := tx.Save(&inv).Error; err != nil {
+				return err
+			}
+		}
+
+		usedCount = inv.UsedCount
+		return nil
+	})
+	return usedCount, err
 }
 
 func (d *invitationDAO) UpdateStatus(ctx context.Context, code string, status uint8) error {
@@ -164,5 +197,19 @@ func (d *invitationDAO) Count(ctx context.Context) (int64, error) {
 }
 
 func (d *invitationDAO) Delete(ctx context.Context, code string) error {
-	return d.db.WithContext(ctx).Where("code = ?", code).Delete(&Invitation{}).Error
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. 软删除邀请码记录
+		if err := tx.Where("code = ?", code).Delete(&Invitation{}).Error; err != nil {
+			return err
+		}
+
+		// 2. 联动更新待处理的申请单为“已失效”状态
+		// 1 为 Pending, 4 为 Invalidated
+		return tx.Model(&JoinRequest{}).
+			Where("invitation_code = ? AND status = ?", code, 1).
+			Updates(map[string]any{
+				"status": 4,
+				"utime":  time.Now().UnixMilli(),
+			}).Error
+	})
 }

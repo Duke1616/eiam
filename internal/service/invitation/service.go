@@ -103,6 +103,9 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 		return false, err
 	}
 
+	// 注入正确的租户 ID，确保后续 Repo 操作在正确的租户上下文中执行
+	ctx = ctxutil.WithTenantID(ctx, inv.TenantID)
+
 	// 1. 预占用名额
 	if _, err = s.repo.IncrUsedCount(ctx, code, inv.MaxUses); err != nil {
 		return false, err

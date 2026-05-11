@@ -1,11 +1,11 @@
 package tenant
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
@@ -80,16 +80,12 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 }
 
 func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Result, error) {
-	// 核心逻辑：动态注入租户上下文
-	// 1. 默认使用当前 Session 中的租户 ID
-	var newCtx context.Context = ctx.Context
-
-	// 2. 如果请求显式指定了 TenantID（如系统管理员管理其他租户成员），则进行 Context 覆盖
-	// 注入后的 TenantID 将被下层 DAO 识别，用于精准过滤 membership 表
-	if req.TenantID != 0 {
-		newCtx = ctxutil.WithTenantID(ctx.Request.Context(), req.TenantID)
+	tenantID, err := h.resolveTenantID(ctx, req.TenantID)
+	if err != nil {
+		return ErrTenantAccess, err
 	}
 
+	newCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
 	users, total, err := h.svc.ListMembers(newCtx, req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ErrTenantGet, err
@@ -116,8 +112,13 @@ func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Resul
 }
 
 func (h *Handler) AssignUser(ctx *ginx.Context, req AssignUserReq) (ginx.Result, error) {
-	newCtx := ctxutil.WithTenantID(ctx.Context, req.TenantID)
-	err := h.svc.AssignUser(newCtx, req.UserID)
+	tenantID, err := h.resolveTenantID(ctx, req.TenantID)
+	if err != nil {
+		return ErrTenantAccess, err
+	}
+
+	newCtx := ctxutil.WithTenantID(ctx.Context, tenantID)
+	err = h.svc.AssignUser(newCtx, req.UserID)
 	if err != nil {
 		return ErrTenantUpdate, err
 	}
@@ -205,6 +206,11 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantReq) (ginx.Res
 }
 
 func (h *Handler) ListTenants(ctx *ginx.Context, req ListTenantReq) (ginx.Result, error) {
+	// 列表查询仅允许系统管理员执行
+	if ctxutil.GetTenantID(ctx.Context).Int64() != ctxutil.SystemTenantID {
+		return ErrTenantAccess, fmt.Errorf("非系统管理员禁止查询租户列表")
+	}
+
 	tenants, total, err := h.svc.List(ctx.Context, req.Offset, req.Limit)
 	if err != nil {
 		return ErrTenantList, err
@@ -219,6 +225,12 @@ func (h *Handler) ListTenants(ctx *ginx.Context, req ListTenantReq) (ginx.Result
 }
 
 func (h *Handler) UpdateTenant(ctx *ginx.Context, req UpdateTenantReq) (ginx.Result, error) {
+	// 校验操作权限：仅允许系统管理员或租户自身操作
+	currentTid := ctxutil.GetTenantID(ctx.Context).Int64()
+	if currentTid != ctxutil.SystemTenantID && currentTid != req.ID {
+		return ErrTenantAccess, fmt.Errorf("无权更新目标租户空间")
+	}
+
 	err := h.svc.Update(ctx.Context, domain.Tenant{
 		ID:     req.ID,
 		Name:   req.Name,
@@ -239,6 +251,11 @@ func (h *Handler) DeleteTenant(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrTenantDelete, err
 	}
 
+	// 仅允许系统管理员删除租户
+	if ctxutil.GetTenantID(ctx.Context).Int64() != ctxutil.SystemTenantID {
+		return ErrTenantAccess, fmt.Errorf("非系统管理员禁止删除租户")
+	}
+
 	err = h.svc.Delete(ctx.Context, id)
 	if err != nil {
 		return ErrTenantDelete, err
@@ -251,6 +268,12 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 	id, err := ctx.Param("id").AsInt64()
 	if err != nil {
 		return ErrTenantGet, err
+	}
+
+	// 校验查看权限：仅允许系统管理员或租户成员查看
+	currentTid := ctxutil.GetTenantID(ctx.Context).Int64()
+	if currentTid != ctxutil.SystemTenantID && currentTid != id {
+		return ErrTenantAccess, fmt.Errorf("无权查看该租户详情")
 	}
 
 	t, err := h.svc.GetByID(ctx.Context, id)
@@ -282,7 +305,12 @@ func (h *Handler) GetTenantsByUserId(ctx *ginx.Context, req ListUserTenantsReq, 
 }
 
 func (h *Handler) RemoveMember(ctx *ginx.Context, req RemoveMemberReq) (ginx.Result, error) {
-	err := h.svc.RemoveMember(ctx.Context, req.TenantID, req.UserID)
+	tenantID, err := h.resolveTenantID(ctx, req.TenantID)
+	if err != nil {
+		return ErrTenantAccess, err
+	}
+
+	err = h.svc.RemoveMember(ctx.Context, tenantID, req.UserID)
 	if err != nil {
 		return ErrTenantRemoveMember, err
 	}
@@ -290,4 +318,22 @@ func (h *Handler) RemoveMember(ctx *ginx.Context, req RemoveMemberReq) (ginx.Res
 	return ginx.Result{
 		Msg: "成功将用户从租户空间移除",
 	}, nil
+}
+func (h *Handler) resolveTenantID(ctx *ginx.Context, targetTid int64) (int64, error) {
+	currentTid := ctxutil.GetTenantID(ctx.Context).Int64()
+
+	// 1. 如果没有指定目标租户，默认使用当前租户
+	if targetTid == 0 {
+		return currentTid, nil
+	}
+
+	// 2. 如果指定了目标租户，检查是否有权跨租户
+	if targetTid != currentTid {
+		// 只有系统管理员（SystemTenantID = 1）才能跨租户操作
+		if currentTid != ctxutil.SystemTenantID {
+			return 0, errs.ErrTenantAccessDenied
+		}
+	}
+
+	return targetTid, nil
 }

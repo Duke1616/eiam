@@ -48,8 +48,11 @@ func (h *Handler) CreateInvitation(ctx *ginx.Context, req CreateInvitationReq) (
 	if err != nil {
 		return ginx.Result{}, err
 	}
+	tenantID, err := h.resolveTenantID(ctx, req.TenantID)
+	if err != nil {
+		return ErrTenantAccessDenied, err
+	}
 
-	tenantID := h.resolveTenantID(ctx, req.TenantID)
 	uid := sess.Claims().Uid
 
 	var expireAt int64
@@ -141,7 +144,10 @@ func (h *Handler) AcceptInvitation(ctx *ginx.Context, req AcceptInvitationReq) (
 }
 
 func (h *Handler) ListInvitations(ctx *ginx.Context, req Page) (ginx.Result, error) {
-	tenantID := h.resolveTenantID(ctx, req.TenantID)
+	tenantID, err := h.resolveTenantID(ctx, req.TenantID)
+	if err != nil {
+		return ErrTenantAccessDenied, err
+	}
 	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
 
 	invitations, total, err := h.svc.ListInvitations(targetCtx, req.Offset, req.Limit)
@@ -176,7 +182,10 @@ func (h *Handler) RevokeInvitation(ctx *ginx.Context) (ginx.Result, error) {
 
 	// 支持从 Query 获取 tenant_id，方便超管跨租户撤回
 	targetTid, _ := ctx.Query("tenant_id").AsInt64()
-	tenantID := h.resolveTenantID(ctx, targetTid)
+	tenantID, err := h.resolveTenantID(ctx, targetTid)
+	if err != nil {
+		return ErrTenantAccessDenied, err
+	}
 	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
 
 	err = h.svc.RevokeInvitation(targetCtx, code)
@@ -190,7 +199,10 @@ func (h *Handler) RevokeInvitation(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 func (h *Handler) ListJoinRequests(ctx *ginx.Context, req Page) (ginx.Result, error) {
-	tenantID := h.resolveTenantID(ctx, req.TenantID)
+	tenantID, err := h.resolveTenantID(ctx, req.TenantID)
+	if err != nil {
+		return ErrTenantAccessDenied, err
+	}
 	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
 	reqs, total, err := h.svc.ListJoinRequests(targetCtx, req.Offset, req.Limit)
 	if err != nil {
@@ -216,10 +228,12 @@ func (h *Handler) ListJoinRequests(ctx *ginx.Context, req Page) (ginx.Result, er
 }
 
 func (h *Handler) HandleJoinRequest(ctx *ginx.Context, req HandleJoinRequestReq) (ginx.Result, error) {
-	tenantID := h.resolveTenantID(ctx, req.TenantID)
-	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
-	err := h.svc.HandleJoinRequest(targetCtx, req.ID, req.Approve)
+	tenantID, err := h.resolveTenantID(ctx, req.TenantID)
 	if err != nil {
+		return ErrTenantAccessDenied, err
+	}
+	targetCtx := ctxutil.WithTenantID(ctx.Request.Context(), tenantID)
+	if err = h.svc.HandleJoinRequest(targetCtx, req.ID, req.Approve); err != nil {
 		if errors.Is(err, errs.ErrUnauthorizedHandle) {
 			return ErrUnauthorized, err
 		}
@@ -235,11 +249,21 @@ func (h *Handler) HandleJoinRequest(ctx *ginx.Context, req HandleJoinRequestReq)
 }
 
 // resolveTenantID 智能解析目标租户 ID
-func (h *Handler) resolveTenantID(ctx *ginx.Context, targetTid int64) int64 {
+func (h *Handler) resolveTenantID(ctx *ginx.Context, targetTid int64) (int64, error) {
 	currentTid := ctxutil.GetTenantID(ctx).Int64()
-	if targetTid != 0 {
-		return targetTid
+
+	// 1. 如果没有指定目标租户，默认使用当前租户
+	if targetTid == 0 {
+		return currentTid, nil
 	}
 
-	return currentTid
+	// 2. 如果指定了目标租户，检查是否有权跨租户
+	if targetTid != currentTid {
+		// 只有系统管理员（SystemTenantID = 1）才能跨租户操作
+		if currentTid != ctxutil.SystemTenantID {
+			return 0, errs.ErrTenantAccessDenied
+		}
+	}
+
+	return targetTid, nil
 }

@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
+	"github.com/ecodeclub/ekit/slice"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -37,24 +37,18 @@ type IInvitationRepository interface {
 }
 
 type invitationRepository struct {
-	dao   dao.IInvitationDAO
-	cache cache.IInvitationCache
+	dao dao.IInvitationDAO
 }
 
-func NewInvitationRepository(dao dao.IInvitationDAO, cache cache.IInvitationCache) IInvitationRepository {
+func NewInvitationRepository(dao dao.IInvitationDAO) IInvitationRepository {
 	return &invitationRepository{
-		dao:   dao,
-		cache: cache,
+		dao: dao,
 	}
 }
 
 func (r *invitationRepository) Create(ctx context.Context, inv domain.Invitation) error {
 	_, err := r.dao.Insert(ctx, r.toDaoInvitation(inv))
-	if err != nil {
-		return err
-	}
-
-	return r.cache.Set(ctx, inv)
+	return err
 }
 
 func (r *invitationRepository) GetByCode(ctx context.Context, code string) (domain.Invitation, error) {
@@ -63,46 +57,19 @@ func (r *invitationRepository) GetByCode(ctx context.Context, code string) (doma
 		return domain.Invitation{}, err
 	}
 
-	res := r.toDomainInvitation(inv)
-
-	// 获取实时计数
-	cachedInv, err := r.cache.Get(ctx, code)
-	if err == nil {
-		res.UsedCount = cachedInv.UsedCount
-	} else {
-		// 读修复：如果缓存失效，将数据库数据同步回缓存，确保后续 Incr 操作正常
-		_ = r.cache.Set(ctx, res)
-	}
-
-	return res, nil
+	return r.toDomainInvitation(inv), nil
 }
 
 func (r *invitationRepository) IncrUsedCount(ctx context.Context, code string, maxUses int) (int, error) {
-	count, err := r.cache.IncrUsedCount(ctx, code, maxUses)
-	if err == nil {
-		// 准实时同步数据库，防止 Redis 重启导致计数重置
-		_ = r.dao.UpdateUsedCount(ctx, code, count)
-	}
-	return count, err
+	return r.dao.IncrUsedCount(ctx, code, maxUses)
 }
 
 func (r *invitationRepository) DecrUsedCount(ctx context.Context, code string) (int, error) {
-	count, err := r.cache.DecrUsedCount(ctx, code)
-	if err == nil {
-		_ = r.dao.UpdateUsedCount(ctx, code, count)
-	}
-	return count, err
+	return r.dao.DecrUsedCount(ctx, code)
 }
 
 func (r *invitationRepository) Delete(ctx context.Context, code string) error {
-	// 尝试同步计数回 DB 再删除缓存
-	cached, err := r.cache.Get(ctx, code)
-	if err == nil {
-		_ = r.dao.UpdateUsedCount(ctx, code, cached.UsedCount)
-	}
-
-	_ = r.dao.Delete(ctx, code)
-	return r.cache.Delete(ctx, code)
+	return r.dao.Delete(ctx, code)
 }
 
 func (r *invitationRepository) List(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error) {
@@ -127,32 +94,13 @@ func (r *invitationRepository) List(ctx context.Context, offset, limit int) ([]d
 	if err := eg.Wait(); err != nil {
 		return nil, 0, err
 	}
-
-	res := make([]domain.Invitation, 0, len(invs))
-	for _, inv := range invs {
-		item := r.toDomainInvitation(inv)
-		// 尝试从缓存回填计数
-		cachedInv, err := r.cache.Get(ctx, inv.Code)
-		if err == nil {
-			item.UsedCount = cachedInv.UsedCount
-		} else {
-			item.UsedCount = inv.UsedCount
-		}
-		res = append(res, item)
-	}
-	return res, total, nil
+	return slice.Map(invs, func(idx int, invitation dao.Invitation) domain.Invitation {
+		return r.toDomainInvitation(invitation)
+	}), total, nil
 }
 
 func (r *invitationRepository) UpdateStatus(ctx context.Context, code string, status domain.InvitationStatus) error {
-	err := r.dao.UpdateStatus(ctx, code, uint8(status))
-	if err != nil {
-		return err
-	}
-
-	if status == domain.InvitationStatusUsed || status == domain.InvitationStatusExpired {
-		return r.cache.Delete(ctx, code)
-	}
-	return nil
+	return r.dao.UpdateStatus(ctx, code, uint8(status))
 }
 
 func (r *invitationRepository) CreateJoinRequest(ctx context.Context, req domain.JoinRequest) (int64, error) {
@@ -181,12 +129,9 @@ func (r *invitationRepository) ListJoinRequests(ctx context.Context, offset, lim
 	if err := eg.Wait(); err != nil {
 		return nil, 0, err
 	}
-
-	res := make([]domain.JoinRequest, 0, len(reqs))
-	for _, req := range reqs {
-		res = append(res, r.toDomainJoinRequest(req))
-	}
-	return res, total, nil
+	return slice.Map(reqs, func(idx int, req dao.JoinRequest) domain.JoinRequest {
+		return r.toDomainJoinRequest(req)
+	}), total, nil
 }
 
 func (r *invitationRepository) GetJoinRequestByID(ctx context.Context, id int64) (domain.JoinRequest, error) {
