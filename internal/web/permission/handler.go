@@ -131,7 +131,7 @@ func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Resul
 	}
 
 	// 2. 调用全链路 CheckAPI 逻辑 (物理 Path -> 能力码 -> 逻辑权限判定)
-	allowed, err := h.svc.CheckAPI(ctx.Context, username, req.Service, req.Method, req.Path)
+	allowed, err := h.svc.CheckAPI(ctx.Request.Context(), username, req.Service, req.Method, req.Path)
 	if err != nil {
 		return ginx.Result{
 			Code: 0,

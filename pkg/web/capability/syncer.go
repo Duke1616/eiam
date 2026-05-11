@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 // SyncRequest 定义了 SDK 上报资产给 EIAM 的标准协议
@@ -48,17 +49,36 @@ func NewPermSyncer(service, endpoint string) PermSyncer {
 	}
 }
 
-// SyncAuto 实现全自动化的“扫描-上报”闭环
+// SyncAuto 实现全自动化化的“扫描-上报”闭环
 func (s *defaultPermSyncer) SyncAuto(ctx context.Context, providers []PermissionProvider, router *gin.Engine) error {
 	// 1. 资产发现：利用 Collector 扫描所有注册的 Provider 与路由装饰器
 	collector := NewCollector(router).RegisterProviders(providers...)
 	perms, apis := collector.Collect()
 
-	// 2. 协议封装与远程同步
+	// 2. 过滤标记为 NoSync 的资产
+	// 2.1 过滤逻辑权限
+	filteredPerms := lo.Filter(perms, func(p Permission, _ int) bool {
+		return !p.NoSync
+	})
+
+	// 2.2 构造 NoSync 索引，用于快速过滤 API 资产
+	noSyncCodes := lo.SliceToMap(lo.Filter(perms, func(p Permission, _ int) bool {
+		return p.NoSync
+	}), func(p Permission) (string, struct{}) {
+		return p.Code, struct{}{}
+	})
+
+	// 2.3 过滤物理 API
+	filteredAPIs := lo.Filter(apis, func(api ResourceInfo, _ int) bool {
+		_, ok := noSyncCodes[api.Code]
+		return !ok
+	})
+
+	// 3. 协议封装与远程同步
 	return s.Sync(ctx, SyncRequest{
 		Service:     s.service,
-		Permissions: perms,
-		APIs:        apis,
+		Permissions: filteredPerms,
+		APIs:        filteredAPIs,
 	})
 }
 

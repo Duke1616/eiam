@@ -36,13 +36,13 @@ type ITenantDAO interface {
 	// BatchCreateBinds 批量建立关联记录
 	BatchCreateBinds(ctx context.Context, ms []Membership) error
 	// DeleteBind 移除用户与租户的关联记录
-	DeleteBind(ctx context.Context, tenantID, userID int64) error
+	DeleteBind(ctx context.Context, userID int64) error
 	// GetBind 精确查询特定租户下特定用户的入驻信息
-	GetBind(ctx context.Context, tenantId, userId int64) (Membership, error)
+	GetBind(ctx context.Context, userId int64) (Membership, error)
 	// ListBindsByUserIds 批量检索一组用户的入驻关联记录
 	ListBindsByUserIds(ctx context.Context, userIds []int64) ([]Membership, error)
 	// ListBindsByUsersAndTenant 按 (userIDs, tenantID) 精确查询入驻关系
-	ListBindsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error)
+	ListBindsByUsersAndTenant(ctx context.Context, userIds []int64) ([]Membership, error)
 	// FindTenantsByIDs 根据 ID 列表批量检索租户详情
 	FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error)
 	// ListTenantIDsByUser 查询指定用户所属的所有租户 ID 列表
@@ -116,13 +116,15 @@ func (d *TenantDAO) BatchCreateBinds(ctx context.Context, ms []Membership) error
 	return d.membershipDB(ctx).Create(&ms).Error
 }
 
-func (d *TenantDAO) DeleteBind(ctx context.Context, tenantID, userID int64) error {
+func (d *TenantDAO) DeleteBind(ctx context.Context, userID int64) error {
+	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	return d.membershipDB(ctx).
 		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
 		Delete(&Membership{}).Error
 }
 
-func (d *TenantDAO) GetBind(ctx context.Context, tenantId, userId int64) (Membership, error) {
+func (d *TenantDAO) GetBind(ctx context.Context, userId int64) (Membership, error) {
+	tenantId := ctxutil.GetTenantID(ctx).Int64()
 	var m Membership
 	err := d.membershipDB(ctx).
 		Where("tenant_id = ? AND user_id = ?", tenantId, userId).First(&m).Error
@@ -138,7 +140,8 @@ func (d *TenantDAO) ListBindsByUserIds(ctx context.Context, userIds []int64) ([]
 	return ms, err
 }
 
-func (d *TenantDAO) ListBindsByUsersAndTenant(ctx context.Context, userIds []int64, tenantId int64) ([]Membership, error) {
+func (d *TenantDAO) ListBindsByUsersAndTenant(ctx context.Context, userIds []int64) ([]Membership, error) {
+	tenantId := ctxutil.GetTenantID(ctx).Int64()
 	var ms []Membership
 	if len(userIds) == 0 {
 		return ms, nil

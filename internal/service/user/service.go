@@ -11,6 +11,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -117,7 +118,8 @@ func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantServic
 
 func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) error {
 	// 直接复用 CheckUserTenantAccess 校验 Membership 合约是否存在
-	hasAccess, err := s.tenantSvc.CheckUserTenantAccess(ctx, uid, targetTenantID)
+	targetCtx := ctxutil.WithTenantID(ctx, targetTenantID)
+	hasAccess, err := s.tenantSvc.CheckUserTenantAccess(targetCtx, uid)
 	if err != nil {
 		return err
 	}

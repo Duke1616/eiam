@@ -92,7 +92,10 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 	g.POST("/mfa/disable", ginx.W(h.MfaDisable))
 
 	// 切换租户不需要管理权限，只需拥有该租户的 Membership 即可
-	g.POST("/switch-tenant", ginx.B[SwitchTenantRequest](h.SwitchTenant))
+	g.POST("/switch-tenant", h.Capability("切换租户", "switch").
+		AllowCrossTenant().NoSync().
+		Handle(ginx.B[SwitchTenantRequest](h.SwitchTenant)),
+	)
 
 	// 绑定第三方登录方式
 	g.POST("/identity/bind", ginx.B[BindIdentityRequest](h.BindIdentity))
@@ -417,15 +420,15 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 }
 
 func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, error) {
-	// 1. 调用服务层获取数据
-	// NOTE: 租户隔离逻辑已下沉至 DAO 层，由 GORM 插件根据 Context 中的 TenantID 自动处理
+	// 1. 获取基础用户列表
 	users, total, err := h.userSvc.List(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ginx.Result{}, err
 	}
 
-	// 2. 视图装饰：如果不是系统管理员，直接返回基础用户信息
 	currentTid := ctxutil.GetTenantID(ctx).Int64()
+
+	// 2. 如果不是系统管理员，直接返回扁平的基础用户信息
 	if currentTid != ctxutil.SystemTenantID {
 		return ginx.Result{
 			Data: RetrieveUsers[User]{
@@ -437,13 +440,13 @@ func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, err
 		}, nil
 	}
 
-	// 3. 超管特权装饰：批量标识这些用户中，哪些已经入驻了当前管理空间
+	// 3. 系统管理员特权：进行成员资格装饰
 	userIDs := slice.Map(users, func(idx int, src domain.User) int64 {
 		return src.ID
 	})
 
-	// 按 (userIDs, currentTid) 精确查，避免系统空间下被趟户插件豁免后拿到其他租户记录
-	memberMap, _ := h.tenantSvc.CheckUsersInTenant(ctx.Request.Context(), userIDs, currentTid)
+	// 使用穿透化调用，不再需要显式传递 currentTid
+	memberMap, _ := h.tenantSvc.CheckUsersInTenant(ctx.Request.Context(), userIDs)
 
 	return ginx.Result{
 		Data: RetrieveUsers[UserMemberVO]{
@@ -476,7 +479,7 @@ func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrUserNotFound, err
 	}
 
-	isMember, err := h.tenantSvc.CheckUserTenantAccess(ctx.Request.Context(), u.ID, tid)
+	isMember, err := h.tenantSvc.CheckUserTenantAccess(ctx.Request.Context(), u.ID)
 	if err != nil {
 		return ginx.Result{}, err
 	}

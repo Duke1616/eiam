@@ -7,8 +7,17 @@ import (
 
 // 定义常用的 Key 常量
 const (
+	// TenantIDKey 当前操作的目标租户 ID (数据平面)
+	// 在常规请求中，它等于用户所属租户；在超管穿透 (Roaming) 场景下，它指向被操作的目标租户，用于数据库隔离
 	TenantIDKey = "tenant_id"
-	UserIDKey   = "user_id"
+
+	// OriginTenantIDKey 用户的原始身份租户 ID (身份平面)
+	// 无论发生多少次租户切换或跨租户操作，该字段始终记录用户最初登录时的真实身份归属，用于权限判定。
+	// 身份与操作目标的不一致（穿透）仅适用于系统租户 (SystemTenantID)，普通租户此字段与 TenantIDKey 保持一致
+	OriginTenantIDKey = "origin_tenant_id"
+
+	// UserIDKey 当前登录用户的唯一标识 ID
+	UserIDKey = "user_id"
 
 	// SystemTenantID 系统根租户 ID (母体租户)
 	SystemTenantID int64 = 1
@@ -56,6 +65,11 @@ func GetUserID(ctx context.Context) ContextID {
 	return ContextID(Get[int64](ctx, UserIDKey))
 }
 
+// GetOriginTenantID 快捷获取原始身份租户 ID (家谱)
+func GetOriginTenantID(ctx context.Context) ContextID {
+	return ContextID(Get[int64](ctx, OriginTenantIDKey))
+}
+
 // WithTenantID 注入租户 ID
 func WithTenantID(ctx context.Context, tid int64) context.Context {
 	return With(ctx, TenantIDKey, tid)
@@ -64,6 +78,11 @@ func WithTenantID(ctx context.Context, tid int64) context.Context {
 // WithUserID 注入用户 ID
 func WithUserID(ctx context.Context, uid int64) context.Context {
 	return With(ctx, UserIDKey, uid)
+}
+
+// WithOriginTenantID 注入原始身份租户 ID
+func WithOriginTenantID(ctx context.Context, tid int64) context.Context {
+	return With(ctx, OriginTenantIDKey, tid)
 }
 
 type privateOnlyKey struct{}

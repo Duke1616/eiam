@@ -25,7 +25,7 @@ type ITenantService interface {
 	// GetTenantsByUserId 查看用户属于哪些空间 (用于登录后选定或切换)
 	GetTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error)
 	// CheckUserTenantAccess 校验用户是否有权进入该租户空间
-	CheckUserTenantAccess(ctx context.Context, userId, tenantId int64) (bool, error)
+	CheckUserTenantAccess(ctx context.Context, userId int64) (bool, error)
 	// GetAttachedTenantsWithFilter 分页查看用户所属租户
 	GetAttachedTenantsWithFilter(ctx context.Context, userId, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error)
 	// List 分页查看所有租户列表
@@ -39,7 +39,7 @@ type ITenantService interface {
 	// ListBindsByUserIds 批量检索一组用户的入驻关联记录
 	ListBindsByUserIds(ctx context.Context, userIds []int64) (map[int64]domain.Membership, error)
 	// CheckUsersInTenant 批量判断一组用户是否已入驻指定租户，返回 map[userID]bool
-	CheckUsersInTenant(ctx context.Context, userIds []int64, tenantId int64) (map[int64]bool, error)
+	CheckUsersInTenant(ctx context.Context, userIds []int64) (map[int64]bool, error)
 	// BatchInitPersonalTenant 批量为用户初始化个人空间
 	BatchInitPersonalTenant(ctx context.Context, users []domain.User) error
 	// ListMembers 获取租户下成员列表
@@ -47,7 +47,7 @@ type ITenantService interface {
 	// AssignUser 分配用户到租户空间
 	AssignUser(ctx context.Context, userID int64) error
 	// RemoveMember 从租户空间移除成员
-	RemoveMember(ctx context.Context, tenantID, userID int64) error
+	RemoveMember(ctx context.Context, userID int64) error
 }
 
 type tenantService struct {
@@ -69,6 +69,7 @@ func NewTenantService(r repository.ITenantRepository, userRepo repository.IUserR
 // CreateTenant 创建租户的核心流程
 func (s *tenantService) CreateTenant(ctx context.Context, name, code, username string, userID int64) (int64, error) {
 	// 1. 保存租户基本信息
+	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	tenantID, err := s.repo.Create(ctx, domain.Tenant{
 		Name:   name,
 		Code:   code,
@@ -79,7 +80,7 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code, username s
 	}
 
 	// 2. 将创建者加入该租户
-	err = s.repo.CreateBind(ctx, userID, tenantID)
+	err = s.repo.CreateBind(ctxutil.WithTenantID(ctx, tenantID), userID)
 	if err != nil {
 		return 0, err
 	}
@@ -107,7 +108,7 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 	}
 
 	// 2. 建立契约
-	err = s.repo.CreateBind(ctx, userId, tenantID)
+	err = s.repo.CreateBind(ctxutil.WithTenantID(ctx, tenantID), userId)
 	if err != nil {
 		return 0, err
 	}
@@ -193,9 +194,9 @@ func (s *tenantService) GetTenantsByUserId(ctx context.Context, userId int64) ([
 	return s.repo.FindTenantsByUserId(ctx, userId)
 }
 
-func (s *tenantService) CheckUserTenantAccess(ctx context.Context, userId, tenantId int64) (bool, error) {
+func (s *tenantService) CheckUserTenantAccess(ctx context.Context, userId int64) (bool, error) {
 	// 维持原状：契约存在即代表有权进入 (Context 入场券)
-	_, err := s.repo.GetBind(ctx, tenantId, userId)
+	_, err := s.repo.GetBind(ctx, userId)
 	if err != nil {
 		return false, nil
 	}
@@ -243,12 +244,12 @@ func (s *tenantService) ListBindsByUserIds(ctx context.Context, userIds []int64)
 // CheckUsersInTenant 批量判断用户是否入驻指定租户。
 // 为避免超管在系统空间下被租户插件豁免后拿到多租户记录导致判断错乱，
 // 这里使用专门的按 (userIDs, tenantID) 精确查询接口。
-func (s *tenantService) CheckUsersInTenant(ctx context.Context, userIds []int64, tenantId int64) (map[int64]bool, error) {
+func (s *tenantService) CheckUsersInTenant(ctx context.Context, userIds []int64) (map[int64]bool, error) {
 	res := make(map[int64]bool, len(userIds))
 	if len(userIds) == 0 {
 		return res, nil
 	}
-	ms, err := s.repo.ListBindsByUsersAndTenant(ctx, userIds, tenantId)
+	ms, err := s.repo.ListBindsByUsersAndTenant(ctx, userIds)
 	if err != nil {
 		return nil, err
 	}
@@ -287,17 +288,17 @@ func (s *tenantService) ListMembers(ctx context.Context, offset, limit int64, ke
 }
 
 func (s *tenantService) AssignUser(ctx context.Context, userID int64) error {
-	tenantID := ctxutil.GetTenantID(ctx).Int64()
-	return s.repo.CreateBind(ctx, userID, tenantID)
+	return s.repo.CreateBind(ctx, userID)
 }
 
-func (s *tenantService) RemoveMember(ctx context.Context, tenantID, userID int64) error {
+func (s *tenantService) RemoveMember(ctx context.Context, userID int64) error {
 	// 1. 获取用户信息（用于清理权限）
 	u, err := s.userRepo.FindById(ctx, userID)
 	if err != nil {
 		return err
 	}
 
+	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	// 2. 清理该用户在该租户下的所有角色授权
 	// 注意：Casbin 的 DeleteRolesForUser 在有 domain 的情况下是：DeleteRolesForUser(user, domain)
 	_, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(u.Username), ctxutil.ContextID(tenantID).String())
@@ -306,5 +307,5 @@ func (s *tenantService) RemoveMember(ctx context.Context, tenantID, userID int64
 	}
 
 	// 3. 移除成员契约
-	return s.repo.DeleteBind(ctx, tenantID, userID)
+	return s.repo.DeleteBind(ctx, userID)
 }

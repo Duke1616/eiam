@@ -45,6 +45,8 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())
+	// 2.1 租户身份构建与防篡权校验 (合并后的中间件)
+	server.Use(pkgmiddleware.BuildTenancyContext(sp))
 
 	// 3. 基础权限层：仅需登录即可访问的私有接口 (如获取菜单)
 	permissionHdl.IdentityRoutes(server.Engine)
@@ -70,7 +72,6 @@ func InitGinMiddlewares(sp session.Provider) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		corsHdl(),
 		accessLogger(),
-		pkgmiddleware.BuildContext(sp),
 	}
 }
 

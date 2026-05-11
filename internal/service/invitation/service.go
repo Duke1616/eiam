@@ -90,7 +90,9 @@ func (s *invitationService) VerifyInvitation(ctx context.Context, code string, u
 	// 校验当前用户是否已经是成员
 	isMember := false
 	if userID != 0 {
-		_, err = s.tenantRepo.GetBind(ctx, inv.TenantID, userID)
+		// 注入邀请码对应的目标租户 ID
+		newCtx := ctxutil.WithTenantID(ctx, inv.TenantID)
+		_, err = s.tenantRepo.GetBind(newCtx, userID)
 		isMember = err == nil
 	}
 
@@ -117,7 +119,7 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 	}
 
 	// 2. 幂等性与成员检查
-	_, err = s.tenantRepo.GetBind(ctx, inv.TenantID, userID)
+	_, err = s.tenantRepo.GetBind(ctx, userID)
 	if err == nil {
 		rollback()
 		return false, errs.ErrAlreadyMember
@@ -140,7 +142,7 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 	}
 
 	// 4. 执行自动入驻逻辑
-	if err = s.tenantRepo.CreateBind(ctx, userID, inv.TenantID); err != nil {
+	if err = s.tenantRepo.CreateBind(ctx, userID); err != nil {
 		rollback()
 		return false, err
 	}
@@ -222,7 +224,7 @@ func (s *invitationService) HandleJoinRequest(ctx context.Context, requestID int
 // approveJoinRequest 执行申请通过后的核心业务链
 func (s *invitationService) approveJoinRequest(ctx context.Context, req domain.JoinRequest) error {
 	// 1. 加入租户成员
-	if err := s.tenantRepo.CreateBind(ctx, req.UserID, req.TenantID); err != nil {
+	if err := s.tenantRepo.CreateBind(ctx, req.UserID); err != nil {
 		return err
 	}
 

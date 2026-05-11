@@ -106,7 +106,7 @@ func (s *permissionService) CheckAPI(ctx context.Context, username string, servi
 		return false, nil
 	}
 
-	// 3.策略预加载 (优化点：减少重复查询)
+	// 3. 策略获取 (getEffectivePolicies 内部已自动处理身份漫游)
 	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
 		return false, err
@@ -219,6 +219,13 @@ func (s *permissionService) filterAccessibleMenus(all []domain.Menu, codesMap ma
 
 // getEffectivePolicies 获取用户在当前上下文中所有有效的 Policy 对象 (含直接绑定、角色继承、系统角色收益)
 func (s *permissionService) getEffectivePolicies(ctx context.Context, username string) ([]domain.Policy, error) {
+	// 【核心优化】：身份对齐
+	// 权限判定应当基于用户的“原始身份租户 (Origin)”而非“操作目标租户 (Target)”
+	authTid := ctxutil.GetOriginTenantID(ctx)
+	if authTid != 0 {
+		ctx = ctxutil.WithTenantID(ctx, authTid.Int64())
+	}
+
 	// 1. 获取用户的所有角色（包括继承）
 	roleSubjects, err := s.GetRolesForUser(ctx, username)
 	if err != nil {

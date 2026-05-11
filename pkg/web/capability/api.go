@@ -13,6 +13,7 @@ type Permission struct {
 	Name    string   `json:"name"`
 	Group   string   `json:"group"`
 	Needs   []string `json:"needs"`
+	NoSync  bool     `json:"no_sync"` // 标识该权限项是否不进行数据库同步
 }
 
 // PermissionProvider 定义了逻辑权限能力项的供应接口
@@ -22,13 +23,14 @@ type PermissionProvider interface {
 
 // ResourceInfo 存储 API 资产在 SDK 内部发现的元数据
 type ResourceInfo struct {
-	Name    string   `json:"name"`
-	Method  string   `json:"method"`
-	Path    string   `json:"path"`
-	Code    string   `json:"code"`  // 主绑定权限码 (Primary)
-	Needs   []string `json:"needs"` // 关联依赖权限码 (Needs)
-	Group   string   `json:"group"`
-	Service string   `json:"service"`
+	Name             string   `json:"name"`
+	Method           string   `json:"method"`
+	Path             string   `json:"path"`
+	Code             string   `json:"code"`  // 主绑定权限码 (Primary)
+	Needs            []string `json:"needs"` // 关联依赖权限码 (Needs)
+	Group            string   `json:"group"`
+	Service          string   `json:"service"`
+	AllowCrossTenant bool     `json:"allow_cross_tenant"` // 标识该资源是否允许跨租户操作 (针对超管穿透)
 }
 
 var (
@@ -47,12 +49,14 @@ func GetResourceInfo(ptr uintptr) (ResourceInfo, bool) {
 
 // Builder 辅助构建 API 能力声明
 type Builder struct {
-	registry IRegistry
-	service  string
-	name     string
-	code     string
-	group    string
-	needs    []string
+	registry         IRegistry
+	service          string
+	name             string
+	code             string
+	group            string
+	needs            []string
+	allowCrossTenant bool
+	noSync           bool
 }
 
 // Group 设置权限所属分组
@@ -73,15 +77,31 @@ func (b *Builder) Needs(codes ...string) *Builder {
 	return b
 }
 
+// AllowCrossTenant 声明该 API 允许跨租户操作 (通常针对穿透逻辑)
+func (b *Builder) AllowCrossTenant() *Builder {
+	b.allowCrossTenant = true
+	return b
+}
+
+// NoSync 声明该能力项不需要同步到数据库
+func (b *Builder) NoSync() *Builder {
+	b.noSync = true
+	if b.registry != nil {
+		b.registry.updatePermissionNoSync(b.code, true)
+	}
+	return b
+}
+
 // Handle 将能力声明应用到指定的 Gin Handler 上
 func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
 	handlerRegistry[ptr] = ResourceInfo{
-		Service: b.service,
-		Name:    b.name,
-		Code:    b.code,
-		Needs:   b.needs,
-		Group:   b.group,
+		Service:          b.service,
+		Name:             b.name,
+		Code:             b.code,
+		Needs:            b.needs,
+		Group:            b.group,
+		AllowCrossTenant: b.allowCrossTenant,
 	}
 	return h
 }
@@ -97,6 +117,8 @@ type IRegistry interface {
 	updatePermissionGroup(code string, group string)
 	// updatePermissionNeeds 内部方法：用于在链式调用中同步更新权限依赖
 	updatePermissionNeeds(code string, needs []string)
+	// updatePermissionNoSync 内部方法：用于在链式调用中同步更新同步标志
+	updatePermissionNoSync(code string, noSync bool)
 }
 
 // registry 权限注册中心默认实现
@@ -181,6 +203,13 @@ func (r *registry) updatePermissionGroup(code string, group string) {
 func (r *registry) updatePermissionNeeds(code string, needs []string) {
 	if p, ok := r.permissions[code]; ok {
 		p.Needs = needs
+		r.permissions[code] = p
+	}
+}
+
+func (r *registry) updatePermissionNoSync(code string, noSync bool) {
+	if p, ok := r.permissions[code]; ok {
+		p.NoSync = noSync
 		r.permissions[code] = p
 	}
 }
