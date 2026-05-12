@@ -37,7 +37,11 @@ type IPermissionService interface {
 	// AssignRoleToUser 绑定用户与角色
 	AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error)
 	// AssignRolesToUser 批量绑定用户与角色
-	AssignRolesToUser(ctx context.Context, username string, roleCodes []string) (bool, error)
+	AssignRolesToUser(ctx context.Context, usernames []string, roleCodes []string) (bool, error)
+	// RemoveRoleFromUser 移除用户与角色的绑定
+	RemoveRoleFromUser(ctx context.Context, username string, roleCode string) (bool, error)
+	// RemoveRolesFromUser 批量移除用户与角色的绑定
+	RemoveRolesFromUser(ctx context.Context, usernames []string, roleCodes []string) (bool, error)
 	// GetRolesForUser 获取用户的有效角色 (包含隐式继承树中所有的角色)
 	GetRolesForUser(ctx context.Context, username string) ([]string, error)
 	// AssignUsersToRole 批量将用户分配给角色

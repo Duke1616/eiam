@@ -34,6 +34,8 @@ type IRoleRepository interface {
 	GetAttachedWithPagination(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error)
 	// Delete 删除角色
 	Delete(ctx context.Context, id int64) error
+	// GetByID 根据 ID 获取角色
+	GetByID(ctx context.Context, id int64) (domain.Role, error)
 }
 
 type RoleRepository struct {
@@ -129,6 +131,14 @@ func (r *RoleRepository) UpdateInlinePolicies(ctx context.Context, code string, 
 
 func (r *RoleRepository) Delete(ctx context.Context, id int64) error {
 	return r.dao.Delete(ctx, id)
+}
+
+func (r *RoleRepository) GetByID(ctx context.Context, id int64) (domain.Role, error) {
+	role, err := r.dao.GetByID(ctx, id)
+	if err != nil {
+		return domain.Role{}, err
+	}
+	return r.toDomain(role), nil
 }
 
 func (r *RoleRepository) toDomain(role dao.Role) domain.Role {

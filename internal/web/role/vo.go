@@ -32,7 +32,12 @@ type AssignRoleRequest struct {
 
 type BatchAssignRoleRequest struct {
 	Usernames []string `json:"usernames" binding:"required"`
-	RoleCode  string   `json:"role_code" binding:"required"`
+	RoleCodes []string `json:"role_codes" binding:"required"`
+}
+
+type BatchUnassignRoleRequest struct {
+	Usernames []string `json:"usernames" binding:"required"`
+	RoleCodes []string `json:"role_codes" binding:"required"`
 }
 
 type Role struct {

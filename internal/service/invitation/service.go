@@ -149,7 +149,7 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 
 	// 自动授予角色
 	if len(inv.RoleCodes) > 0 {
-		_, _ = s.permSvc.AssignRolesToUser(ctx, username, inv.RoleCodes)
+		_, _ = s.permSvc.AssignRolesToUser(ctx, []string{username}, inv.RoleCodes)
 	}
 
 	return false, nil
@@ -232,7 +232,7 @@ func (s *invitationService) approveJoinRequest(ctx context.Context, req domain.J
 	if len(req.RoleCodes) > 0 {
 		u, err := s.userSvc.GetById(ctx, req.UserID)
 		if err == nil {
-			_, _ = s.permSvc.AssignRolesToUser(ctx, u.Username, req.RoleCodes)
+			_, _ = s.permSvc.AssignRolesToUser(ctx, []string{u.Username}, req.RoleCodes)
 		}
 	}
 

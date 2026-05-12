@@ -4,10 +4,12 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	"github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/casbin/casbin/v2"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -41,14 +43,17 @@ type roleService struct {
 	repo      repository.IRoleRepository
 	policySvc policy.IPolicyService
 	boundary  checker.IBoundaryChecker
+	enforcer  *casbin.SyncedEnforcer
 }
 
 // NewRoleService 创建角色服务实例
-func NewRoleService(repo repository.IRoleRepository, policySvc policy.IPolicyService, boundary checker.IBoundaryChecker) IRoleService {
+func NewRoleService(repo repository.IRoleRepository, policySvc policy.IPolicyService,
+	boundary checker.IBoundaryChecker, enforcer *casbin.SyncedEnforcer) IRoleService {
 	return &roleService{
 		repo:      repo,
 		policySvc: policySvc,
 		boundary:  boundary,
+		enforcer:  enforcer,
 	}
 }
 
@@ -154,5 +159,28 @@ func (s *roleService) ListAttachedRoles(ctx context.Context, username string, of
 }
 
 func (s *roleService) Delete(ctx context.Context, id int64) error {
+	// 1. 获取角色详情
+	role, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// 2. 校验系统内置角色 (不允许删除)
+	if role.Type == domain.RoleTypeSystem {
+		return errs.ErrDeleteSystemRole
+	}
+
+	// 3. 校验关联性 (是否有用户绑定、或作为父角色被继承)
+	// Casbin 规则格式: g, v0, v1, v2 (ptype, sub, obj, domain)
+	// 在我们的场景中，v1 始终是角色标识码 (domain.RoleSubject(role.Code))
+	bindings, err := s.enforcer.GetFilteredGroupingPolicy(1, domain.RoleSubject(role.Code))
+	if err != nil {
+		return err
+	}
+
+	if len(bindings) > 0 {
+		return errs.ErrRoleInUse
+	}
+
 	return s.repo.Delete(ctx, id)
 }

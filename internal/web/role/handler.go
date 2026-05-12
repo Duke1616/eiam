@@ -64,6 +64,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Handle(ginx.B[BatchAssignRoleRequest](h.BatchAssignRole)),
 	)
 
+	g.POST("/batch_unassign", h.Capability("批量移除角色", "batch_unassign").
+		Handle(ginx.B[BatchUnassignRoleRequest](h.BatchUnassignRole)),
+	)
+
 	g.POST("/analysis/inline", h.Capability("分析内联策略", "analysis").
 		Handle(ginx.B[RoleAnalysisReq](h.AnalyzeInlinePolicies)),
 	)
@@ -153,8 +157,13 @@ func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrRoleDeleteFailed, err
 	}
 
-	err = h.svc.Delete(ctx.Request.Context(), id)
-	if err != nil {
+	if err = h.svc.Delete(ctx.Request.Context(), id); err != nil {
+		if errors.Is(err, errs.ErrDeleteSystemRole) {
+			return ErrDeleteSystemRole, err
+		}
+		if errors.Is(err, errs.ErrRoleInUse) {
+			return ErrRoleInUse, err
+		}
 		return ErrRoleDeleteFailed, err
 	}
 
@@ -272,11 +281,21 @@ func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest, sess sess
 }
 
 func (h *Handler) BatchAssignRole(ctx *ginx.Context, req BatchAssignRoleRequest) (ginx.Result, error) {
-	_, err := h.permSvc.AssignUsersToRole(ctx.Request.Context(), req.RoleCode, req.Usernames)
+	_, err := h.permSvc.AssignRolesToUser(ctx.Request.Context(), req.Usernames, req.RoleCodes)
 	if err != nil {
 		return ErrRoleAssignFailed, err
 	}
+
 	return ginx.Result{Msg: "批量分配成功"}, nil
+}
+
+func (h *Handler) BatchUnassignRole(ctx *ginx.Context, req BatchUnassignRoleRequest) (ginx.Result, error) {
+	_, err := h.permSvc.RemoveRolesFromUser(ctx.Request.Context(), req.Usernames, req.RoleCodes)
+	if err != nil {
+		return ErrRoleAssignFailed, err
+	}
+
+	return ginx.Result{Msg: "批量移除成功"}, nil
 }
 
 func (h *Handler) GetMyRoles(ctx *ginx.Context, req any, sess session.Session) (ginx.Result, error) {

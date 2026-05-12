@@ -46,6 +46,8 @@ type IRoleDAO interface {
 	GetAttachedRolesWithFilter(ctx context.Context, username string, tid, offset, limit int64, keyword string) ([]Role, int64, error)
 	// Delete 删除角色
 	Delete(ctx context.Context, id int64) error
+	// GetByID 根据 ID 获取角色
+	GetByID(ctx context.Context, id int64) (Role, error)
 }
 
 type RoleDAO struct {
@@ -184,4 +186,10 @@ func (d *RoleDAO) GetAttachedRolesWithFilter(ctx context.Context, username strin
 
 func (d *RoleDAO) Delete(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Delete(&Role{}, id).Error
+}
+
+func (d *RoleDAO) GetByID(ctx context.Context, id int64) (Role, error) {
+	var r Role
+	err := d.db.WithContext(ctx).Where("id = ?", id).First(&r).Error
+	return r, err
 }

@@ -36,4 +36,8 @@ var (
 	ErrForbidden           = errors.New("越权操作：包含超出当前租户范围的受限权限")
 	ErrPolicyInUse         = errors.New("策略正在使用中，请先解除所有关联（用户或角色）后再重试删除")
 	ErrDeleteSystemPolicy  = errors.New("系统预置策略禁止删除")
+
+	// 角色管理相关错误
+	ErrDeleteSystemRole = errors.New("系统预置角色禁止删除")
+	ErrRoleInUse        = errors.New("角色正在使用中，请先解除所有关联（用户或子角色）后再重试删除")
 )

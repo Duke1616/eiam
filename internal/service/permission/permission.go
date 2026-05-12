@@ -531,22 +531,11 @@ func (s *permissionService) BindResourcesToPermission(ctx context.Context, permI
 }
 
 func (s *permissionService) AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error) {
-	// 前置校验角色是否存在且合法
-	if _, err := s.roleSvc.GetByCode(ctx, roleCode); err != nil {
-		return false, err
-	}
-
-	tid := ctxutil.GetTenantID(ctx).String()
-	return s.enforcer.AddGroupingPolicy(
-		domain.UserSubject(username),
-		domain.RoleSubject(roleCode),
-		tid,
-		strconv.FormatInt(time.Now().UnixMilli(), 10),
-	)
+	return s.AssignRolesToUser(ctx, []string{username}, []string{roleCode})
 }
 
-func (s *permissionService) AssignRolesToUser(ctx context.Context, username string, roleCodes []string) (bool, error) {
-	if len(roleCodes) == 0 {
+func (s *permissionService) AssignRolesToUser(ctx context.Context, usernames []string, roleCodes []string) (bool, error) {
+	if len(usernames) == 0 || len(roleCodes) == 0 {
 		return true, nil
 	}
 
@@ -555,35 +544,80 @@ func (s *permissionService) AssignRolesToUser(ctx context.Context, username stri
 		return false, err
 	}
 
-	// 2. 构造 Casbin 批量规则
 	tid := ctxutil.GetTenantID(ctx).String()
+
+	// 2. 获取当前租户下已有的所有关系，用于在内存中去重
+	// GetFilteredGroupingPolicy(2, tid) 表示匹配 v2 (TenantID)
+	existingRules, _ := s.enforcer.GetFilteredGroupingPolicy(2, tid)
+	existingSet := lo.SliceToMap(existingRules, func(r []string) (string, struct{}) {
+		// 按 "Subject:Object" 构建唯一标识
+		return r[0] + ":" + r[1], struct{}{}
+	})
+
+	// 3. 构造 Casbin 批量规则 (笛卡尔积: User x Role) 并过滤掉已存在的
 	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	rules := make([][]string, 0, len(roleCodes))
-	for _, rc := range roleCodes {
-		rules = append(rules, []string{
-			domain.UserSubject(username),
-			domain.RoleSubject(rc),
-			tid,
-			now,
+	rules := lo.FlatMap(usernames, func(username string, _ int) [][]string {
+		return lo.FilterMap(roleCodes, func(rc string, _ int) ([]string, bool) {
+			sub := domain.UserSubject(username)
+			obj := domain.RoleSubject(rc)
+
+			// 如果该 "用户-角色" 关联已存在，则跳过，防止重复绑定
+			if _, ok := existingSet[sub+":"+obj]; ok {
+				return nil, false
+			}
+
+			return []string{sub, obj, tid, now}, true
 		})
+	})
+
+	if len(rules) == 0 {
+		return true, nil
 	}
 
 	return s.enforcer.AddGroupingPolicies(rules)
 }
 
 func (s *permissionService) AssignUsersToRole(ctx context.Context, roleCode string, usernames []string) (bool, error) {
-	tid := ctxutil.GetTenantID(ctx).String()
-	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	rules := make([][]string, 0, len(usernames))
-	for _, username := range usernames {
-		rules = append(rules, []string{
-			domain.UserSubject(username),
-			domain.RoleSubject(roleCode),
-			tid,
-			now,
-		})
+	return s.AssignRolesToUser(ctx, usernames, []string{roleCode})
+}
+
+func (s *permissionService) RemoveRoleFromUser(ctx context.Context, username string, roleCode string) (bool, error) {
+	return s.RemoveRolesFromUser(ctx, []string{username}, []string{roleCode})
+}
+
+func (s *permissionService) RemoveRolesFromUser(ctx context.Context, usernames []string, roleCodes []string) (bool, error) {
+	if len(usernames) == 0 || len(roleCodes) == 0 {
+		return true, nil
 	}
-	return s.enforcer.AddGroupingPolicies(rules)
+
+	tid := ctxutil.GetTenantID(ctx).String()
+
+	// 1. 获取该租户下的所有关联规则，以获取包含 v3 (时间戳) 的完整规则
+	existingRules, _ := s.enforcer.GetFilteredGroupingPolicy(2, tid)
+
+	// 2. 构造待删除的匹配集合
+	userSubjects := lo.SliceToMap(usernames, func(u string) (string, struct{}) {
+		return domain.UserSubject(u), struct{}{}
+	})
+	roleSubjects := lo.SliceToMap(roleCodes, func(rc string) (string, struct{}) {
+		return domain.RoleSubject(rc), struct{}{}
+	})
+
+	// 3. 从现有规则中筛选出匹配的完整规则 (必须 4 列全匹配才能删除)
+	rulesToRemove := lo.Filter(existingRules, func(r []string, _ int) bool {
+		if len(r) < 2 {
+			return false
+		}
+		_, okUser := userSubjects[r[0]]
+		_, okRole := roleSubjects[r[1]]
+		return okUser && okRole
+	})
+
+	if len(rulesToRemove) == 0 {
+		return true, nil
+	}
+
+	return s.enforcer.RemoveGroupingPolicies(rulesToRemove)
 }
 
 func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) (bool, error) {

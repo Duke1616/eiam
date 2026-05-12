@@ -25,5 +25,8 @@ var (
 	ErrRoleSelfInheritance   = ginx.Result{Code: 4010511, Msg: "角色禁止继承自身"}
 	ErrRoleCycleInheritance  = ginx.Result{Code: 4010512, Msg: "角色继承存在死循环"}
 
+	ErrDeleteSystemRole = ginx.Result{Code: 4010513, Msg: "系统预置角色禁止删除"}
+	ErrRoleInUse        = ginx.Result{Code: 4010514, Msg: "角色正在使用中，请先解除所有关联（用户或子角色）后再重试删除"}
+
 	ErrUnauthenticated = user.ErrUnauthenticated
 )

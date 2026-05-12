@@ -49,28 +49,31 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list", h.Capability("策略列表", "view").
 		Handle(ginx.B[ListPolicyReq](h.ListPolicies)),
 	)
-	g.GET("/detail/:code", h.Capability("策略详情", "detail").
+	g.GET("/detail/:code", h.Capability("策略详情", "get").
 		Handle(ginx.W(h.GetPolicyDetail)),
 	)
-	g.POST("/attach", h.Capability("绑定策略", "attach").
-		Handle(ginx.B[AttachPolicyReq](h.AttachPolicy)),
-	)
+
+	// 策略绑定解绑相关操作
+	//g.POST("/attach", h.Capability("绑定策略", "attach").
+	//	Handle(ginx.B[AttachPolicyReq](h.AttachPolicy)),
+	//)
 	g.POST("/detach", h.Capability("解绑策略", "detach").
 		Handle(ginx.B[AttachPolicyReq](h.DetachPolicy)),
 	)
-	g.POST("/batch-attach", h.Capability("批量绑定策略", "batch-attach").
+	g.POST("/batch-attach", h.Capability("批量绑定策略", "batch_attach").
 		Needs("iam:policy:view", "iam:permission:search_subjects").
 		Handle(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
 	)
-	g.POST("/batch-detach", h.Capability("批量解绑策略", "batch-detach").
+	g.POST("/batch-detach", h.Capability("批量解绑策略", "batch_detach").
 		Handle(ginx.B[BatchDetachPolicyReq](h.BatchDetachPolicy)),
 	)
+
 	// 查询特定用户的关联策略 (管理侧使用)
-	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user_policies").
+	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user").
 		Handle(ginx.B[ListUserPoliciesReq](h.GetPoliciesByUserId)),
 	)
 	// 查询特定角色的关联策略 (管理侧使用)
-	g.POST("/list/attached/role", h.Capability("查询角色策略", "view_role_policies").
+	g.POST("/list/attached/role", h.Capability("查询角色策略", "view_role").
 		Handle(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
 	)
 	// 删除策略 (物理删除，需校验引用)
