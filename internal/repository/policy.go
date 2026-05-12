@@ -37,11 +37,11 @@ type IPolicyRepository interface {
 	// ListByTypes 按类型筛选策略详情列表
 	ListByTypes(ctx context.Context, types []domain.PolicyType) ([]domain.Policy, error)
 	// ListAssignments 分页获取策略分配关系
-	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error)
+	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string, policyType uint8) ([]dao.PolicyAssignment, int64, error)
 	// BatchAttach 批量绑定策略到多个主体
 	BatchAttach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
 	// BatchDetach 批量解绑策略
-	BatchDetach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
+	BatchDetach(ctx context.Context, assignments []domain.SubjectPolicyAssignment) (int64, error)
 	// FillAssignmentCounts 为策略列表填充授权计数值
 	FillAssignmentCounts(ctx context.Context, ps []domain.Policy) error
 	// DeletePolicy 删除策略实体
@@ -239,8 +239,8 @@ func (r *policyRepository) toDAO(p domain.Policy) dao.Policy {
 	}
 }
 
-func (r *policyRepository) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error) {
-	return r.dao.ListAssignments(ctx, offset, limit, subType, keyword)
+func (r *policyRepository) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string, policyType uint8) ([]dao.PolicyAssignment, int64, error) {
+	return r.dao.ListAssignments(ctx, offset, limit, subType, keyword, policyType)
 }
 
 const buildBatchSize = 1000
@@ -291,39 +291,37 @@ func (r *policyRepository) BatchAttach(ctx context.Context, subjects []domain.Su
 	return res, nil
 }
 
-func (r *policyRepository) BatchDetach(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error) {
-	if len(subjects) == 0 || len(policyCodes) == 0 {
+func (r *policyRepository) BatchDetach(ctx context.Context, assignments []domain.SubjectPolicyAssignment) (int64, error) {
+	if len(assignments) == 0 {
 		return 0, nil
 	}
 
 	var totalAffected int64
-	assignments := make([]dao.PolicyAssignment, 0, buildBatchSize)
+	daoAssignments := make([]dao.PolicyAssignment, 0, buildBatchSize)
 
 	flush := func() error {
-		if len(assignments) == 0 {
+		if len(daoAssignments) == 0 {
 			return nil
 		}
-		affected, err := r.dao.BatchUnbind(ctx, assignments)
+		affected, err := r.dao.BatchUnbind(ctx, daoAssignments)
 		if err != nil {
 			return err
 		}
 		totalAffected += affected
-		assignments = assignments[:0]
+		daoAssignments = daoAssignments[:0]
 		return nil
 	}
 
-	for i := range subjects {
-		for j := range policyCodes {
-			assignments = append(assignments, dao.PolicyAssignment{
-				SubType:    subjects[i].Type,
-				SubCode:    subjects[i].ID,
-				PolicyCode: policyCodes[j],
-			})
+	for i := range assignments {
+		daoAssignments = append(daoAssignments, dao.PolicyAssignment{
+			SubType:    assignments[i].SubType,
+			SubCode:    assignments[i].SubCode,
+			PolicyCode: assignments[i].PolicyCode,
+		})
 
-			if len(assignments) >= buildBatchSize {
-				if err := flush(); err != nil {
-					return totalAffected, err
-				}
+		if len(daoAssignments) >= buildBatchSize {
+			if err := flush(); err != nil {
+				return totalAffected, err
 			}
 		}
 	}

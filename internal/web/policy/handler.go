@@ -59,10 +59,11 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Handle(ginx.B[AttachPolicyReq](h.DetachPolicy)),
 	)
 	g.POST("/batch-attach", h.Capability("批量绑定策略", "batch-attach").
+		Needs("iam:policy:view", "iam:permission:search_subjects").
 		Handle(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
 	)
 	g.POST("/batch-detach", h.Capability("批量解绑策略", "batch-detach").
-		Handle(ginx.B[BatchAttachPolicyReq](h.BatchDetachPolicy)),
+		Handle(ginx.B[BatchDetachPolicyReq](h.BatchDetachPolicy)),
 	)
 	// 查询特定用户的关联策略 (管理侧使用)
 	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user_policies").
@@ -188,7 +189,7 @@ func (h *Handler) ListPolicies(ctx *ginx.Context, req ListPolicyReq) (ginx.Resul
 }
 
 func (h *Handler) AttachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
-	err := h.svc.AttachPolicyToRole(ctx.Request.Context(), req.RoleCode, req.PolicyCode)
+	err := h.svc.Attach(ctx.Request.Context(), req.SubType, req.SubCode, req.PolicyCode)
 	if err != nil {
 		return ErrAttachPolicyFailed, err
 	}
@@ -196,7 +197,7 @@ func (h *Handler) AttachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Res
 }
 
 func (h *Handler) DetachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Result, error) {
-	err := h.svc.DetachFromRole(ctx.Request.Context(), req.RoleCode, req.PolicyCode)
+	err := h.svc.Detach(ctx.Request.Context(), req.SubType, req.SubCode, req.PolicyCode)
 	if err != nil {
 		return ErrDetachPolicyFailed, err
 	}
@@ -222,12 +223,12 @@ func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq)
 	}, nil
 }
 
-func (h *Handler) BatchDetachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq) (ginx.Result, error) {
-	subjects := slice.Map(req.Subjects, func(idx int, src SubjectItem) domain.Subject {
-		return domain.Subject{Type: src.Type, ID: src.Code}
+func (h *Handler) BatchDetachPolicy(ctx *ginx.Context, req BatchDetachPolicyReq) (ginx.Result, error) {
+	assignments := slice.Map(req.Assignments, func(idx int, a Assignment) domain.SubjectPolicyAssignment {
+		return domain.SubjectPolicyAssignment{SubType: a.SubType, SubCode: a.SubCode, PolicyCode: a.PolicyCode}
 	})
 
-	affected, err := h.svc.BatchDetachPolicies(ctx.Request.Context(), subjects, req.PolicyCodes)
+	affected, err := h.svc.BatchDetachPolicies(ctx.Request.Context(), assignments)
 	if err != nil {
 		return ginx.Result{}, err
 	}

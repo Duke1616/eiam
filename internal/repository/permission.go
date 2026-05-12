@@ -39,6 +39,8 @@ type IPermissionRepository interface {
 	ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]dao.CasbinRule, int64, error)
 	// FindByActions 根据一组 Action 标识查询权限项，支持通配符 *
 	FindByActions(ctx context.Context, actions []string) ([]domain.Permission, error)
+	// FindParentsByNeeds 反向查找：哪些权限码依赖了传入的这些 codes
+	FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error)
 	// CountByService 按服务分组统计权限点总数
 	CountByService(ctx context.Context) (map[string]int64, error)
 }
@@ -230,6 +232,10 @@ func (r *PermissionRepository) FindByActions(ctx context.Context, actions []stri
 	return slice.Map(perms, func(i int, src dao.Permission) domain.Permission {
 		return r.toDomain(src)
 	}), nil
+}
+
+func (r *PermissionRepository) FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error) {
+	return r.dao.FindParentsByNeeds(ctx, codes)
 }
 
 func (r *PermissionRepository) CountByService(ctx context.Context) (map[string]int64, error) {

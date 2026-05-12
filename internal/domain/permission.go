@@ -231,6 +231,17 @@ func (t AuthorizationObjType) String() string {
 	return string(t)
 }
 
+func (t AuthorizationObjType) PolicyType() uint8 {
+	switch t {
+	case AuthObjSystemPolicy:
+		return uint8(SystemPolicy)
+	case AuthObjCustomPolicy:
+		return uint8(CustomPolicy)
+	default:
+		return 0
+	}
+}
+
 type AuthorizationQuery struct {
 	Offset  int64
 	Limit   int64

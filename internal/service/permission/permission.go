@@ -119,34 +119,61 @@ func (s *permissionService) CheckAPI(ctx context.Context, username string, servi
 		return false, errs.ErrApiNotFound
 	}
 
-	// 2. 映射发现
+	// 2. 映射发现 (找到该接口绑定的逻辑权限码)
 	urn := api.URN()
-	codes, err := s.permRepo.FindCodesByResource(ctx, urn)
+	targetCodes, err := s.permRepo.FindCodesByResource(ctx, urn)
 	if err != nil {
 		return false, err
 	}
 
 	// 3. 放行逻辑：未绑定权限代码的资源视为公共资产，仅需登录即可访问
-	if len(codes) == 0 {
+	if len(targetCodes) == 0 {
 		return true, nil
 	}
 
 	// 4. 边界拦截：普通租户严禁访问系统级权限点
-	if err = s.boundary.ValidateActionScopes(ctx, codes); err != nil {
+	if err = s.boundary.ValidateActionScopes(ctx, targetCodes); err != nil {
 		return false, err
 	}
 
-	// 5. 业务鉴权：执行精准的 OPA 策略判定
+	// 5. 权限依赖展开 (核心逻辑：检查父节点)
+	// 从数据库反向查找哪些权限码依赖了当前接口要求的 targetCodes
+	candidateActions, err := s.expandParentActionsFromDB(ctx, targetCodes)
+	if err != nil {
+		return false, err
+	}
+
+	// 6. 业务鉴权：执行精准的 OPA 策略判定
 	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
 		return false, err
 	}
 
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
-		Actions:  codes,
+		Actions:  candidateActions,
 		Resource: urn,
 		Policies: policies,
 	})
+}
+
+// expandParentActionsFromDB 通过数据库反向查询，将目标权限码展开为其所有的“上级权限码”
+func (s *permissionService) expandParentActionsFromDB(ctx context.Context, targetCodes []string) ([]string, error) {
+	// 1. 获取依赖于 targetCodes 的父级权限码
+	parents, err := s.permRepo.FindParentsByNeeds(ctx, targetCodes)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 合并并去重
+	actionSet := set.NewMapSet[string](len(targetCodes) + len(parents))
+	for _, code := range targetCodes {
+		actionSet.Add(code)
+	}
+	for _, p := range parents {
+		actionSet.Add(p)
+	}
+
+	return actionSet.Keys(), nil
 }
 
 // CheckPermission 针对特定 URN 的直接 Action 匹配
@@ -465,11 +492,24 @@ func (s *permissionService) buildGroupNodes(perms []domain.Permission) []domain.
 
 // sortActions 动作权重排序算法 (支持正则匹配)
 func (s *permissionService) sortActions(actions []string) {
+	// 定义正则优先级规则 (按顺序匹配，命中即止)
+	type rule struct {
+		pattern *regexp.Regexp
+		weight  int
+	}
+
+	rules := []rule{
+		{pattern: regexp.MustCompile(`^(view|list|get|manifest|show).*`), weight: 100},
+		{pattern: regexp.MustCompile(`^(add|create|save|new).*`), weight: 90},
+		{pattern: regexp.MustCompile(`^(edit|update|modify|toggle|change).*`), weight: 80},
+		{pattern: regexp.MustCompile(`^(delete|revoke|remove|drop).*`), weight: 70},
+	}
+
 	priority := func(code string) int {
 		parts := strings.Split(code, ":")
 		action := parts[len(parts)-1]
 
-		for _, r := range actionPriorityRules {
+		for _, r := range rules {
 			if r.pattern.MatchString(action) {
 				return r.weight
 			}
@@ -783,8 +823,14 @@ func (s *permissionService) listPolicyAuthorizations(ctx context.Context, query 
 		subType = query.SubType.SubjectType()
 	}
 
+	// 策略类型
+	var policyType uint8 = 0
+	if query.ObjType != "" {
+		policyType = query.ObjType.PolicyType()
+	}
+
 	// 获取策略分配
-	assignments, total, err := s.policySvc.ListAssignments(ctx, query.Offset, query.Limit, subType, query.Keyword)
+	assignments, total, err := s.policySvc.ListAssignments(ctx, query.Offset, query.Limit, subType, query.Keyword, policyType)
 	if err != nil {
 		return nil, 0, err
 	}

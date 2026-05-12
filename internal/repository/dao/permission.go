@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -70,6 +71,8 @@ type IPermissionDAO interface {
 	ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]CasbinRule, int64, error)
 	// FindByActions 根据一组 Action 标识查询权限项，支持通配符 *
 	FindByActions(ctx context.Context, actions []string) ([]Permission, error)
+	// FindParentsByNeeds 反向查找：哪些权限码依赖了传入的这些 codes
+	FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error)
 	// CountByService 按服务分组统计权限点总数
 	CountByService(ctx context.Context) ([]ServiceCount, error)
 }
@@ -236,6 +239,22 @@ func (d *PermissionDAO) FindByActions(ctx context.Context, actions []string) ([]
 
 	var res []Permission
 	err := db.Find(&res).Error
+	return res, err
+}
+
+func (d *PermissionDAO) FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error) {
+	if len(codes) == 0 {
+		return nil, nil
+	}
+
+	var res []string
+	query := d.db.WithContext(ctx).Model(&Permission{})
+	for _, code := range codes {
+		// 使用 MySQL JSON_CONTAINS 语法，查找 needs JSON 数组中包含该 code 的记录
+		query = query.Or("JSON_CONTAINS(needs, ?)", fmt.Sprintf("\"%s\"", code))
+	}
+
+	err := query.Pluck("code", &res).Error
 	return res, err
 }
 

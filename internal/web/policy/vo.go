@@ -68,7 +68,8 @@ type ListPolicyRes struct {
 }
 
 type AttachPolicyReq struct {
-	RoleCode   string `json:"role_code"`
+	SubType    string `json:"sub_type"`
+	SubCode    string `json:"sub_code"`
 	PolicyCode string `json:"policy_code"`
 }
 
@@ -118,4 +119,17 @@ type ActionDetail struct {
 	Group     string `json:"group"`
 	Resource  string `json:"resource"`  // 转换为易读格式的字符串
 	Condition string `json:"condition"` // 转换为易读格式的字符串
+}
+
+// Assignment 授权分配项
+type Assignment struct {
+	SubType    string `json:"sub_type"`
+	SubCode    string `json:"sub_code"`
+	PolicyCode string `json:"policy_code"`
+}
+
+// BatchDetachPolicyReq 批量解绑策略请求
+// 显式指定每一条需要解除的关联关系，避免笛卡尔积误删
+type BatchDetachPolicyReq struct {
+	Assignments []Assignment `json:"assignments"`
 }

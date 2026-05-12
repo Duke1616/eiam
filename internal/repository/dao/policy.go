@@ -73,7 +73,7 @@ type IPolicyDAO interface {
 	// GetByTypes 按类型批量获取策略详情
 	GetByTypes(ctx context.Context, types []domain.PolicyType) ([]Policy, error)
 	// ListAssignments 分页获取策略分配关系
-	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error)
+	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string, policyType uint8) ([]PolicyAssignment, int64, error)
 	// BatchBind 批量绑定策略到多个主体
 	BatchBind(ctx context.Context, assignments []PolicyAssignment) (BatchBindResult, error)
 	// BatchUnbind 批量解绑策略
@@ -274,26 +274,55 @@ func (d *policyDAO) GetByTypes(ctx context.Context, types []domain.PolicyType) (
 	return policies, err
 }
 
-func (d *policyDAO) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]PolicyAssignment, int64, error) {
+func (d *policyDAO) ListAssignments(
+	ctx context.Context,
+	offset, limit int64,
+	subType string,
+	keyword string,
+	policyType uint8,
+) ([]PolicyAssignment, int64, error) {
+
 	var (
 		assignments []PolicyAssignment
 		total       int64
 	)
-	query := d.db.WithContext(ctx).Model(&PolicyAssignment{})
+
+	query := d.db.WithContext(ctx).
+		Model(&PolicyAssignment{})
+
+	if policyType != 0 {
+		policySubQuery := d.db.
+			Model(&Policy{}).
+			Select("1").
+			Where("policy.code = policy_assignment.policy_code").
+			Where("policy.tenant_id = policy_assignment.tenant_id").
+			Where("policy.type = ?", policyType)
+
+		query = query.Where("EXISTS (?)", policySubQuery)
+	}
 
 	if subType != "" {
-		query = query.Where("sub_type = ?", subType)
-	}
-	if keyword != "" {
-		query = query.Where("sub_code LIKE ? OR policy_code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		query = query.Where("policy_assignment.sub_type = ?", subType)
 	}
 
-	err := query.Count(&total).Error
-	if err != nil {
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where(
+			"(policy_assignment.sub_code LIKE ? OR policy_assignment.policy_code LIKE ?)",
+			like,
+			like,
+		)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	err = query.Offset(int(offset)).Limit(int(limit)).Find(&assignments).Error
+	err := query.
+		Offset(int(offset)).
+		Limit(int(limit)).
+		Find(&assignments).Error
+
 	return assignments, total, err
 }
 

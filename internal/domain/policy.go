@@ -192,3 +192,10 @@ type BatchResult struct {
 	Inserted int64 // 实际新插入的数量
 	Ignored  int64 // 因冲突被忽略的数量
 }
+
+// SubjectPolicyAssignment 主体与策略的显式分配关系
+type SubjectPolicyAssignment struct {
+	SubType    string
+	SubCode    string
+	PolicyCode string
+}

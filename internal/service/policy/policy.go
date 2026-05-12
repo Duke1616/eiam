@@ -30,6 +30,10 @@ type IPolicyService interface {
 	DetachFromUser(ctx context.Context, username, policyCode string) error
 	// DetachFromRole 移除角色的托管策略
 	DetachFromRole(ctx context.Context, roleCode, policyCode string) error
+	// Attach 将策略绑定到指定主体 (通用方法)
+	Attach(ctx context.Context, subType, subCode, policyCode string) error
+	// Detach 将策略从指定主体解绑 (通用方法)
+	Detach(ctx context.Context, subType, subCode, policyCode string) error
 	// GetAttachedPolicies 获取角色关联的托管策略
 	GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error)
 	// GetAttachedPoliciesByCodes 批量获取角色关联的托管策略
@@ -41,7 +45,7 @@ type IPolicyService interface {
 	// ListAttachedPolicies 分页获取主体关联的策略
 	ListAttachedPolicies(ctx context.Context, subType, subCode string, offset, limit int64, keyword string, policyType domain.PolicyType) ([]domain.Policy, int64, error)
 	// ListAssignments 分页获取策略分配关系
-	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error)
+	ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string, policyType uint8) ([]dao.PolicyAssignment, int64, error)
 	// ListByCodes 根据一组策略标识码获取策略详情
 	ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error)
 	// ListByTypes 获取指定类型的策略列表
@@ -50,7 +54,7 @@ type IPolicyService interface {
 	// 返回成功绑定的详细结果统计
 	BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error)
 	// BatchDetachPolicies 批量解绑策略
-	BatchDetachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error)
+	BatchDetachPolicies(ctx context.Context, assignments []domain.SubjectPolicyAssignment) (int64, error)
 	// DeletePolicy 删除权限策略
 	DeletePolicy(ctx context.Context, code string) error
 }
@@ -150,6 +154,14 @@ func (s *policyService) DetachFromRole(ctx context.Context, roleCode, policyCode
 	return s.repo.Detach(ctx, domain.SubjectTypeRole, roleCode, policyCode)
 }
 
+func (s *policyService) Attach(ctx context.Context, subType, subCode, policyCode string) error {
+	return s.repo.Attach(ctx, subType, subCode, policyCode)
+}
+
+func (s *policyService) Detach(ctx context.Context, subType, subCode, policyCode string) error {
+	return s.repo.Detach(ctx, subType, subCode, policyCode)
+}
+
 func (s *policyService) GetAttachedPolicies(ctx context.Context, roleCode string) ([]domain.Policy, error) {
 	return s.repo.GetAttached(ctx, domain.SubjectTypeRole, roleCode)
 }
@@ -188,8 +200,8 @@ func (s *policyService) ListAttachedPolicies(ctx context.Context, subType, subCo
 	return ps, total, nil
 }
 
-func (s *policyService) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string) ([]dao.PolicyAssignment, int64, error) {
-	return s.repo.ListAssignments(ctx, offset, limit, subType, keyword)
+func (s *policyService) ListAssignments(ctx context.Context, offset, limit int64, subType string, keyword string, policyType uint8) ([]dao.PolicyAssignment, int64, error) {
+	return s.repo.ListAssignments(ctx, offset, limit, subType, keyword, policyType)
 }
 
 func (s *policyService) BatchAttachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (domain.BatchResult, error) {
@@ -200,12 +212,12 @@ func (s *policyService) BatchAttachPolicies(ctx context.Context, subjects []doma
 	return s.repo.BatchAttach(ctx, subjects, policyCodes)
 }
 
-func (s *policyService) BatchDetachPolicies(ctx context.Context, subjects []domain.Subject, policyCodes []string) (int64, error) {
-	if len(subjects) == 0 || len(policyCodes) == 0 {
+func (s *policyService) BatchDetachPolicies(ctx context.Context, assignments []domain.SubjectPolicyAssignment) (int64, error) {
+	if len(assignments) == 0 {
 		return 0, nil
 	}
 
-	return s.repo.BatchDetach(ctx, subjects, policyCodes)
+	return s.repo.BatchDetach(ctx, assignments)
 }
 
 func (s *policyService) ListByCodes(ctx context.Context, codes []string) ([]domain.Policy, error) {
