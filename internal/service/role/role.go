@@ -165,8 +165,8 @@ func (s *roleService) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 
-	// 2. 校验系统内置角色 (不允许删除)
-	if role.Type == domain.RoleTypeSystem {
+	// 2. 校验系统内置与保留角色 (不允许删除)
+	if role.Type == domain.RoleTypeSystem || role.Code == "super_admin" || role.Code == "admin" {
 		return errs.ErrDeleteSystemRole
 	}
 

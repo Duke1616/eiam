@@ -10,6 +10,7 @@ func (req SignupRequest) ToDomain() domain.User {
 		Username: req.Username,
 		Password: req.Password,
 		Email:    req.Email,
+		Status:   domain.ParseStatus(req.Status),
 		Profile: domain.UserProfile{
 			Nickname: req.Nickname,
 			Avatar:   req.Avatar,
@@ -72,6 +73,7 @@ func (req UpdateUserReq) ToDomain() domain.User {
 		ID:       req.ID,
 		Username: req.Username,
 		Email:    req.Email,
+		Status:   domain.ParseStatus(req.Status),
 		Profile: domain.UserProfile{
 			Nickname: req.Nickname,
 			Avatar:   req.Avatar,
@@ -109,6 +111,6 @@ func (u User) ToDomain() domain.User {
 			Phone:    u.Phone,
 		},
 		Identities: identities,
-		Status:     domain.StatusActive, // 默认为激活，TODO: 后续根据 VO 的具体值映射
+		Status:     domain.ParseStatus(u.Status),
 	}
 }

@@ -161,17 +161,19 @@ func (dao *userDAO) Create(ctx context.Context, u User) (int64, error) {
 func (dao *userDAO) Update(ctx context.Context, u User, ui UserProfile) (int64, error) {
 	err := dao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now().UnixMilli()
-		u.Utime = now
-		// 1. 更新全球 User 基础资料
-		if err := tx.Model(&u).Select("*").Updates(&u).Error; err != nil {
+		// 1. 更新全球 User 基础资料：明确限制仅允许修改 email 和 status
+		if err := tx.Model(&u).Select("email", "status", "utime").Updates(map[string]interface{}{
+			"email":  u.Email,
+			"status": u.Status,
+			"utime":  now,
+		}).Error; err != nil {
 			return err
 		}
 
-		// 2. 名片 Upsert：针对 UserId 冲突则更新昵称和职位
-		// 确保在初次入职时，如果不存在记录则创建
+		// 2. 名片 Upsert：针对 UserId 冲突则更新昵称、头像和职位
 		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "user_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title", "phone"}),
+			DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title"}),
 		}).Create(&ui).Error
 	})
 	return u.ID, err

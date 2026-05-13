@@ -127,6 +127,11 @@ func (h *Handler) GetRolesByUserId(ctx *ginx.Context, req ListUserRolesRequest) 
 }
 
 func (h *Handler) Create(ctx *ginx.Context, req CreateRoleRequest) (ginx.Result, error) {
+	// 拦截系统保留标识码，提供友好提示
+	if req.Code == "super_admin" || req.Code == "admin" {
+		return ErrReservedRoleCode, nil
+	}
+
 	id, err := h.svc.Create(ctx.Request.Context(), domain.Role{
 		Name: req.Name,
 		Code: req.Code,
@@ -139,6 +144,11 @@ func (h *Handler) Create(ctx *ginx.Context, req CreateRoleRequest) (ginx.Result,
 }
 
 func (h *Handler) Update(ctx *ginx.Context, req UpdateRoleRequest) (ginx.Result, error) {
+	// 拦截系统保留标识码的修改
+	if req.Code == "super_admin" || req.Code == "admin" {
+		return ErrReservedRoleCode, nil
+	}
+
 	_, err := h.svc.Update(ctx.Request.Context(), domain.Role{
 		ID:   req.ID,
 		Name: req.Name,
@@ -159,7 +169,7 @@ func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
 
 	if err = h.svc.Delete(ctx.Request.Context(), id); err != nil {
 		if errors.Is(err, errs.ErrDeleteSystemRole) {
-			return ErrDeleteSystemRole, err
+			return ErrReservedRoleCode, err
 		}
 		if errors.Is(err, errs.ErrRoleInUse) {
 			return ErrRoleInUse, err

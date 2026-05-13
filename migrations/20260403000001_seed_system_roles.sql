@@ -5,11 +5,11 @@
 INSERT INTO `role` (`tenant_id`, `code`, `name`, `type`, `desc`, `inline_policies`, `ctime`, `utime`)
 VALUES
     (1, 'super_admin', '系统超级管理员', 2,
-     '平台最高管理权限，拥有跨租户治理、全局系统配置及底层基础设施的完全控制权。',
+     '拥有系统全局最高管理权限，负责跨租户治理与系统配置。',
      '[{"name":"ROOT全量授权","code":"FullAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
      FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000)),
     (1, 'admin', '租户管理员', 1,
-     '租户内最高管理权限，负责本租户内的资源管理、身份授权及安全治理。安全边界由系统 Boundary 机制自动约束，禁止访问跨租户或系统级资源。',
+     '拥有租户内最高管理权限，负责本租户内的资源管理、身份授权与安全治理。',
      '[{"name":"租户内全量授权","code":"TenantAllAccess","type":1,"statement":[{"effect":"Allow","action":["*"],"resource":["*"]}]}]',
      FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
     ON DUPLICATE KEY UPDATE

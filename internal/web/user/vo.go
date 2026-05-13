@@ -10,6 +10,7 @@ type BaseUserRequest struct {
 	Avatar   string `json:"avatar"`
 	JobTitle string `json:"job_title"`
 	Phone    string `json:"phone"`
+	Status   string `json:"status"`
 }
 
 // SignupRequest 注册请求

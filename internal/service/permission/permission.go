@@ -669,11 +669,22 @@ func (s *permissionService) RemoveRoleInheritance(ctx context.Context, roleCode 
 	}
 
 	tid := ctxutil.GetTenantID(ctx).String()
-	return s.enforcer.RemoveGroupingPolicy(
-		domain.RoleSubject(roleCode),
-		domain.RoleSubject(parentRoleCode),
-		tid,
-	)
+	childSub := domain.RoleSubject(roleCode)
+	parentSub := domain.RoleSubject(parentRoleCode)
+
+	// 3. 获取该租户下的所有关联规则，以获取包含 v3 (时间戳) 的完整规则
+	existingRules, _ := s.enforcer.GetFilteredGroupingPolicy(2, tid)
+
+	// 4. 筛选出匹配的完整规则 (必须 4 列全匹配才能删除)
+	rulesToRemove := lo.Filter(existingRules, func(r []string, _ int) bool {
+		return len(r) >= 2 && r[0] == childSub && r[1] == parentSub
+	})
+
+	if len(rulesToRemove) == 0 {
+		return true, nil
+	}
+
+	return s.enforcer.RemoveGroupingPolicies(rulesToRemove)
 }
 
 func (s *permissionService) GetParentRoles(ctx context.Context, roleCode string) ([]domain.InheritanceInfo, error) {

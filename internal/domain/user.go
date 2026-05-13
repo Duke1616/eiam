@@ -21,6 +21,17 @@ func (s Status) String() string {
 	}
 }
 
+func ParseStatus(s string) Status {
+	switch s {
+	case "active":
+		return StatusActive
+	case "disable":
+		return StatusDisable
+	default:
+		return StatusUnknown
+	}
+}
+
 type Source string
 
 const (
