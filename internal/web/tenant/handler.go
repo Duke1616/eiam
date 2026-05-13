@@ -73,15 +73,14 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.GET("/detail/:id", h.Capability("查看租户详情", "get").
 		Handle(ginx.W(h.Detail)),
 	)
-	// 查询特定用户的关联租户 (管理侧使用)
-	g.POST("/list/attached/user", h.Capability("查询用户所属租户", "view_user_tenants").
-		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId)),
+
+	// 查看租户成员
+	g.POST("/members", h.Capability("查看租户成员", "view_members").
+		Scope(capability.ScopeTenant).
+		Handle(ginx.B[ListMembersReq](h.ListMembers)),
 	)
 
 	// 租户成员管理，只有系统租户才可以直接分配，否则通过邀请
-	g.POST("/members", h.Capability("查看租户成员", "view_members").
-		Handle(ginx.B[ListMembersReq](h.ListMembers)),
-	)
 	g.POST("/assign", h.Capability("分配租户成员", "assign").
 		Handle(ginx.B[AssignUserReq](h.AssignUser)),
 	)
@@ -93,6 +92,14 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	g.POST("/batch_unassign", h.Capability("批量移除租户成员", "batch_unassign").
 		Handle(ginx.B[BatchUnassignTenantsReq](h.BatchUnassignTenants)),
+	)
+
+	// 查询特定用户的关联租户 (管理侧使用)
+	g.POST("/list/attached/user", h.Capability("查询用户所属租户", "view_user_tenants").
+		Scope(capability.ScopeTenant).
+		Module("user").
+		Group("用户管理").
+		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId)),
 	)
 }
 

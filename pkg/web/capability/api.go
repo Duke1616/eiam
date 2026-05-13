@@ -2,6 +2,7 @@ package capability
 
 import (
 	"reflect"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -64,6 +65,7 @@ type Builder struct {
 	allowCrossTenant bool
 	noSync           bool
 	scope            string
+	module           string
 }
 
 // Group 设置权限所属分组
@@ -108,6 +110,15 @@ func (b *Builder) Scope(scope string) *Builder {
 	return b
 }
 
+// Module 覆盖权限所属模块 (用于跨模块能力映射)
+func (b *Builder) Module(module string) *Builder {
+	b.module = module
+	if b.registry != nil {
+		b.code = b.registry.updatePermissionModule(b.code, module)
+	}
+	return b
+}
+
 // Handle 将能力声明应用到指定的 Gin Handler 上
 func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
@@ -139,6 +150,8 @@ type IRegistry interface {
 	updatePermissionNoSync(code string, noSync bool)
 	// updatePermissionScope 内部方法：用于在链式调用中同步更新作用域
 	updatePermissionScope(code string, scope string)
+	// updatePermissionModule 内部方法：用于在链式调用中同步更新所属模块
+	updatePermissionModule(code string, module string) string
 }
 
 // registry 权限注册中心默认实现
@@ -248,6 +261,19 @@ func (r *registry) updatePermissionScope(code string, scope string) {
 		p.Scope = scope
 		r.permissions[code] = p
 	}
+}
+
+func (r *registry) updatePermissionModule(code string, module string) string {
+	if p, ok := r.permissions[code]; ok {
+		// 重新生成完整的 Code
+		oldCode := p.Code
+		delete(r.permissions, oldCode)
+
+		p.Code = r.service + ":" + module + ":" + strings.Split(oldCode, ":")[len(strings.Split(oldCode, ":"))-1]
+		r.permissions[p.Code] = p
+		return p.Code
+	}
+	return code
 }
 
 func (r *registry) ProvidePermissions() []Permission {

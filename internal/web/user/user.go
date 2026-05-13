@@ -95,9 +95,7 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 	g.POST("/mfa/totp/bind", ginx.B[MfaTotpBindRequest](h.MfaTotpBind))
 	g.POST("/mfa/disable", ginx.W(h.MfaDisable))
 
-	// 绑定第三方登录方式
-	g.POST("/identity/bind", ginx.B[BindIdentityRequest](h.BindIdentity))
-	g.POST("/identity/unbind", ginx.B[UnbindIdentityRequest](h.UnbindIdentity))
+	// 当前只是为了前端查询 passkey 的绑定使用
 	g.GET("/identity/list", ginx.W(h.ListMyIdentities))
 }
 
@@ -132,10 +130,12 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/ldap/refresh_cache", h.Capability("刷新 LDAP 缓存", "ldap_refresh").
 		Handle(ginx.W(h.LdapRefreshCache)),
 	)
-	// 绑定第三方身份，为了做一些消息通知使用
+	// 绑定、解绑第三方身份，为了做一些消息通知使用
 	g.POST("/identity/manage", h.Capability("治理外部身份", "manage_identity").
 		Handle(ginx.B[ManageIdentitiesRequest](h.ManageIdentities)),
 	)
+	g.POST("/identity/unbind", h.Capability("解绑外部身份", "unbind_identity").
+		Handle(ginx.B[UnbindIdentityRequest](h.UnbindIdentity)))
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {

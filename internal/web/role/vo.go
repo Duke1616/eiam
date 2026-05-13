@@ -40,6 +40,11 @@ type BatchUnassignRoleRequest struct {
 	RoleCodes []string `json:"role_codes" binding:"required"`
 }
 
+type UnassignRoleRequest struct {
+	Username string `json:"username" binding:"required"`
+	RoleCode string `json:"role_code" binding:"required"`
+}
+
 type Role struct {
 	ID             int64    `json:"id"`
 	Code           string   `json:"code"`

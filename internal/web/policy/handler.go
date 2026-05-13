@@ -68,17 +68,22 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Handle(ginx.B[BatchDetachPolicyReq](h.BatchDetachPolicy)),
 	)
 
-	// 查询特定用户的关联策略 (管理侧使用)
-	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user").
-		Handle(ginx.B[ListUserPoliciesReq](h.GetPoliciesByUserId)),
-	)
-	// 查询特定角色的关联策略 (管理侧使用)
-	g.POST("/list/attached/role", h.Capability("查询角色策略", "view_role").
-		Handle(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
-	)
 	// 删除策略 (物理删除，需校验引用)
 	g.DELETE("/delete/:code", h.Capability("删除策略", "delete").
 		Handle(ginx.W(h.DeletePolicy)),
+	)
+
+	// 查询特定用户的关联策略 (管理侧使用)
+	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user_policies").
+		Module("user").
+		Group("用户管理").
+		Handle(ginx.B[ListUserPoliciesReq](h.GetPoliciesByUserId)),
+	)
+	// 查询特定角色的关联策略 (管理侧使用)
+	g.POST("/list/attached/role", h.Capability("查询角色策略", "view_role_policies").
+		Module("role").
+		Group("角色管理").
+		Handle(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
 	)
 }
 

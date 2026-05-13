@@ -56,16 +56,20 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 
 	// 角色关系授权 (Relation)
-	g.POST("/assign", h.Capability("角色分配", "assign").
-		Handle(ginx.BS[AssignRoleRequest](h.AssignRole)),
-	)
+	//g.POST("/assign", h.Capability("角色分配", "assign").
+	//	Handle(ginx.BS[AssignRoleRequest](h.AssignRole)),
+	//)
 
 	g.POST("/batch_assign", h.Capability("批量分配角色", "batch_assign").
+		Needs("iam:role:view").
 		Handle(ginx.B[BatchAssignRoleRequest](h.BatchAssignRole)),
 	)
 
 	g.POST("/batch_unassign", h.Capability("批量移除角色", "batch_unassign").
 		Handle(ginx.B[BatchUnassignRoleRequest](h.BatchUnassignRole)),
+	)
+	g.POST("/unassign", h.Capability("移除角色分配", "unassign").
+		Handle(ginx.B[UnassignRoleRequest](h.UnassignRole)),
 	)
 
 	g.POST("/analysis/inline", h.Capability("分析内联策略", "analysis").
@@ -88,6 +92,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 	// 查询特定用户的关联角色 (管理侧使用)
 	g.POST("/list/attached/user", h.Capability("查询用户角色", "view_user_roles").
+		Module("user").
+		Group("用户管理").
 		Handle(ginx.B[ListUserRolesRequest](h.GetRolesByUserId)),
 	)
 }
@@ -96,11 +102,6 @@ func (h *Handler) GetRolesByUserId(ctx *ginx.Context, req ListUserRolesRequest) 
 	id := req.UserID
 	if id == 0 {
 		return ErrInvalidUserId, nil
-	}
-
-	// 设置默认分页
-	if req.Limit <= 0 {
-		req.Limit = 10
 	}
 
 	// 1. 获取用户信息，拿到 username
@@ -306,6 +307,15 @@ func (h *Handler) BatchUnassignRole(ctx *ginx.Context, req BatchUnassignRoleRequ
 	}
 
 	return ginx.Result{Msg: "批量移除成功"}, nil
+}
+
+func (h *Handler) UnassignRole(ctx *ginx.Context, req UnassignRoleRequest) (ginx.Result, error) {
+	_, err := h.permSvc.RemoveRolesFromUser(ctx.Request.Context(), []string{req.Username}, []string{req.RoleCode})
+	if err != nil {
+		return ErrRoleAssignFailed, err
+	}
+
+	return ginx.Result{Msg: "移除成功"}, nil
 }
 
 func (h *Handler) GetMyRoles(ctx *ginx.Context, req any, sess session.Session) (ginx.Result, error) {
