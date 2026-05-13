@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sqlx"
+	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -161,12 +162,18 @@ func (dao *userDAO) Create(ctx context.Context, u User) (int64, error) {
 func (dao *userDAO) Update(ctx context.Context, u User, ui UserProfile) (int64, error) {
 	err := dao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now().UnixMilli()
-		// 1. 更新全球 User 基础资料：明确限制仅允许修改 email 和 status
-		if err := tx.Model(&u).Select("email", "status", "utime").Updates(map[string]interface{}{
-			"email":  u.Email,
-			"status": u.Status,
-			"utime":  now,
-		}).Error; err != nil {
+		// 1. 更新全球 User 基础资料：采用动态构建 map，防止零值覆盖
+		updateData := map[string]interface{}{
+			"utime": now,
+		}
+		if u.Email != "" {
+			updateData["email"] = u.Email
+		}
+		if u.Status != 0 {
+			updateData["status"] = u.Status
+		}
+
+		if err := tx.Model(&u).Select(lo.Keys(updateData)).Updates(updateData).Error; err != nil {
 			return err
 		}
 

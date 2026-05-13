@@ -78,18 +78,21 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId)),
 	)
 
-	// 租户成员管理
+	// 租户成员管理，只有系统租户才可以直接分配，否则通过邀请
 	g.POST("/members", h.Capability("查看租户成员", "view_members").
-		Scope(capability.ScopeTenant).
 		Handle(ginx.B[ListMembersReq](h.ListMembers)),
 	)
-	g.POST("/assign", h.Capability("加入租户", "assign").
-		Scope(capability.ScopeTenant).
+	g.POST("/assign", h.Capability("分配租户成员", "assign").
 		Handle(ginx.B[AssignUserReq](h.AssignUser)),
 	)
-	g.POST("/remove/member", h.Capability("移除租户成员", "remove_member").
-		Scope(capability.ScopeTenant).
+	g.POST("/unassign", h.Capability("移除租户成员", "unassign").
 		Handle(ginx.B[RemoveMemberReq](h.RemoveMember)),
+	)
+	g.POST("/batch_assign", h.Capability("批量分配租户成员", "batch_assign").
+		Handle(ginx.B[BatchAssignTenantsReq](h.BatchAssignTenants)),
+	)
+	g.POST("/batch_unassign", h.Capability("批量移除租户成员", "batch_unassign").
+		Handle(ginx.B[BatchUnassignTenantsReq](h.BatchUnassignTenants)),
 	)
 }
 
@@ -127,6 +130,17 @@ func (h *Handler) AssignUser(ctx *ginx.Context, req AssignUserReq) (ginx.Result,
 
 	return ginx.Result{
 		Msg: "分配用户到租户成功",
+	}, nil
+}
+
+func (h *Handler) BatchAssignTenants(ctx *ginx.Context, req BatchAssignTenantsReq) (ginx.Result, error) {
+	err := h.svc.BatchAssignTenants(ctx.Request.Context(), req.UserID, req.TenantIDs)
+	if err != nil {
+		return ErrTenantUpdate, err
+	}
+
+	return ginx.Result{
+		Msg: "批量分配租户成功",
 	}, nil
 }
 
@@ -321,5 +335,27 @@ func (h *Handler) RemoveMember(ctx *ginx.Context, req RemoveMemberReq) (ginx.Res
 
 	return ginx.Result{
 		Msg: "成功将用户从租户空间移除",
+	}, nil
+}
+
+func (h *Handler) BatchRemoveMembers(ctx *ginx.Context, req BatchRemoveMembersReq) (ginx.Result, error) {
+	err := h.svc.BatchRemoveMembers(ctx.Request.Context(), req.UserIDs)
+	if err != nil {
+		return ErrTenantRemoveMember, err
+	}
+
+	return ginx.Result{
+		Msg: "成功将选定用户从租户空间移除",
+	}, nil
+}
+
+func (h *Handler) BatchUnassignTenants(ctx *ginx.Context, req BatchUnassignTenantsReq) (ginx.Result, error) {
+	err := h.svc.BatchUnassignTenants(ctx.Request.Context(), req.UserID, req.TenantIDs)
+	if err != nil {
+		return ErrTenantRemoveMember, err
+	}
+
+	return ginx.Result{
+		Msg: "成功取消用户与选定租户的关联记录",
 	}, nil
 }

@@ -46,8 +46,14 @@ type ITenantService interface {
 	ListMembers(ctx context.Context, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	// AssignUser 分配用户到租户空间
 	AssignUser(ctx context.Context, userID int64) error
+	// BatchAssignTenants 批量分配租户空间给用户
+	BatchAssignTenants(ctx context.Context, userID int64, tenantIDs []int64) error
 	// RemoveMember 从租户空间移除成员
 	RemoveMember(ctx context.Context, userID int64) error
+	// BatchRemoveMembers 批量从租户空间移除成员
+	BatchRemoveMembers(ctx context.Context, userIDs []int64) error
+	// BatchUnassignTenants 批量取消用户与租户的关联
+	BatchUnassignTenants(ctx context.Context, userID int64, tenantIDs []int64) error
 }
 
 type tenantService struct {
@@ -291,21 +297,83 @@ func (s *tenantService) AssignUser(ctx context.Context, userID int64) error {
 	return s.repo.CreateBind(ctx, userID)
 }
 
+func (s *tenantService) BatchAssignTenants(ctx context.Context, userID int64, tenantIDs []int64) error {
+	if len(tenantIDs) == 0 {
+		return nil
+	}
+
+	memberships := lo.Map(tenantIDs, func(tid int64, _ int) domain.Membership {
+		return domain.Membership{
+			UserID:   userID,
+			TenantID: tid,
+		}
+	})
+
+	return s.repo.BatchCreateBinds(ctx, memberships)
+}
+
 func (s *tenantService) RemoveMember(ctx context.Context, userID int64) error {
-	// 1. 获取用户信息（用于清理权限）
-	u, err := s.userRepo.FindById(ctx, userID)
+	return s.BatchRemoveMembers(ctx, []int64{userID})
+}
+
+func (s *tenantService) BatchRemoveMembers(ctx context.Context, userIDs []int64) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	// 1. 获取用户信息列表（用于获取用户名）
+	users, err := s.userRepo.FindByIds(ctx, userIDs)
 	if err != nil {
 		return err
 	}
 
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
-	// 2. 清理该用户在该租户下的所有角色授权
-	// 注意：Casbin 的 DeleteRolesForUser 在有 domain 的情况下是：DeleteRolesForUser(user, domain)
-	_, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(u.Username), ctxutil.ContextID(tenantID).String())
+	tidStr := ctxutil.ContextID(tenantID).String()
+
+	// 2. 批量清理权限与移除成员契约
+	for _, u := range users {
+		// 清理 Casbin 角色授权
+		_, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(u.Username), tidStr)
+		if err != nil {
+			return err
+		}
+
+		// 移除成员记录
+		if err = s.repo.DeleteBind(ctx, u.ID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *tenantService) BatchUnassignTenants(ctx context.Context, userID int64, tenantIDs []int64) error {
+	if len(tenantIDs) == 0 {
+		return nil
+	}
+
+	// 1. 获取用户信息
+	u, err := s.userRepo.FindById(ctx, userID)
 	if err != nil {
 		return err
 	}
 
-	// 3. 移除成员契约
-	return s.repo.DeleteBind(ctx, userID)
+	// 2. 循环处理每个租户的解绑
+	for _, tid := range tenantIDs {
+		tidStr := ctxutil.ContextID(tid).String()
+
+		// 清理 Casbin 角色授权
+		_, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(u.Username), tidStr)
+		if err != nil {
+			return err
+		}
+
+		// 移除成员记录
+		newCtx := ctxutil.WithTenantID(ctx, tid)
+		if err = s.repo.DeleteBind(newCtx, userID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

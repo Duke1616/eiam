@@ -8,6 +8,7 @@ import (
 	"github.com/Duke1616/eiam/pkg/gormx"
 	"github.com/ecodeclub/ekit/slice"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ITenantDAO 租户数据持久化接口
@@ -72,8 +73,8 @@ type Tenant struct {
 // Membership 映射表：仅代表入驻契约，不存储动态授权。
 type Membership struct {
 	ID       int64 `gorm:"primaryKey;autoIncrement"`
-	TenantID int64 `gorm:"index:idx_tenant_user"`
-	UserID   int64 `gorm:"index:idx_tenant_user"`
+	TenantID int64 `gorm:"uniqueIndex:idx_tenant_user"`
+	UserID   int64 `gorm:"uniqueIndex:idx_tenant_user"`
 	Ctime    int64 `gorm:"comment:'创建时间'"`
 }
 
@@ -105,7 +106,9 @@ func (d *TenantDAO) membershipDB(ctx context.Context) *gorm.DB {
 
 func (d *TenantDAO) CreateBind(ctx context.Context, m Membership) error {
 	m.Ctime = time.Now().UnixMilli()
-	return d.membershipDB(ctx).Create(&m).Error
+	return d.membershipDB(ctx).Clauses(clause.OnConflict{
+		DoNothing: true,
+	}).Create(&m).Error
 }
 
 func (d *TenantDAO) BatchCreateBinds(ctx context.Context, ms []Membership) error {
@@ -113,7 +116,9 @@ func (d *TenantDAO) BatchCreateBinds(ctx context.Context, ms []Membership) error
 	for i := range ms {
 		ms[i].Ctime = now
 	}
-	return d.membershipDB(ctx).Create(&ms).Error
+	return d.membershipDB(ctx).Clauses(clause.OnConflict{
+		DoNothing: true,
+	}).Create(&ms).Error
 }
 
 func (d *TenantDAO) DeleteBind(ctx context.Context, userID int64) error {
@@ -219,7 +224,6 @@ func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, ti
 		Select("CAST(ctime AS SIGNED)").
 		Where("membership.tenant_id = tenant.id").
 		Where("membership.user_id = ?", userID)
-
 	// 2. 将子查询注入主查询：直接覆盖到 tenant 的 ctime 字段中
 	query := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Model(&Tenant{}).
 		Select("*, (?) AS ctime", subQueryExpr)

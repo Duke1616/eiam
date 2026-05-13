@@ -93,7 +93,22 @@ type AssignUserReq struct {
 	UserID   int64 `json:"user_id" binding:"required"`
 }
 
+type BatchAssignTenantsReq struct {
+	UserID    int64   `json:"user_id" binding:"required"`
+	TenantIDs []int64 `json:"tenant_ids" binding:"required"`
+}
+
 type RemoveMemberReq struct {
 	TenantID int64 `json:"tenant_id" binding:"required"`
 	UserID   int64 `json:"user_id" binding:"required"`
+}
+
+type BatchRemoveMembersReq struct {
+	TenantID int64   `json:"tenant_id" binding:"required"`
+	UserIDs  []int64 `json:"user_ids" binding:"required"`
+}
+
+type BatchUnassignTenantsReq struct {
+	UserID    int64   `json:"user_id" binding:"required"`
+	TenantIDs []int64 `json:"tenant_ids" binding:"required"`
 }
