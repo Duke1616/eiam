@@ -55,6 +55,8 @@ type IUserDAO interface {
 	CountSearch(ctx context.Context, keyword string) (int64, error)
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
+	// DeleteByIDs 批量删除用户
+	DeleteByIDs(ctx context.Context, ids []int64) (int64, error)
 	// FindUsersByUsernames 批量根据用户名获取用户
 	FindUsersByUsernames(ctx context.Context, usernames []string) ([]User, error)
 	// GetAttachedUsersWithFilter 联表分页获取关联角色的用户详情，支持关键词过滤
@@ -345,6 +347,11 @@ func (dao *userDAO) CountSearch(ctx context.Context, keyword string) (int64, err
 
 func (dao *userDAO) Delete(ctx context.Context, id int64) error {
 	return dao.db.WithContext(ctx).Delete(&User{}, id).Error
+}
+
+func (dao *userDAO) DeleteByIDs(ctx context.Context, ids []int64) (int64, error) {
+	res := dao.db.WithContext(ctx).Delete(&User{}, ids)
+	return res.RowsAffected, res.Error
 }
 
 func (dao *userDAO) FindUsersByUsernames(ctx context.Context, usernames []string) ([]User, error) {

@@ -51,6 +51,8 @@ type IUserService interface {
 	UpdatePassword(ctx context.Context, uid int64, oldPassword, newPassword string) error
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
+	// BatchDelete 批量删除用户
+	BatchDelete(ctx context.Context, ids []int64) (int64, error)
 
 	// CheckUsersExist 批量检查用户名是否存在
 	CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error)
@@ -254,6 +256,10 @@ func (s *userService) Update(ctx context.Context, u domain.User) (int64, error) 
 
 func (s *userService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *userService) BatchDelete(ctx context.Context, ids []int64) (int64, error) {
+	return s.repo.BatchDelete(ctx, ids)
 }
 
 func (s *userService) CheckUsersExist(ctx context.Context, usernames []string) (map[string]bool, error) {

@@ -37,6 +37,10 @@ type IRoleService interface {
 	ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error)
 	// Delete 删除角色
 	Delete(ctx context.Context, id int64) error
+	// BatchDelete 批量删除角色
+	BatchDelete(ctx context.Context, ids []int64) (int64, error)
+	// GetByIDs 根据 ID 批量获取角色
+	GetByIDs(ctx context.Context, ids []int64) ([]domain.Role, error)
 }
 
 type roleService struct {
@@ -183,4 +187,37 @@ func (s *roleService) Delete(ctx context.Context, id int64) error {
 	}
 
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *roleService) GetByIDs(ctx context.Context, ids []int64) ([]domain.Role, error) {
+	return s.repo.GetByIDs(ctx, ids)
+}
+
+func (s *roleService) BatchDelete(ctx context.Context, ids []int64) (int64, error) {
+	// 1. 批量获取角色详情进行校验
+	roles, err := s.repo.GetByIDs(ctx, ids)
+	if err != nil {
+		return 0, err
+	}
+
+	roleSubjects := make([]string, 0, len(roles))
+	for _, role := range roles {
+		// 2. 校验系统内置与保留角色 (不允许删除)
+		if role.Type == domain.RoleTypeSystem || role.Code == "super_admin" || role.Code == "admin" {
+			return 0, errs.ErrDeleteSystemRole
+		}
+		roleSubjects = append(roleSubjects, domain.RoleSubject(role.Code))
+	}
+
+	// 3. 批量校验关联性 (是否有用户绑定、或作为父角色被继承)
+	usedSubjects, err := s.repo.CheckRolesUsage(ctx, roleSubjects)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(usedSubjects) > 0 {
+		return 0, errs.ErrRoleInUse
+	}
+
+	return s.repo.BatchDelete(ctx, ids)
 }

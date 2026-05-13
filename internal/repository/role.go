@@ -34,8 +34,14 @@ type IRoleRepository interface {
 	GetAttachedWithPagination(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error)
 	// Delete 删除角色
 	Delete(ctx context.Context, id int64) error
+	// BatchDelete 批量删除角色
+	BatchDelete(ctx context.Context, ids []int64) (int64, error)
 	// GetByID 根据 ID 获取角色
 	GetByID(ctx context.Context, id int64) (domain.Role, error)
+	// GetByIDs 根据 ID 批量获取角色
+	GetByIDs(ctx context.Context, ids []int64) ([]domain.Role, error)
+	// CheckRolesUsage 批量检查角色是否正在被使用
+	CheckRolesUsage(ctx context.Context, roleCodes []string) ([]string, error)
 }
 
 type RoleRepository struct {
@@ -133,12 +139,31 @@ func (r *RoleRepository) Delete(ctx context.Context, id int64) error {
 	return r.dao.Delete(ctx, id)
 }
 
+func (r *RoleRepository) BatchDelete(ctx context.Context, ids []int64) (int64, error) {
+	return r.dao.DeleteByIDs(ctx, ids)
+}
+
 func (r *RoleRepository) GetByID(ctx context.Context, id int64) (domain.Role, error) {
 	role, err := r.dao.GetByID(ctx, id)
 	if err != nil {
 		return domain.Role{}, err
 	}
 	return r.toDomain(role), nil
+}
+
+func (r *RoleRepository) GetByIDs(ctx context.Context, ids []int64) ([]domain.Role, error) {
+	roles, err := r.dao.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
+		return r.toDomain(src)
+	}), nil
+}
+
+func (r *RoleRepository) CheckRolesUsage(ctx context.Context, roleCodes []string) ([]string, error) {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	return r.dao.CheckRolesUsage(ctx, roleCodes, tid)
 }
 
 func (r *RoleRepository) toDomain(role dao.Role) domain.Role {

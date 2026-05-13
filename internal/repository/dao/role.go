@@ -46,8 +46,14 @@ type IRoleDAO interface {
 	GetAttachedRolesWithFilter(ctx context.Context, username string, tid, offset, limit int64, keyword string) ([]Role, int64, error)
 	// Delete 删除角色
 	Delete(ctx context.Context, id int64) error
+	// DeleteByIDs 批量删除角色
+	DeleteByIDs(ctx context.Context, ids []int64) (int64, error)
 	// GetByID 根据 ID 获取角色
 	GetByID(ctx context.Context, id int64) (Role, error)
+	// FindByIDs 根据 ID 批量获取角色
+	FindByIDs(ctx context.Context, ids []int64) ([]Role, error)
+	// CheckRolesUsage 批量检查角色是否正在被使用 (存在 Casbin 关联)
+	CheckRolesUsage(ctx context.Context, roleCodes []string, tid int64) ([]string, error)
 }
 
 type RoleDAO struct {
@@ -188,8 +194,37 @@ func (d *RoleDAO) Delete(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Delete(&Role{}, id).Error
 }
 
+func (d *RoleDAO) DeleteByIDs(ctx context.Context, ids []int64) (int64, error) {
+	res := d.db.WithContext(ctx).Delete(&Role{}, ids)
+	return res.RowsAffected, res.Error
+}
+
 func (d *RoleDAO) GetByID(ctx context.Context, id int64) (Role, error) {
 	var r Role
 	err := d.db.WithContext(ctx).Where("id = ?", id).First(&r).Error
 	return r, err
+}
+
+func (d *RoleDAO) FindByIDs(ctx context.Context, ids []int64) ([]Role, error) {
+	var rs []Role
+	err := d.db.WithContext(ctx).Where("id IN ?", ids).Find(&rs).Error
+	return rs, err
+}
+
+func (d *RoleDAO) CheckRolesUsage(ctx context.Context, roleCodes []string, tid int64) ([]string, error) {
+	var usedCodes []string
+	if len(roleCodes) == 0 {
+		return usedCodes, nil
+	}
+
+	// 构造 Casbin 角色标识列表
+	// 注意：这里需要与 domain.RoleSubject 的逻辑一致，通常是 "role:" + code
+	// 为了解耦，我们在上层转换好传入，或者在这里处理。
+	// 这里直接查 casbin_rule 表中 v1 匹配 roleCodes 且 v2 匹配租户的记录
+	err := d.db.WithContext(ctx).Table("casbin_rule").
+		Where("ptype = 'g' AND v1 IN ? AND v2 = ?", roleCodes, tid).
+		Distinct("v1").
+		Pluck("v1", &usedCodes).Error
+
+	return usedCodes, err
 }

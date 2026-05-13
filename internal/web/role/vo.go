@@ -19,6 +19,10 @@ type ListRoleRequest struct {
 	Keyword string `json:"keyword"`
 }
 
+type BatchDeleteReq struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
 type ListUserRolesRequest struct {
 	UserID  int64  `json:"user_id"`
 	Offset  int64  `json:"offset"`

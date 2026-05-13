@@ -97,6 +97,10 @@ type Tenant struct {
 	Domain string `json:"domain"`
 }
 
+type BatchDeleteReq struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
 type UpdateUserReq struct {
 	ID int64 `json:"id"`
 	BaseUserRequest

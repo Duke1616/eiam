@@ -49,6 +49,8 @@ type IUserRepository interface {
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
+	// BatchDelete 批量删除用户
+	BatchDelete(ctx context.Context, ids []int64) (int64, error)
 	// BatchUpsert 批量 Upsert 用户数据
 	BatchUpsert(ctx context.Context, users []domain.User) error
 	// CheckUsersExist 批量检查用户名是否已经在系统中存在
@@ -370,6 +372,10 @@ func (repo *userRepository) UpdateLastLoginAt(ctx context.Context, id int64, log
 
 func (repo *userRepository) Delete(ctx context.Context, id int64) error {
 	return repo.dao.Delete(ctx, id)
+}
+
+func (repo *userRepository) BatchDelete(ctx context.Context, ids []int64) (int64, error) {
+	return repo.dao.DeleteByIDs(ctx, ids)
 }
 
 func (repo *userRepository) DeleteIdentity(ctx context.Context, uid int64, provider, identityID string) error {

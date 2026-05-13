@@ -117,8 +117,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.DELETE("/delete/:id", h.Capability("删除用户", "delete").
 		Handle(ginx.W(h.Delete)),
 	)
-	g.POST("/list/attached/role", h.Capability("角色关联用户列表", "view_role_members").
-		Handle(ginx.B[ListRoleUsersRequest](h.ListAttachedRole)),
+	g.POST("/batch_delete", h.Capability("批量删除用户", "batch_delete").
+		Handle(ginx.B[BatchDeleteReq](h.BatchDelete)),
 	)
 	// LDAP 管理接口
 	g.POST("/ldap/search", h.Capability("搜索 LDAP", "ldap_search").
@@ -136,6 +136,13 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	g.POST("/identity/unbind", h.Capability("解绑外部身份", "unbind_identity").
 		Handle(ginx.B[UnbindIdentityRequest](h.UnbindIdentity)))
+
+	// 查询特定角色关联的用户 (管理侧使用)
+	g.POST("/list/attached/role", h.Capability("角色关联用户列表", "view_role_members").
+		Module("role").
+		Group("角色管理").
+		Handle(ginx.B[ListRoleUsersRequest](h.ListAttachedRole)),
+	)
 }
 
 func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
@@ -484,6 +491,14 @@ func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{Msg: "删除用户成功"}, nil
+}
+
+func (h *Handler) BatchDelete(ctx *ginx.Context, req BatchDeleteReq) (ginx.Result, error) {
+	if _, err := h.userSvc.BatchDelete(ctx.Request.Context(), req.IDs); err != nil {
+		return ErrUserDeleteFailed, err
+	}
+
+	return ginx.Result{Msg: "批量删除用户成功"}, nil
 }
 
 func (h *Handler) ListAttachedRole(ctx *ginx.Context, req ListRoleUsersRequest) (ginx.Result, error) {

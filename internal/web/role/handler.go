@@ -54,6 +54,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.DELETE("/delete/:id", h.Capability("删除角色", "delete").
 		Handle(ginx.W(h.Delete)),
 	)
+	g.POST("/batch_delete", h.Capability("批量删除角色", "batch_delete").
+		Handle(ginx.B[BatchDeleteReq](h.BatchDelete)),
+	)
 
 	// 角色关系授权 (Relation)
 	//g.POST("/assign", h.Capability("角色分配", "assign").
@@ -76,6 +79,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Handle(ginx.B[RoleAnalysisReq](h.AnalyzeInlinePolicies)),
 	)
 	g.POST("/add_parent", h.Capability("添加父角色", "add_parent").
+		Needs("iam:role:view").
 		Handle(ginx.B[RoleInheritanceReq](h.AddParentRole)),
 	)
 	g.POST("/remove_parent", h.Capability("移除父角色", "remove_parent").
@@ -179,6 +183,20 @@ func (h *Handler) Delete(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{Msg: "删除角色成功"}, nil
+}
+
+func (h *Handler) BatchDelete(ctx *ginx.Context, req BatchDeleteReq) (ginx.Result, error) {
+	if _, err := h.svc.BatchDelete(ctx.Request.Context(), req.IDs); err != nil {
+		if errors.Is(err, errs.ErrDeleteSystemRole) {
+			return ErrReservedRoleCode, err
+		}
+		if errors.Is(err, errs.ErrRoleInUse) {
+			return ErrRoleInUse, err
+		}
+		return ErrRoleDeleteFailed, err
+	}
+
+	return ginx.Result{Msg: "批量删除角色成功"}, nil
 }
 
 func (h *Handler) List(ctx *ginx.Context, req ListRoleRequest) (ginx.Result, error) {
