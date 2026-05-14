@@ -21,6 +21,8 @@ type IInvitationRepository interface {
 	DecrUsedCount(ctx context.Context, code string) (int, error)
 	// Delete 删除邀请码（软删除）
 	Delete(ctx context.Context, code string) error
+	// BatchDelete 批量删除邀请码
+	BatchDelete(ctx context.Context, codes []string) error
 	// List 分页获取租户下的邀请码列表
 	List(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error)
 	// UpdateStatus 更新邀请码状态
@@ -70,6 +72,10 @@ func (r *invitationRepository) DecrUsedCount(ctx context.Context, code string) (
 
 func (r *invitationRepository) Delete(ctx context.Context, code string) error {
 	return r.dao.Delete(ctx, code)
+}
+
+func (r *invitationRepository) BatchDelete(ctx context.Context, codes []string) error {
+	return r.dao.BatchDelete(ctx, codes)
 }
 
 func (r *invitationRepository) List(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error) {

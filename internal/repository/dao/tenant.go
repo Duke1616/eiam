@@ -38,6 +38,8 @@ type ITenantDAO interface {
 	BatchCreateBinds(ctx context.Context, ms []Membership) error
 	// DeleteBind 移除用户与租户的关联记录
 	DeleteBind(ctx context.Context, userID int64) error
+	// BatchDeleteBinds 批量移除关联记录
+	BatchDeleteBinds(ctx context.Context, userIDs []int64, tenantIDs []int64) error
 	// GetBind 精确查询特定租户下特定用户的入驻信息
 	GetBind(ctx context.Context, userId int64) (Membership, error)
 	// ListBindsByUserIds 批量检索一组用户的入驻关联记录
@@ -126,6 +128,16 @@ func (d *TenantDAO) DeleteBind(ctx context.Context, userID int64) error {
 	return d.membershipDB(ctx).
 		Where("tenant_id = ? AND user_id = ?", tenantID, userID).
 		Delete(&Membership{}).Error
+}
+
+func (d *TenantDAO) BatchDeleteBinds(ctx context.Context, userIDs []int64, tenantIDs []int64) error {
+	if len(tenantIDs) == 1 {
+		return d.membershipDB(ctx).Where("tenant_id = ? AND user_id IN ?", tenantIDs[0], userIDs).Delete(&Membership{}).Error
+	}
+	if len(userIDs) == 1 {
+		return d.membershipDB(ctx).Where("user_id = ? AND tenant_id IN ?", userIDs[0], tenantIDs).Delete(&Membership{}).Error
+	}
+	return nil
 }
 
 func (d *TenantDAO) GetBind(ctx context.Context, userId int64) (Membership, error) {

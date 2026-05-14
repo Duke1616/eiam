@@ -20,13 +20,17 @@ type AcceptInvitationReq struct {
 	Code string `json:"code" binding:"required"`
 }
 
+type BatchRevokeInvitationReq struct {
+	Codes []string `json:"codes" binding:"required"`
+}
+
 type HandleJoinRequestReq struct {
 	ID       int64 `json:"id" binding:"required"`
 	Approve  bool  `json:"approve"`
 	TenantID int64 `json:"tenant_id"` // 可选，支持管理面指定目标租户
 }
 
-type InvitationVO struct {
+type Invitation struct {
 	Code            string   `json:"code"`
 	TenantName      string   `json:"tenant_name"`
 	InviterID       int64    `json:"inviter_id"`
@@ -38,7 +42,7 @@ type InvitationVO struct {
 	IsMember        bool     `json:"is_member"` // 当前用户是否已经是成员
 }
 
-type JoinRequestVO struct {
+type JoinRequest struct {
 	ID             int64    `json:"id"`
 	UserID         int64    `json:"user_id"`
 	Username       string   `json:"username"`
@@ -49,11 +53,11 @@ type JoinRequestVO struct {
 }
 
 type RetrieveInvitations struct {
-	Total       int64          `json:"total"`
-	Invitations []InvitationVO `json:"invitations"`
+	Total       int64        `json:"total"`
+	Invitations []Invitation `json:"invitations"`
 }
 
 type RetrieveJoinRequests struct {
-	Total    int64           `json:"total"`
-	Requests []JoinRequestVO `json:"requests"`
+	Total    int64         `json:"total"`
+	Requests []JoinRequest `json:"requests"`
 }

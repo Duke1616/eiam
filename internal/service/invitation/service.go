@@ -24,6 +24,8 @@ type IInvitationService interface {
 	ListInvitations(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error)
 	// RevokeInvitation 撤回/删除邀请链接
 	RevokeInvitation(ctx context.Context, code string) error
+	// BatchRevokeInvitation 批量撤回邀请码
+	BatchRevokeInvitation(ctx context.Context, codes []string) error
 
 	// ListJoinRequests 获取待审批的入驻申请
 	ListJoinRequests(ctx context.Context, offset, limit int) ([]domain.JoinRequest, int64, error)
@@ -161,6 +163,10 @@ func (s *invitationService) ListInvitations(ctx context.Context, offset, limit i
 
 func (s *invitationService) RevokeInvitation(ctx context.Context, code string) error {
 	return s.repo.Delete(ctx, code)
+}
+
+func (s *invitationService) BatchRevokeInvitation(ctx context.Context, codes []string) error {
+	return s.repo.BatchDelete(ctx, codes)
 }
 
 func (s *invitationService) ListJoinRequests(ctx context.Context, offset, limit int) ([]domain.JoinRequest, int64, error) {

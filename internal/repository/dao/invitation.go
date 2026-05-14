@@ -53,6 +53,8 @@ type IInvitationDAO interface {
 	Count(ctx context.Context) (int64, error)
 	// Delete 软删除邀请码记录
 	Delete(ctx context.Context, code string) error
+	// BatchDelete 批量软删除邀请码
+	BatchDelete(ctx context.Context, codes []string) error
 
 	// InsertJoinRequest 插入新的入驻申请
 	InsertJoinRequest(ctx context.Context, req JoinRequest) (int64, error)
@@ -207,6 +209,23 @@ func (d *invitationDAO) Delete(ctx context.Context, code string) error {
 		// 1 为 Pending, 4 为 Invalidated
 		return tx.Model(&JoinRequest{}).
 			Where("invitation_code = ? AND status = ?", code, 1).
+			Updates(map[string]any{
+				"status": 4,
+				"utime":  time.Now().UnixMilli(),
+			}).Error
+	})
+}
+
+func (d *invitationDAO) BatchDelete(ctx context.Context, codes []string) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. 批量软删除邀请码记录
+		if err := tx.Where("code IN ?", codes).Delete(&Invitation{}).Error; err != nil {
+			return err
+		}
+
+		// 2. 联动更新待处理的申请单为“已失效”状态
+		return tx.Model(&JoinRequest{}).
+			Where("invitation_code IN ? AND status = ?", codes, 1).
 			Updates(map[string]any{
 				"status": 4,
 				"utime":  time.Now().UnixMilli(),

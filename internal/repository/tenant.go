@@ -36,6 +36,8 @@ type ITenantRepository interface {
 	BatchCreateBinds(ctx context.Context, ms []domain.Membership) error
 	// DeleteBind 移除用户与租户的关联契约（退出/移除）
 	DeleteBind(ctx context.Context, userID int64) error
+	// BatchDeleteBinds 批量移除关联记录
+	BatchDeleteBinds(ctx context.Context, userIDs []int64, tenantIDs []int64) error
 	// GetBind 获取用户在特定租户下的契约详情
 	GetBind(ctx context.Context, userId int64) (domain.Membership, error)
 	// FindTenantsByUserId 获取指定用户关联的所有租户领域模型列表
@@ -74,6 +76,10 @@ func (r *TenantRepository) CreateBind(ctx context.Context, userID int64) error {
 
 func (r *TenantRepository) DeleteBind(ctx context.Context, userID int64) error {
 	return r.dao.DeleteBind(ctx, userID)
+}
+
+func (r *TenantRepository) BatchDeleteBinds(ctx context.Context, userIDs []int64, tenantIDs []int64) error {
+	return r.dao.BatchDeleteBinds(ctx, userIDs, tenantIDs)
 }
 
 func (r *TenantRepository) GetBind(ctx context.Context, userId int64) (domain.Membership, error) {

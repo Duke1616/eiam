@@ -82,15 +82,19 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 	// 租户成员管理，只有系统租户才可以直接分配，否则通过邀请
 	g.POST("/assign", h.Capability("分配租户成员", "assign").
+		Scope(capability.ScopeTenant).
 		Handle(ginx.B[AssignUserReq](h.AssignUser)),
 	)
 	g.POST("/unassign", h.Capability("移除租户成员", "unassign").
+		Scope(capability.ScopeTenant).
 		Handle(ginx.B[RemoveMemberReq](h.RemoveMember)),
 	)
 	g.POST("/batch_assign", h.Capability("批量分配租户成员", "batch_assign").
+		Scope(capability.ScopeTenant).
 		Handle(ginx.B[BatchAssignTenantsReq](h.BatchAssignTenants)),
 	)
 	g.POST("/batch_unassign", h.Capability("批量移除租户成员", "batch_unassign").
+		Scope(capability.ScopeTenant).
 		Handle(ginx.B[BatchUnassignTenantsReq](h.BatchUnassignTenants)),
 	)
 
@@ -141,7 +145,12 @@ func (h *Handler) AssignUser(ctx *ginx.Context, req AssignUserReq) (ginx.Result,
 }
 
 func (h *Handler) BatchAssignTenants(ctx *ginx.Context, req BatchAssignTenantsReq) (ginx.Result, error) {
-	err := h.svc.BatchAssignTenants(ctx.Request.Context(), req.UserID, req.TenantIDs)
+	// 安全校验：禁止多对多同时批量操作，防止产生笛卡尔积导致数据爆炸
+	if len(req.UserIDs) > 1 && len(req.TenantIDs) > 1 {
+		return ErrTenantDimensionInvalid, nil
+	}
+
+	err := h.svc.BatchAssignTenants(ctx.Request.Context(), req.UserIDs, req.TenantIDs)
 	if err != nil {
 		return ErrTenantUpdate, err
 	}
@@ -357,7 +366,12 @@ func (h *Handler) BatchRemoveMembers(ctx *ginx.Context, req BatchRemoveMembersRe
 }
 
 func (h *Handler) BatchUnassignTenants(ctx *ginx.Context, req BatchUnassignTenantsReq) (ginx.Result, error) {
-	err := h.svc.BatchUnassignTenants(ctx.Request.Context(), req.UserID, req.TenantIDs)
+	// 安全校验：禁止多对多同时批量操作
+	if len(req.UserIDs) > 1 && len(req.TenantIDs) > 1 {
+		return ErrTenantDimensionInvalid, nil
+	}
+
+	err := h.svc.BatchUnassignTenants(ctx.Request.Context(), req.UserIDs, req.TenantIDs)
 	if err != nil {
 		return ErrTenantRemoveMember, err
 	}

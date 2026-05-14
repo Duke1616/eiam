@@ -47,13 +47,13 @@ type ITenantService interface {
 	// AssignUser 分配用户到租户空间
 	AssignUser(ctx context.Context, userID int64) error
 	// BatchAssignTenants 批量分配租户空间给用户
-	BatchAssignTenants(ctx context.Context, userID int64, tenantIDs []int64) error
+	BatchAssignTenants(ctx context.Context, userIDs []int64, tenantIDs []int64) error
 	// RemoveMember 从租户空间移除成员
 	RemoveMember(ctx context.Context, userID int64) error
 	// BatchRemoveMembers 批量从租户空间移除成员
 	BatchRemoveMembers(ctx context.Context, userIDs []int64) error
 	// BatchUnassignTenants 批量取消用户与租户的关联
-	BatchUnassignTenants(ctx context.Context, userID int64, tenantIDs []int64) error
+	BatchUnassignTenants(ctx context.Context, userIDs []int64, tenantIDs []int64) error
 }
 
 type tenantService struct {
@@ -297,16 +297,18 @@ func (s *tenantService) AssignUser(ctx context.Context, userID int64) error {
 	return s.repo.CreateBind(ctx, userID)
 }
 
-func (s *tenantService) BatchAssignTenants(ctx context.Context, userID int64, tenantIDs []int64) error {
-	if len(tenantIDs) == 0 {
+func (s *tenantService) BatchAssignTenants(ctx context.Context, userIDs []int64, tenantIDs []int64) error {
+	if len(tenantIDs) == 0 || len(userIDs) == 0 {
 		return nil
 	}
 
-	memberships := lo.Map(tenantIDs, func(tid int64, _ int) domain.Membership {
-		return domain.Membership{
-			UserID:   userID,
-			TenantID: tid,
-		}
+	memberships := lo.FlatMap(userIDs, func(uid int64, _ int) []domain.Membership {
+		return lo.Map(tenantIDs, func(tid int64, _ int) domain.Membership {
+			return domain.Membership{
+				UserID:   uid,
+				TenantID: tid,
+			}
+		})
 	})
 
 	return s.repo.BatchCreateBinds(ctx, memberships)
@@ -330,50 +332,63 @@ func (s *tenantService) BatchRemoveMembers(ctx context.Context, userIDs []int64)
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	tidStr := ctxutil.ContextID(tenantID).String()
 
-	// 2. 批量清理权限与移除成员契约
-	for _, u := range users {
-		// 清理 Casbin 角色授权
-		_, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(u.Username), tidStr)
-		if err != nil {
-			return err
-		}
-
-		// 移除成员记录
-		if err = s.repo.DeleteBind(ctx, u.ID); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *tenantService) BatchUnassignTenants(ctx context.Context, userID int64, tenantIDs []int64) error {
-	if len(tenantIDs) == 0 {
-		return nil
-	}
-
-	// 1. 获取用户信息
-	u, err := s.userRepo.FindById(ctx, userID)
+	// 2. 批量清理权限
+	allRules, err := s.enforcer.GetFilteredGroupingPolicy(2, tidStr)
 	if err != nil {
 		return err
 	}
 
-	// 2. 循环处理每个租户的解绑
-	for _, tid := range tenantIDs {
-		tidStr := ctxutil.ContextID(tid).String()
+	userMap := lo.SliceToMap(users, func(u domain.User) (string, struct{}) {
+		return domain.UserSubject(u.Username), struct{}{}
+	})
 
-		// 清理 Casbin 角色授权
-		_, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(u.Username), tidStr)
-		if err != nil {
-			return err
-		}
+	toDelete := lo.Filter(allRules, func(rule []string, _ int) bool {
+		_, ok := userMap[rule[0]]
+		return ok
+	})
 
-		// 移除成员记录
-		newCtx := ctxutil.WithTenantID(ctx, tid)
-		if err = s.repo.DeleteBind(newCtx, userID); err != nil {
+	if len(toDelete) > 0 {
+		if _, err = s.enforcer.RemoveGroupingPolicies(toDelete); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	// 3. 批量移除成员记录
+	return s.repo.BatchDeleteBinds(ctx, userIDs, []int64{tenantID})
+}
+
+func (s *tenantService) BatchUnassignTenants(ctx context.Context, userIDs []int64, tenantIDs []int64) error {
+	if len(tenantIDs) == 0 || len(userIDs) == 0 {
+		return nil
+	}
+
+	// 1. 获取用户信息
+	users, err := s.userRepo.FindByIds(ctx, userIDs)
+	if err != nil {
+		return err
+	}
+
+	// 2. 使用 lo.FlatMap 将 (用户 x 租户) 的操作对打平
+	type unassignOp struct {
+		user domain.User
+		tid  int64
+	}
+	ops := lo.FlatMap(users, func(u domain.User, _ int) []unassignOp {
+		return lo.Map(tenantIDs, func(tid int64, _ int) unassignOp {
+			return unassignOp{user: u, tid: tid}
+		})
+	})
+
+	// 3. 循环清理权限
+	for _, op := range ops {
+		tidStr := ctxutil.ContextID(op.tid).String()
+
+		// 清理 Casbin 角色授权
+		if _, err = s.enforcer.DeleteRolesForUser(domain.UserSubject(op.user.Username), tidStr); err != nil {
+			return err
+		}
+	}
+
+	// 4. 批量移除数据库记录 (单 SQL)
+	return s.repo.BatchDeleteBinds(ctx, userIDs, tenantIDs)
 }

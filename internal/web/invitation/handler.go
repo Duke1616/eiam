@@ -37,6 +37,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/invitation")
 
 	g.POST("/create", h.Capability("创建邀请", "add").
+		Needs("iam:role:view").
 		Handle(ginx.B[CreateInvitationReq](h.CreateInvitation)),
 	)
 	g.POST("/accept", h.Capability("接受邀请", "accept").
@@ -47,6 +48,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	g.DELETE("/revoke/:code", h.Capability("撤回邀请", "delete").
 		Handle(ginx.W(h.RevokeInvitation)),
+	)
+	g.POST("/batch_revoke", h.Capability("批量撤回邀请", "batch_delete").
+		Handle(ginx.B[BatchRevokeInvitationReq](h.BatchRevoke)),
 	)
 
 	// 申请管理
@@ -105,7 +109,7 @@ func (h *Handler) VerifyInvitation(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{
-		Data: InvitationVO{
+		Data: Invitation{
 			TenantName:      inv.TenantName,
 			InviterID:       inv.InviterID,
 			RoleCodes:       inv.RoleCodes,
@@ -161,8 +165,8 @@ func (h *Handler) ListInvitations(ctx *ginx.Context, req Page) (ginx.Result, err
 	return ginx.Result{
 		Data: RetrieveInvitations{
 			Total: total,
-			Invitations: lo.Map(invitations, func(inv domain.Invitation, _ int) InvitationVO {
-				return InvitationVO{
+			Invitations: lo.Map(invitations, func(inv domain.Invitation, _ int) Invitation {
+				return Invitation{
 					Code:            inv.Code,
 					TenantName:      inv.TenantName,
 					InviterID:       inv.InviterID,
@@ -193,6 +197,16 @@ func (h *Handler) RevokeInvitation(ctx *ginx.Context) (ginx.Result, error) {
 	}, nil
 }
 
+func (h *Handler) BatchRevoke(ctx *ginx.Context, req BatchRevokeInvitationReq) (ginx.Result, error) {
+	if err := h.svc.BatchRevokeInvitation(ctx.Request.Context(), req.Codes); err != nil {
+		return ErrInvitationRevokeFailed, err
+	}
+
+	return ginx.Result{
+		Msg: "批量撤回成功",
+	}, nil
+}
+
 func (h *Handler) ListJoinRequests(ctx *ginx.Context, req Page) (ginx.Result, error) {
 	reqs, total, err := h.svc.ListJoinRequests(ctx.Request.Context(), req.Offset, req.Limit)
 	if err != nil {
@@ -202,8 +216,8 @@ func (h *Handler) ListJoinRequests(ctx *ginx.Context, req Page) (ginx.Result, er
 	return ginx.Result{
 		Data: RetrieveJoinRequests{
 			Total: total,
-			Requests: lo.Map(reqs, func(r domain.JoinRequest, _ int) JoinRequestVO {
-				return JoinRequestVO{
+			Requests: lo.Map(reqs, func(r domain.JoinRequest, _ int) JoinRequest {
+				return JoinRequest{
 					ID:             r.ID,
 					UserID:         r.UserID,
 					Username:       r.Username,
