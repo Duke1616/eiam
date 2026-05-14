@@ -52,6 +52,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	permissionHdl.IdentityRoutes(server.Engine)
 	userHdl.IdentityRoutes(server.Engine)
 	tenantHdl.IdentityRoutes(server.Engine)
+	invitationHdl.IdentityRoutes(server.Engine)
 
 	// 4. API 业务鉴权层：基于 RBAC/OPA 的细粒度权限校验
 	server.Use(middleware.CheckPermission(permSvc))

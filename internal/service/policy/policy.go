@@ -57,6 +57,8 @@ type IPolicyService interface {
 	BatchDetachPolicies(ctx context.Context, assignments []domain.SubjectPolicyAssignment) (int64, error)
 	// DeletePolicy 删除权限策略
 	DeletePolicy(ctx context.Context, code string) error
+	// BatchDeletePolicies 批量删除权限策略
+	BatchDeletePolicies(ctx context.Context, codes []string) error
 }
 
 type policyService struct {
@@ -257,4 +259,37 @@ func (s *policyService) DeletePolicy(ctx context.Context, code string) error {
 	}
 
 	return s.repo.DeletePolicy(ctx, code)
+}
+
+func (s *policyService) BatchDeletePolicies(ctx context.Context, codes []string) error {
+	if len(codes) == 0 {
+		return nil
+	}
+
+	// 1. 批量拉取策略详情
+	ps, err := s.repo.ListByCodes(ctx, codes)
+	if err != nil {
+		return err
+	}
+
+	// 2. 批量校验
+	// 2.1 检查是否存在系统策略
+	for _, p := range ps {
+		if p.Type == domain.SystemPolicy {
+			return errs.ErrDeleteSystemPolicy
+		}
+	}
+
+	// 2.2 检查引用计数
+	if err = s.repo.FillAssignmentCounts(ctx, ps); err != nil {
+		return err
+	}
+	for _, p := range ps {
+		if p.AssignmentCount > 0 {
+			return errs.ErrPolicyInUse
+		}
+	}
+
+	// 3. 执行批量物理删除
+	return s.repo.BatchDeletePolicies(ctx, codes)
 }

@@ -41,9 +41,11 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/policy")
 
 	g.POST("/create", h.Capability("创建策略", "add").
+		Needs("iam:permission:manifest").
 		Handle(ginx.B[CreatePolicyReq](h.CreatePolicy)),
 	)
 	g.POST("/update", h.Capability("修改策略", "edit").
+		Needs("iam:permission:manifest", "iam:policy:get").
 		Handle(ginx.B[UpdatePolicyReq](h.UpdatePolicy)),
 	)
 	g.POST("/list", h.Capability("策略列表", "view").
@@ -71,6 +73,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	// 删除策略 (物理删除，需校验引用)
 	g.DELETE("/delete/:code", h.Capability("删除策略", "delete").
 		Handle(ginx.W(h.DeletePolicy)),
+	)
+	g.POST("/batch-delete", h.Capability("批量删除策略", "batch_delete").
+		Handle(ginx.B[BatchDeletePolicyReq](h.BatchDeletePolicies)),
 	)
 
 	// 查询特定用户的关联策略 (管理侧使用)
@@ -342,6 +347,9 @@ func (h *Handler) DeletePolicy(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	if err = h.svc.DeletePolicy(ctx.Request.Context(), code); err != nil {
+		if errors.Is(err, errs.ErrDeleteSystemPolicy) {
+			return ErrDeleteSystemPolicy, nil
+		}
 		if errors.Is(err, errs.ErrPolicyInUse) {
 			return ErrPolicyInUse, nil
 		}
@@ -350,6 +358,22 @@ func (h *Handler) DeletePolicy(ctx *ginx.Context) (ginx.Result, error) {
 
 	return ginx.Result{
 		Msg: "删除成功",
+	}, nil
+}
+
+func (h *Handler) BatchDeletePolicies(ctx *ginx.Context, req BatchDeletePolicyReq) (ginx.Result, error) {
+	if err := h.svc.BatchDeletePolicies(ctx.Request.Context(), req.Codes); err != nil {
+		if errors.Is(err, errs.ErrDeleteSystemPolicy) {
+			return ErrDeleteSystemPolicy, nil
+		}
+		if errors.Is(err, errs.ErrPolicyInUse) {
+			return ErrPolicyInUse, nil
+		}
+		return ErrDeletePolicyFailed, err
+	}
+
+	return ginx.Result{
+		Msg: "批量删除成功",
 	}, nil
 }
 

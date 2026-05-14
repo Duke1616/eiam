@@ -542,7 +542,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: UserDetail
-    permission_code: "iam:user:view"
+    permission_code: "iam:user:get"
     path: /iam/identity/user/detail
     component: /pages/iam/user/detail.vue
     meta:
@@ -562,7 +562,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: RoleDetail
-    permission_code: "iam:role:view"
+    permission_code: "iam:role:get"
     path: /iam/identity/role/detail
     component: /pages/iam/role/detail.vue
     meta:
@@ -582,7 +582,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: TenantDetail
-    permission_code: "iam:tenant:view"
+    permission_code: "iam:tenant:get"
     path: /iam/identity/tenant/detail
     component: /pages/iam/tenant/detail.vue
     meta:
@@ -643,7 +643,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: PolicyDetail
-    permission_code: "iam:policy:view"
+    permission_code: "iam:policy:get"
     path: /iam/permission/policy/detail
     component: /pages/iam/policy/detail.vue
     meta:

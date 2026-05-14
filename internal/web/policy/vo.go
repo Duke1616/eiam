@@ -133,3 +133,7 @@ type Assignment struct {
 type BatchDetachPolicyReq struct {
 	Assignments []Assignment `json:"assignments"`
 }
+
+type BatchDeletePolicyReq struct {
+	Codes []string `json:"codes" binding:"required"`
+}

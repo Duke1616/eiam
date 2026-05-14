@@ -33,15 +33,17 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	g.GET("/verify/:code", ginx.W(h.VerifyInvitation))
 }
 
+func (h *Handler) IdentityRoutes(server *gin.Engine) {
+	g := server.Group("/api/invitation")
+	g.POST("/accept", ginx.B[AcceptInvitationReq](h.AcceptInvitation))
+}
+
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/invitation")
 
 	g.POST("/create", h.Capability("创建邀请", "add").
 		Needs("iam:role:view").
 		Handle(ginx.B[CreateInvitationReq](h.CreateInvitation)),
-	)
-	g.POST("/accept", h.Capability("接受邀请", "accept").
-		NoSync().Handle(ginx.B[AcceptInvitationReq](h.AcceptInvitation)),
 	)
 	g.POST("/list", h.Capability("邀请列表", "view").
 		Handle(ginx.B[Page](h.ListInvitations)),

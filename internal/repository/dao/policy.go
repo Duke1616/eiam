@@ -82,6 +82,8 @@ type IPolicyDAO interface {
 	CountAssignmentsByPolicyCodes(ctx context.Context, codes []string) (map[string]int64, error)
 	// Delete 删除策略
 	Delete(ctx context.Context, code string) error
+	// BatchDelete 批量删除策略
+	BatchDelete(ctx context.Context, codes []string) error
 }
 
 type policyDAO struct {
@@ -397,4 +399,8 @@ func (d *policyDAO) CountAssignmentsByPolicyCodes(ctx context.Context, codes []s
 
 func (d *policyDAO) Delete(ctx context.Context, code string) error {
 	return d.db.WithContext(ctx).Where("code = ?", code).Delete(&Policy{}).Error
+}
+
+func (d *policyDAO) BatchDelete(ctx context.Context, codes []string) error {
+	return d.db.WithContext(ctx).Where("code IN ?", codes).Delete(&Policy{}).Error
 }
