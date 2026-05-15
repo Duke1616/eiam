@@ -52,6 +52,8 @@ type ITenantDAO interface {
 	ListTenantIDsByUser(ctx context.Context, userId int64) ([]int64, error)
 	// GetAttachedTenantsWithFilter 分页模糊查询关联用户的租户
 	GetAttachedTenantsWithFilter(ctx context.Context, userID, tid, offset, limit int64, keyword string) ([]Tenant, int64, error)
+	// BatchDelete 批量删除租户
+	BatchDelete(ctx context.Context, ids []int64) error
 }
 
 type TenantDAO struct {
@@ -205,6 +207,10 @@ func (d *TenantDAO) Update(ctx context.Context, t Tenant) error {
 
 func (d *TenantDAO) Delete(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Delete(&Tenant{}, id).Error
+}
+
+func (d *TenantDAO) BatchDelete(ctx context.Context, ids []int64) error {
+	return d.db.WithContext(ctx).Delete(&Tenant{}, ids).Error
 }
 
 func (d *TenantDAO) ListTenantIDsByUser(ctx context.Context, userId int64) ([]int64, error) {

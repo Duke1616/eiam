@@ -82,7 +82,8 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 
 func (h *Handler) IdentityRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
-
+	// 用户基本操作
+	g.POST("/password/update", ginx.B[UpdatePasswordRequest](h.UpdatePassword))
 	g.GET("/profile", ginx.W(h.Profile))
 	g.POST("/logout", ginx.W(h.Logout))
 
@@ -102,8 +103,9 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
 
-	g.POST("/password/update", ginx.B[UpdatePasswordRequest](h.UpdatePassword))
-
+	g.POST("/create", h.Capability("创建用户", "add").
+		Handle(ginx.B[SignupRequest](h.Create)),
+	)
 	g.POST("/list", h.Capability("用户列表", "view").
 		Handle(ginx.B[ListUserRequest](h.List)),
 	)
@@ -156,6 +158,36 @@ func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, err
 	}
 
 	return ginx.Result{Data: id}, nil
+}
+
+func (h *Handler) Create(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
+	if req.Password != req.ConfirmPassword {
+		return ErrPasswordMismatch, nil
+	}
+
+	// 1. 调用 Service 创建用户
+	id, err := h.userSvc.Signup(ctx.Request.Context(), req.ToDomain())
+	if err != nil {
+		return ErrSignupFailed, err
+	}
+
+	// 2. 如果是租户管理员（非系统租户）创建，则自动将该用户关联至当前租户
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	if tid != ctxutil.SystemTenantID {
+		err = h.tenantSvc.AssignUser(ctx.Request.Context(), id)
+		if err != nil {
+			h.logger.Error("管理员创建用户后自动分配租户失败",
+				elog.Int64("uid", id),
+				elog.Int64("tid", tid),
+				elog.FieldErr(err),
+			)
+		}
+	}
+
+	return ginx.Result{
+		Data: id,
+		Msg:  "用户主体创建成功",
+	}, nil
 }
 
 func (h *Handler) LoginLdap(ctx *ginx.Context, req LoginRequest) (ginx.Result, error) {

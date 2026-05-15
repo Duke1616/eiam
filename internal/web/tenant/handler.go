@@ -70,6 +70,9 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.DELETE("/delete/:id", h.Capability("删除租户空间", "delete").
 		Handle(ginx.W(h.DeleteTenant)),
 	)
+	g.POST("/batch_delete", h.Capability("批量删除租户", "batch_delete").
+		Handle(ginx.B[BatchDeleteTenantReq](h.BatchDeleteTenants)),
+	)
 	g.GET("/detail/:id", h.Capability("查看租户详情", "get").
 		Handle(ginx.W(h.Detail)),
 	)
@@ -301,6 +304,20 @@ func (h *Handler) DeleteTenant(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{Msg: "删除租户空间成功"}, nil
+}
+
+func (h *Handler) BatchDeleteTenants(ctx *ginx.Context, req BatchDeleteTenantReq) (ginx.Result, error) {
+	// 仅允许系统管理员删除租户
+	if ctxutil.GetTenantID(ctx.Context).Int64() != ctxutil.SystemTenantID {
+		return ErrTenantAccess, fmt.Errorf("非系统管理员禁止删除租户")
+	}
+
+	err := h.svc.BatchDelete(ctx.Context, req.IDs)
+	if err != nil {
+		return ErrTenantDelete, err
+	}
+
+	return ginx.Result{Msg: "批量删除租户空间成功"}, nil
 }
 
 func (h *Handler) Detail(ctx *ginx.Context) (ginx.Result, error) {

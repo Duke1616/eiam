@@ -24,6 +24,10 @@ type ListTenantReq struct {
 	Limit  int64 `json:"limit"`
 }
 
+type BatchDeleteTenantReq struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
 type ListUserTenantsReq struct {
 	UserID  int64  `json:"user_id"`
 	Offset  int64  `json:"offset"`

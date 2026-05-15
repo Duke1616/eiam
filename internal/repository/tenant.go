@@ -27,6 +27,8 @@ type ITenantRepository interface {
 	Delete(ctx context.Context, id int64) error
 	// BatchCreate 批量创建租户
 	BatchCreate(ctx context.Context, ts []domain.Tenant) ([]domain.Tenant, error)
+	// BatchDelete 批量删除租户
+	BatchDelete(ctx context.Context, ids []int64) error
 
 	// --- Bind (人空间关联) 纯净契约管理 ---
 
@@ -139,6 +141,10 @@ func (r *TenantRepository) Update(ctx context.Context, t domain.Tenant) error {
 
 func (r *TenantRepository) Delete(ctx context.Context, id int64) error {
 	return r.dao.Delete(ctx, id)
+}
+
+func (r *TenantRepository) BatchDelete(ctx context.Context, ids []int64) error {
+	return r.dao.BatchDelete(ctx, ids)
 }
 
 func (r *TenantRepository) FindTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {

@@ -34,6 +34,8 @@ type ITenantService interface {
 	Update(ctx context.Context, t domain.Tenant) error
 	// Delete 删除租户 (通常为逻辑删除)
 	Delete(ctx context.Context, id int64) error
+	// BatchDelete 批量删除租户
+	BatchDelete(ctx context.Context, ids []int64) error
 	// GetByID 获取租户详情
 	GetByID(ctx context.Context, id int64) (domain.Tenant, error)
 	// ListBindsByUserIds 批量检索一组用户的入驻关联记录
@@ -228,6 +230,10 @@ func (s *tenantService) Update(ctx context.Context, t domain.Tenant) error {
 
 func (s *tenantService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *tenantService) BatchDelete(ctx context.Context, ids []int64) error {
+	return s.repo.BatchDelete(ctx, ids)
 }
 
 func (s *tenantService) GetByID(ctx context.Context, id int64) (domain.Tenant, error) {

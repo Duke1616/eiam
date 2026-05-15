@@ -653,7 +653,7 @@
       is_keepalive: false
       platforms: ["system"]
   - name: PolicyCreation
-    permission_code: "iam:policy:view"
+    permission_code: "iam:policy:add"
     path: /iam/permission/policy/create
     component: /pages/iam/policy/create.vue
     meta:
