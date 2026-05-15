@@ -48,8 +48,8 @@ func NewSDKWithURL(baseURL string) *SDK {
 }
 
 type checkLoginResp struct {
-	Uid      int64 `json:"uid"`
-	TenantID int64 `json:"tenant_id"`
+	Uid      json.Number `json:"uid"`
+	TenantID json.Number `json:"tenant_id"`
 }
 
 type checkPolicyReq struct {
@@ -75,17 +75,22 @@ func (s *SDK) CheckLogin() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var res apiResult[checkLoginResp]
 		if err := s.callAPI(ctx, "/api/permission/check_login", nil, &res); err != nil {
+			s.logger.Error("CheckLogin 远程鉴权失败", elog.FieldErr(err))
 			return
 		}
 
-		uid, tid := res.Data.Uid, res.Data.TenantID
+		uid, _ := res.Data.Uid.Int64()
+		tid, _ := res.Data.TenantID.Int64()
+
 		// 1. 注入 Gin 上下文 (Web层使用)
 		ctx.Set("uid", uid)
 		ctx.Set("tenant_id", tid)
+		ctx.Set("origin_tenant_id", tid)
 
 		// 2. 注入标准 Context (确保下游全链路可见)
 		newCtx := ctxutil.WithUserID(ctx.Request.Context(), uid)
 		newCtx = ctxutil.WithTenantID(newCtx, tid)
+		newCtx = ctxutil.WithOriginTenantID(newCtx, tid)
 		ctx.Request = ctx.Request.WithContext(newCtx)
 
 		ctx.Next()

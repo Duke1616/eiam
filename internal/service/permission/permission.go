@@ -345,6 +345,8 @@ func (s *permissionService) getEffectivePolicies(ctx context.Context, username s
 		ctx = ctxutil.WithTenantID(ctx, authTid.Int64())
 	}
 
+	ttid := ctxutil.GetTenantID(ctx)
+	fmt.Println("TTID", ttid)
 	// 1. 获取用户的所有角色（包括继承）
 	roleSubjects, err := s.GetRolesForUser(ctx, username)
 	if err != nil {

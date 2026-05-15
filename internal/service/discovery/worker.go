@@ -143,9 +143,13 @@ func (w *Worker) handleWatchEvents(ctx context.Context, events []*clientv3.Event
 
 // process 解析快照并驱动对账引擎执行同步
 func (w *Worker) process(ctx context.Context, data []byte) {
+	if len(data) == 0 {
+		return
+	}
+
 	var req capability.SyncRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		w.l.Error("解析资产协议失败", elog.FieldErr(err))
+		w.l.Error("解析资产协议失败", elog.FieldErr(err), elog.String("data", string(data)))
 		return
 	}
 

@@ -1,10 +1,12 @@
 package permission
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
@@ -101,13 +103,11 @@ func (h *Handler) toActionVOs(perms []domain.Permission) []Permission {
 
 // CheckLogin 实现 SDK 的登录状态校验
 func (h *Handler) CheckLogin(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
+	_, claims, err := h.ctxWithAuth(ctx)
 	if err != nil {
 		return ErrUnauthenticated, err
 	}
 
-	// 提取租户 ID 并返回给 SDK
-	claims := sess.Claims()
 	return ginx.Result{
 		Code: 0,
 		Data: map[string]any{
@@ -119,19 +119,16 @@ func (h *Handler) CheckLogin(ctx *ginx.Context) (ginx.Result, error) {
 
 // CheckPolicy 实现 SDK 的全链路权限判定决策
 func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Result, error) {
-	// 1. 获取当前用户和租户上下文
-	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
+	// 1. 获取带有身份信息的 Context 和用户名
+	newCtx, claims, err := h.ctxWithAuth(ctx)
 	if err != nil {
 		return ErrUnauthenticated, err
 	}
 
-	username, ok := sess.Claims().Data["username"]
-	if !ok {
-		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
-	}
+	username := claims.Data["username"]
 
 	// 2. 调用全链路 CheckAPI 逻辑 (物理 Path -> 能力码 -> 逻辑权限判定)
-	allowed, err := h.svc.CheckAPI(ctx.Request.Context(), username, req.Service, req.Method, req.Path)
+	allowed, err := h.svc.CheckAPI(newCtx, username, req.Service, req.Method, req.Path)
 	if err != nil {
 		return ginx.Result{
 			Code: 0,
@@ -142,16 +139,33 @@ func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Resul
 		}, nil
 	}
 
-	// 3. 如果物理 API 校验通过，还需要针对具体的 Resource 维度进行逻辑判定 (OPA 处理)
-	// 如果 req.Resource != "*"，我们需要额外加一道特定资源的 OPA 判定
-	// 此处目前保留简化实现，物理 API 通过即通过
-
 	return ginx.Result{
 		Code: 0,
 		Data: AuthorizeResult{
 			Allowed: allowed,
 		},
 	}, nil
+}
+
+// ctxWithAuth 辅助方法：从请求中提取 Session 并注入到 Context 中
+func (h *Handler) ctxWithAuth(ctx *ginx.Context) (context.Context, session.Claims, error) {
+	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
+	if err != nil {
+		return nil, session.Claims{}, err
+	}
+
+	claims := sess.Claims()
+	newCtx := ctxutil.WithUserID(ctx.Request.Context(), claims.Uid)
+
+	// 统一处理租户 ID 注入
+	var tid int64
+	if v, ok := claims.Data["tenant_id"]; ok && v != "" {
+		fmt.Sscanf(v, "%d", &tid)
+	}
+	newCtx = ctxutil.WithTenantID(newCtx, tid)
+	newCtx = ctxutil.WithOriginTenantID(newCtx, tid)
+
+	return newCtx, claims, nil
 }
 
 func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
@@ -162,7 +176,7 @@ func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
 
 	username, ok := sess.Claims().Data["username"]
 	if !ok {
-		return ErrUnauthenticated, fmt.Errorf("session 中缺失用户名信息")
+		return ErrUnauthenticated, nil
 	}
 
 	menus, err := h.svc.GetAuthorizedMenus(ctx.Request.Context(), username)
