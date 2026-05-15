@@ -6,11 +6,11 @@ import (
 
 	"github.com/Duke1616/eiam/internal/pkg/middleware"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/web/discovery"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
-	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
@@ -26,8 +26,9 @@ import (
 func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.HandlerFunc,
 	userHdl *user.Handler, policyHdl *policy.Handler,
 	tenantHdl *tenanthdl.Handler, permissionHdl *permissionhdl.Handler,
-	roleHdl *rolehdl.Handler, resourceHdl *resourcehdl.Handler,
+	roleHdl *rolehdl.Handler,
 	identitySourceHdl *idhdl.Handler, invitationHdl *invitationhdl.Handler,
+	discoveryHdl *discovery.Handler,
 	permSvc permission.IPermissionService) *egin.Component {
 	session.SetDefaultProvider(sp)
 
@@ -38,10 +39,10 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	userHdl.PublicRoutes(server.Engine)
 	policyHdl.PublicRoutes(server.Engine)
 	tenantHdl.PublicRoutes(server.Engine)
-	resourceHdl.PublicRoutes(server.Engine)
 	permissionHdl.PublicRoutes(server.Engine)
 	identitySourceHdl.PublicRoutes(server.Engine)
 	invitationHdl.PublicRoutes(server.Engine)
+	discoveryHdl.PublicRoutes(server.Engine)
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())
@@ -62,7 +63,6 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	policyHdl.PrivateRoutes(server.Engine)
 	tenantHdl.PrivateRoutes(server.Engine)
 	roleHdl.PrivateRoutes(server.Engine)
-	resourceHdl.PrivateRoutes(server.Engine)
 	permissionHdl.PrivateRoutes(server.Engine)
 	identitySourceHdl.PrivateRoutes(server.Engine)
 	invitationHdl.PrivateRoutes(server.Engine)

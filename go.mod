@@ -22,6 +22,7 @@ require (
 	github.com/google/wire v0.7.0
 	github.com/gotomicro/ego v1.2.6
 	github.com/larksuite/oapi-sdk-go/v3 v3.6.1
+	github.com/meoying/dlock-go v0.0.0-20250530125835-af969a8b419d
 	github.com/open-policy-agent/opa v1.15.1
 	github.com/pquerna/otp v1.4.0
 	github.com/pressly/goose/v3 v3.27.0
@@ -31,6 +32,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/sumup/aaguids-go v0.0.0-20251118110537-5a71322266f2
+	go.etcd.io/etcd/client/v3 v3.6.11
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.50.0
 	golang.org/x/oauth2 v0.36.0
@@ -117,7 +119,6 @@ require (
 	github.com/lestrrat-go/jwx/v3 v3.0.13 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/meoying/dlock-go v0.0.0-20250530125835-af969a8b419d // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/microsoft/go-mssqldb v1.9.6 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -166,7 +167,6 @@ require (
 	github.com/yashtewari/glob-intersection v0.2.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.11 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.11 // indirect
-	go.etcd.io/etcd/client/v3 v3.6.11 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.40.0 // indirect

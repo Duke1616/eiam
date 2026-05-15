@@ -17,16 +17,27 @@ import (
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/service/user/passkey"
+	discoveryhdl "github.com/Duke1616/eiam/internal/web/discovery"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
-	resourcehdl "github.com/Duke1616/eiam/internal/web/resource"
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
+)
+
+var webSet = wire.NewSet(
+	userhdl.NewUserHandler,
+	policy.NewHandler,
+	tenanthdl.NewHandler,
+	permissionhdl.NewHandler,
+	rolehdl.NewHandler,
+	idhdl.NewHandler,
+	invitationhdl.NewHandler,
+	discoveryhdl.NewHandler,
 )
 
 var BaseSet = wire.NewSet(
@@ -104,9 +115,9 @@ func InitApp() (*App, error) {
 		userhdl.NewUserHandler,
 		policy.NewHandler,
 		tenanthdl.NewHandler,
-		resourcehdl.NewHandler,
 		idhdl.NewHandler,
 		invitationhdl.NewHandler,
+		discoveryhdl.NewHandler,
 		// Handlers (Capabilities)
 		permissionhdl.NewHandler,
 		rolehdl.NewHandler,
