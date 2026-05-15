@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 // Permission 权限项定义 (逻辑权限项)
@@ -210,20 +211,13 @@ func (r *registry) normalizeCode(code string) string {
 	// 场景 1：已经是完整路径 (eiam:iam:user:add) 或已包含服务 (iam:user:add)
 	// 判断标准：以 service: 开头
 	servicePrefix := r.service + ":"
-	if len(code) >= len(servicePrefix) && code[:len(servicePrefix)] == servicePrefix {
+	if strings.HasPrefix(code, servicePrefix) {
 		return code
 	}
 
 	// 场景 2：包含模块但缺少服务 (user:add)
 	// 判断标准：包含 ":"
-	hasDelimiter := false
-	for i := 0; i < len(code); i++ {
-		if code[i] == ':' {
-			hasDelimiter = true
-			break
-		}
-	}
-	if hasDelimiter {
+	if strings.Contains(code, ":") {
 		return servicePrefix + code
 	}
 
@@ -269,7 +263,8 @@ func (r *registry) updatePermissionModule(code string, module string) string {
 		oldCode := p.Code
 		delete(r.permissions, oldCode)
 
-		p.Code = r.service + ":" + module + ":" + strings.Split(oldCode, ":")[len(strings.Split(oldCode, ":"))-1]
+		parts := strings.Split(oldCode, ":")
+		p.Code = r.service + ":" + module + ":" + lo.LastOr(parts, "")
 		r.permissions[p.Code] = p
 		return p.Code
 	}
@@ -277,11 +272,7 @@ func (r *registry) updatePermissionModule(code string, module string) string {
 }
 
 func (r *registry) ProvidePermissions() []Permission {
-	perms := make([]Permission, 0, len(r.permissions))
-	for _, p := range r.permissions {
-		perms = append(perms, p)
-	}
-	return perms
+	return lo.Values(r.permissions)
 }
 
 // Capability 声明 API 的元数据入口 (全局独立模式)
@@ -313,28 +304,22 @@ func (c *Collector) RegisterProviders(p ...PermissionProvider) *Collector {
 // 优化了 API 扫描逻辑，通过卫语句避免深层嵌套，并预分配切片容量提升性能
 func (c *Collector) Collect() ([]Permission, []ResourceInfo) {
 	// 1. 收集逻辑权限 (支持显式 Provider + 全局自动发现)
-	var perms []Permission
-	uniquePerms := make(map[string]Permission)
+	// 使用 FlatMap 提取并打平所有权限
+	providerPerms := lo.FlatMap(c.providers, func(p PermissionProvider, _ int) []Permission {
+		return p.ProvidePermissions()
+	})
+	globalPerms := lo.FlatMap(globalRegistries, func(r IRegistry, _ int) []Permission {
+		return r.ProvidePermissions()
+	})
 
-	// 处理显式注册的 Provider (高优先级)
-	for _, p := range c.providers {
-		for _, perm := range p.ProvidePermissions() {
-			uniquePerms[perm.Code] = perm
-		}
-	}
+	// 核心逻辑：显式注册 (providerPerms) 优先级高于自动发现 (globalPerms)
+	// lo.Concat 合并切片，lo.Associate 转 Map (后者覆盖前者)
+	uniquePermsMap := lo.Associate(lo.Concat(globalPerms, providerPerms), func(p Permission) (string, Permission) {
+		return p.Code, p
+	})
 
-	// 处理自动发现的注册中心 (补全漏注的情况)
-	for _, r := range globalRegistries {
-		for _, perm := range r.ProvidePermissions() {
-			if _, ok := uniquePerms[perm.Code]; !ok {
-				uniquePerms[perm.Code] = perm
-			}
-		}
-	}
-
-	for _, p := range uniquePerms {
-		perms = append(perms, p)
-	}
+	// 最终转回切片
+	perms := lo.Values(uniquePermsMap)
 
 	// 2. 收集物理 API 资产
 	if c.engine == nil {
