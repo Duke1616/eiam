@@ -1,109 +1,64 @@
 package capability
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"time"
-
-	"github.com/gin-gonic/gin"
-	"github.com/samber/lo"
 )
 
-// SyncRequest 定义了 SDK 上报资产给 EIAM 的标准协议
+// SyncRequest 定义了 SDK 上报资产给 EIAM 的标准协议 (Snapshot)
 type SyncRequest struct {
-	Service     string         `json:"service"`     // 服务标识 (独立仓库或部署单元，如 eiam)
-	Permissions []Permission   `json:"permissions"` // 逻辑权限清单 (内部携带各条权限所属的 Service)
-	APIs        []ResourceInfo `json:"apis"`        // 物理 API 清单 (内部携带各条 API 所属的 Service)
+	Service     string         `json:"service"`
+	Permissions []Permission   `json:"permissions"`
+	APIs        []ResourceInfo `json:"apis"`
+	Menus       []Menu         `json:"menus"`
 }
 
-// PermSyncer 资产同步 SDK 的核心交互接口。
-// 使用者应通过 NewPermSyncer 工厂函数进行初始化。
-type PermSyncer interface {
-	// SyncAuto 全自动同步：资产发现 (Collector) -> 协议封装 (SyncRequest) -> 远程同步 (Sync)
-	SyncAuto(ctx context.Context, providers []PermissionProvider, router *gin.Engine) error
-
-	// Sync 手动同步：将已有的资产请求对象同步至远程 EIAM 决策中心
+// Registry 资产注册底层的持久化或传输契约
+type Registry interface {
 	Sync(ctx context.Context, req SyncRequest) error
 }
 
-// defaultPermSyncer EIAM SDK 的默认同步器实现
-type defaultPermSyncer struct {
-	service  string
-	endpoint string
-	client   *http.Client
+// Syncer 资产同步 SDK 的核心交互接口 (Facade Pattern)
+type Syncer interface {
+	// WithOption 动态追加同步选项 (如追加 Provider 或 Router)
+	WithOption(opts ...SyncOption) Syncer
+	// Sync 执行全量扫描与上报闭环
+	Sync(ctx context.Context) error
 }
 
-// NewPermSyncer 构建一个标准权限同步 SDK 实例
-// service: 当前仓库的全局标识 (部署单元)
-// endpoint: EIAM 中心化发现 API 的完整路径
-func NewPermSyncer(service, endpoint string) PermSyncer {
-	return &defaultPermSyncer{
-		service:  service,
-		endpoint: endpoint,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
-	}
+type defaultSyncer struct {
+	service   string
+	registry  Registry
+	collector *Collector
 }
 
-// SyncAuto 实现全自动化化的“扫描-上报”闭环
-func (s *defaultPermSyncer) SyncAuto(ctx context.Context, providers []PermissionProvider, router *gin.Engine) error {
-	// 1. 资产发现：利用 Collector 扫描所有注册的 Provider 与路由装饰器
-	collector := NewCollector(router).RegisterProviders(providers...)
-	perms, apis := collector.Collect()
+// NewSyncer 构造函数，支持预设同步选项
+func NewSyncer(service string, registry Registry, opts ...SyncOption) Syncer {
+	s := &defaultSyncer{
+		service:   service,
+		registry:  registry,
+		collector: NewCollector(),
+	}
 
-	// 2. 过滤标记为 NoSync 的资产
-	// 2.1 过滤逻辑权限
-	filteredPerms := lo.Filter(perms, func(p Permission, _ int) bool {
-		return !p.NoSync
-	})
+	// 应用初始选项
+	if len(opts) > 0 {
+		s.WithOption(opts...)
+	}
 
-	// 2.2 构造 NoSync 索引，用于快速过滤 API 资产
-	noSyncCodes := lo.SliceToMap(lo.Filter(perms, func(p Permission, _ int) bool {
-		return p.NoSync
-	}), func(p Permission) (string, struct{}) {
-		return p.Code, struct{}{}
-	})
-
-	// 2.3 过滤物理 API
-	filteredAPIs := lo.Filter(apis, func(api ResourceInfo, _ int) bool {
-		_, ok := noSyncCodes[api.Code]
-		return !ok
-	})
-
-	// 3. 协议封装与远程同步
-	return s.Sync(ctx, SyncRequest{
-		Service:     s.service,
-		Permissions: filteredPerms,
-		APIs:        filteredAPIs,
-	})
+	return s
 }
 
-// Sync 实现基础的底层同步逻辑
-func (s *defaultPermSyncer) Sync(ctx context.Context, req SyncRequest) error {
-	data, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("EIAM SDK 协议序列化失败: %w", err)
+func (s *defaultSyncer) WithOption(opts ...SyncOption) Syncer {
+	for _, opt := range opts {
+		opt(s.collector)
 	}
+	return s
+}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", s.endpoint, bytes.NewBuffer(data))
-	if err != nil {
-		return fmt.Errorf("EIAM SDK 构建请求失败: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
+func (s *defaultSyncer) Sync(ctx context.Context) error {
+	// 1. 资产收集：利用持有的 Collector 聚合所有类型的资产
+	req := s.collector.Collect()
+	req.Service = s.service
 
-	resp, err := s.client.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("EIAM SDK 网络请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("EIAM 服务返回异常状态码: %d", resp.StatusCode)
-	}
-
-	return nil
+	// 2. 执行报备
+	return s.registry.Sync(ctx, req)
 }

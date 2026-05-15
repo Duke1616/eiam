@@ -13,16 +13,19 @@ type MenuTree []*Menu
 // MenuList 定义扁平菜单列表类型，代表打平后用于物理存储或传输的切片
 type MenuList []Menu
 
-// Flatten 将层级结构的菜单树打平为扁平切片，并自动修正 ParentName 拓扑
-func (t MenuTree) Flatten() MenuList {
+// Flatten 将层级结构的菜单树打平为扁平切片，并自动修正 ParentName 与 ParentURN 拓扑 (需注入 Service 上下文)
+func (t MenuTree) Flatten(service string) MenuList {
 	var res MenuList
 	utils.WalkHierarchical[*Menu](t, func(m *Menu) []*Menu {
 		return m.Children
 	}, func(m *Menu, parent *Menu) {
+		m.Service = service
 		if parent != nil {
 			m.ParentName = parent.Name
+			m.ParentURN = parent.URN()
 		} else {
 			m.ParentName = ""
+			m.ParentURN = ""
 		}
 		res = append(res, *m)
 	})
@@ -64,9 +67,11 @@ func (l MenuList) ToTree() MenuTree {
 type Menu struct {
 	ID             int64    `json:"id" yaml:"-"`
 	ParentID       int64    `json:"parent_id" yaml:"-"`
-	ParentName     string   `json:"parent_name" yaml:"-"` // 父级名称缓存，用于拓扑解析
-	Name           string   `json:"name" yaml:"name"`     // 菜单标识
-	Path           string   `json:"path" yaml:"path"`     // 路由路径
+	ParentName     string   `json:"parent_name" yaml:"-"`                   // 父级名称缓存，用于拓扑解析
+	ParentURN      string   `json:"parent_urn" yaml:"parent_urn"`           // 父级 URN 显式指定（支持跨服务挂载）
+	Service        string   `json:"service" yaml:"service"`                 // 所属服务
+	Name           string   `json:"name" yaml:"name"`                       // 菜单标识
+	Path           string   `json:"path" yaml:"path"`                       // 路由路径
 	Component      string   `json:"component" yaml:"component"`             // 前端组件
 	Redirect       string   `json:"redirect" yaml:"redirect"`               // 重定向地址
 	PermissionCode string   `json:"permission_code" yaml:"permission_code"` // 资源声明
@@ -74,11 +79,13 @@ type Menu struct {
 	Meta           MenuMeta `json:"meta" yaml:"meta"`                       // UI 控制元数据
 	Ctime          int64    `json:"ctime" yaml:"-"`
 	Utime          int64    `json:"utime" yaml:"-"`
+	Status         uint8    `json:"status" yaml:"-"`
 	Children       []*Menu  `json:"children,omitempty" yaml:"children"` // 子菜单列表
 }
 
 func (m Menu) URN() string {
-	return urn.New("iam", "menu", m.Path).String()
+	// 使用服务名作为 URN 的前缀命名空间，确保全局唯一
+	return urn.New(m.Service, "menu", m.Path).String()
 }
 
 func (m Menu) GetID() int64 {
@@ -110,6 +117,7 @@ type API struct {
 	Name    string `json:"name"`
 	Method  string `json:"method"`
 	Path    string `json:"path"`
+	Status  uint8  `json:"status"` // 状态：1-正常，2-孤儿
 	Ctime   int64  `json:"ctime"`
 	Utime   int64  `json:"utime"`
 }

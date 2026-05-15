@@ -62,12 +62,14 @@ func startServer() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 1. 自动化发现并同步 EIAM 本身的资产 (逻辑权限与物理 API)
-	// 这里底层复用了 SDK 的 Collector 逻辑
+	// 1. 自动化发现并上报 EIAM 本身的资产 (逻辑权限与物理 API)
+	// 这里底层复用了 SDK 的分布式注册逻辑，会自动在多实例间选主报备
 	_ = app.Init.SyncDiscoveryAPIs(ctx, app.Providers, app.Web.Engine)
 
-	_ = app.Init.SyncServices(ctx) // 2. 同步服务元数据资产
-	_ = app.Init.SyncMenus(ctx)    // 3. 同步菜单物理资产
+	// 2. 启动后台异步任务 (Tasks) —— 如资产发现调度器、内置资产同步器等
+	for _, task := range app.Tasks {
+		task.Start(context.Background())
+	}
 
 	// 创建 ego 应用实例
 	egoApp := ego.New(ego.WithDisableBanner(true))

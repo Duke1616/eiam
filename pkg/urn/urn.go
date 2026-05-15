@@ -30,6 +30,21 @@ func New(service, resType, resID string) URN {
 	}
 }
 
+// Parse 将 URN 字符串解析为结构化对象
+func Parse(u string) (URN, error) {
+	parts := strings.Split(u, ":")
+	if len(parts) != 4 {
+		return URN{}, fmt.Errorf("invalid urn format: %s", u)
+	}
+
+	return URN{
+		Partition:    parts[0],
+		Service:      parts[1],
+		ResourceType: parts[2],
+		ResourceID:   parts[3],
+	}, nil
+}
+
 // Match 高性能通配符匹配逻辑 (仿路径匹配)
 func Match(pattern, target string) bool {
 	if pattern == "*" || pattern == target {

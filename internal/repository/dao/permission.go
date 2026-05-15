@@ -21,7 +21,13 @@ type Permission struct {
 	Scope   string   `gorm:"type:varchar(32);not null;default:'tenant';comment:'权限作用域'"`
 	Ctime   int64    `gorm:"type:bigint;not null;comment:'创建时间'"`
 	Utime   int64    `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Status  uint8    `gorm:"type:tinyint;not null;default:1;comment:'状态 1-正常 2-孤儿'"`
 }
+
+const (
+	PermissionStatusActive uint8 = 1
+	PermissionStatusOrphan uint8 = 2
+)
 
 // PermissionBinding 物理资产关联表 (全局通用映射)
 // 决定了 "iam:user:view" 这个 Code 映射了哪些 API 或 菜单
@@ -75,6 +81,12 @@ type IPermissionDAO interface {
 	FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error)
 	// CountByService 按服务分组统计权限点总数
 	CountByService(ctx context.Context) ([]ServiceCount, error)
+	// DeletePermissionsByServiceAndCodes 删除指定服务下不在给定 codes 列表中的所有权限
+	DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error
+	// MarkPermissionsAsOrphan 将不在 codes 列表中的权限标记为孤儿状态
+	MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error
+	// Transaction 开启事务支持
+	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 type ServiceCount struct {
@@ -86,6 +98,16 @@ type PermissionDAO struct {
 	db *gorm.DB
 }
 
+type permTxKey struct{}
+
+func (d *PermissionDAO) getDB(ctx context.Context) *gorm.DB {
+	tx, ok := ctx.Value(permTxKey{}).(*gorm.DB)
+	if ok {
+		return tx
+	}
+	return d.db.WithContext(ctx)
+}
+
 func NewPermissionDAO(db *gorm.DB) IPermissionDAO {
 	return &PermissionDAO{db: db}
 }
@@ -94,7 +116,7 @@ func (d *PermissionDAO) Insert(ctx context.Context, p Permission) (int64, error)
 	now := time.Now().UnixMilli()
 	p.Ctime = now
 	p.Utime = now
-	err := d.db.WithContext(ctx).Create(&p).Error
+	err := d.getDB(ctx).Create(&p).Error
 	return p.Id, err
 }
 
@@ -107,32 +129,33 @@ func (d *PermissionDAO) BatchInsert(ctx context.Context, perms []Permission) err
 	for i := range perms {
 		perms[i].Ctime = now
 		perms[i].Utime = now
+		perms[i].Status = PermissionStatusActive
 	}
 
-	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "code"}},
-		DoUpdates: clause.AssignmentColumns([]string{"name", "group", "needs", "scope", "utime"}),
+		DoUpdates: clause.AssignmentColumns([]string{"name", "group", "needs", "scope", "utime", "status"}),
 	}).Create(&perms).Error
 }
 
 func (d *PermissionDAO) Delete(ctx context.Context, id int64) error {
-	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("id = ?", id).Delete(&Permission{}).Error; err != nil {
+	return d.Transaction(ctx, func(txCtx context.Context) error {
+		if err := d.getDB(txCtx).Where("id = ?", id).Delete(&Permission{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("perm_id = ?", id).Delete(&PermissionBinding{}).Error
+		return d.getDB(txCtx).Where("perm_id = ?", id).Delete(&PermissionBinding{}).Error
 	})
 }
 
 func (d *PermissionDAO) GetByCode(ctx context.Context, code string) (Permission, error) {
 	var p Permission
-	err := d.db.WithContext(ctx).Where("code = ?", code).First(&p).Error
+	err := d.getDB(ctx).Where("code = ?", code).First(&p).Error
 	return p, err
 }
 
 func (d *PermissionDAO) ListAll(ctx context.Context) ([]Permission, error) {
 	var res []Permission
-	err := d.db.WithContext(ctx).Find(&res).Error
+	err := d.getDB(ctx).Find(&res).Error
 	return res, err
 }
 
@@ -141,7 +164,7 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 		return nil
 	}
 
-	return d.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 		DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
 	}).Create(&bindings).Error
@@ -149,32 +172,31 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 
 func (d *PermissionDAO) GetBindingsByRes(ctx context.Context, resURN string) ([]PermissionBinding, error) {
 	var res []PermissionBinding
-	err := d.db.WithContext(ctx).Where("resource_urn = ?", resURN).Find(&res).Error
+	err := d.getDB(ctx).Where("resource_urn = ?", resURN).Find(&res).Error
 	return res, err
 }
 
 func (d *PermissionDAO) ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error) {
 	var res []PermissionBinding
-	err := d.db.WithContext(ctx).Where("perm_id = ?", permId).Find(&res).Error
+	err := d.getDB(ctx).Where("perm_id = ?", permId).Find(&res).Error
 	return res, err
 }
 
 func (d *PermissionDAO) ListBindingsByResURNs(ctx context.Context, resURNs []string) ([]PermissionBinding, error) {
 	var res []PermissionBinding
-	err := d.db.WithContext(ctx).Where("resource_urn IN ?", resURNs).Find(&res).Error
+	err := d.getDB(ctx).Where("resource_urn IN ?", resURNs).Find(&res).Error
 	return res, err
 }
 
 func (d *PermissionDAO) SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error {
-	// ... (代码逻辑保持不变)
-	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return d.Transaction(ctx, func(txCtx context.Context) error {
 		if len(resURNs) > 0 {
-			if err := tx.Where("resource_urn IN ?", resURNs).Delete(&PermissionBinding{}).Error; err != nil {
+			if err := d.getDB(txCtx).Where("resource_urn IN ?", resURNs).Delete(&PermissionBinding{}).Error; err != nil {
 				return err
 			}
 		}
 		if len(bindings) > 0 {
-			return tx.Clauses(clause.OnConflict{
+			return d.getDB(txCtx).Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 				DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
 			}).Create(&bindings).Error
@@ -189,21 +211,17 @@ func (d *PermissionDAO) ListCasbinRules(ctx context.Context, tid, offset, limit 
 		total int64
 	)
 
-	// 只查询 g 类型的记录（即主体与角色/策略的继承关系）
-	db := d.db.WithContext(ctx).Model(&CasbinRule{}).
+	db := d.getDB(ctx).Model(&CasbinRule{}).
 		Where("ptype = 'g' AND v2 = ?", tid)
 
-	// 主体类型前缀过滤 (如 user:, role:)
 	if v0Prefix != "" {
 		db = db.Where("v0 LIKE ?", v0Prefix+"%")
 	}
 
-	// 目标类型前缀过滤 (如 role:)
 	if v1Prefix != "" {
 		db = db.Where("v1 LIKE ?", v1Prefix+"%")
 	}
 
-	// 模糊搜索关键字 (跨列匹配)
 	if keyword != "" {
 		kw := "%" + keyword + "%"
 		db = db.Where("(v0 LIKE ? OR v1 LIKE ?)", kw, kw)
@@ -218,8 +236,8 @@ func (d *PermissionDAO) ListCasbinRules(ctx context.Context, tid, offset, limit 
 }
 
 func (d *PermissionDAO) FindByActions(ctx context.Context, actions []string) ([]Permission, error) {
-	db := d.db.WithContext(ctx).Model(&Permission{})
-	query := d.db.WithContext(ctx)
+	db := d.getDB(ctx).Model(&Permission{})
+	query := d.getDB(ctx)
 
 	hasWildcard := false
 	for _, action := range actions {
@@ -248,9 +266,8 @@ func (d *PermissionDAO) FindParentsByNeeds(ctx context.Context, codes []string) 
 	}
 
 	var res []string
-	query := d.db.WithContext(ctx).Model(&Permission{})
+	query := d.getDB(ctx).Model(&Permission{})
 	for _, code := range codes {
-		// 使用 MySQL JSON_CONTAINS 语法，查找 needs JSON 数组中包含该 code 的记录
 		query = query.Or("JSON_CONTAINS(needs, ?)", fmt.Sprintf("\"%s\"", code))
 	}
 
@@ -260,9 +277,30 @@ func (d *PermissionDAO) FindParentsByNeeds(ctx context.Context, codes []string) 
 
 func (d *PermissionDAO) CountByService(ctx context.Context) ([]ServiceCount, error) {
 	var res []ServiceCount
-	err := d.db.WithContext(ctx).Model(&Permission{}).
+	err := d.getDB(ctx).Model(&Permission{}).
 		Select("service, count(*) as count").
 		Group("service").
 		Scan(&res).Error
 	return res, err
+}
+
+func (d *PermissionDAO) DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error {
+	if len(codes) == 0 {
+		return d.getDB(ctx).Where("service = ?", service).Delete(&Permission{}).Error
+	}
+	return d.getDB(ctx).Where("service = ? AND code NOT IN ?", service, codes).Delete(&Permission{}).Error
+}
+
+func (d *PermissionDAO) MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error {
+	if len(codes) == 0 {
+		return d.getDB(ctx).Model(&Permission{}).Where("service = ?", service).Update("status", PermissionStatusOrphan).Error
+	}
+	return d.getDB(ctx).Model(&Permission{}).Where("service = ? AND code NOT IN ?", service, codes).Update("status", PermissionStatusOrphan).Error
+}
+
+func (d *PermissionDAO) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		newCtx := context.WithValue(ctx, permTxKey{}, tx)
+		return fn(newCtx)
+	})
 }

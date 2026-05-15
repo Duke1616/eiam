@@ -7,7 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
-	"github.com/ecodeclub/ekit/slice"
+	"github.com/samber/lo"
 )
 
 // IResourceRepository 物理资源仓库，负责全量 Menu 和 API 资产的底数管理
@@ -24,11 +24,13 @@ type IResourceRepository interface {
 	ListAPIsByService(ctx context.Context, service string) ([]domain.API, error)
 	// SyncAPIs 高性能同步接口资产 (支持 Full-Sync)
 	SyncAPIs(ctx context.Context, service string, apis []domain.API) error
+	// MarkAPIsAsOrphan 将不在给定列表中的 API 标记为孤儿
+	MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error
 
 	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
 	UpsertMenu(ctx context.Context, m *domain.Menu) error
 	// SyncMenus 高性能同步菜单资产，基于领域对象自带的 ParentName 自动解析拓扑
-	SyncMenus(ctx context.Context, menus domain.MenuList) error
+	SyncMenus(ctx context.Context, service string, menus domain.MenuList) error
 	// ListAllMenus 获取系统中注册的所有全量菜单
 	ListAllMenus(ctx context.Context) ([]domain.Menu, error)
 	// GetMenu 根据 ID 获取菜单
@@ -50,45 +52,52 @@ func NewResourceRepository(dao dao.IResourceDAO) IResourceRepository {
 	return &ResourceRepository{dao: dao}
 }
 
-// SyncMenus 实现高性能的原子级资产同步 (领域驱动版)
-func (r *ResourceRepository) SyncMenus(ctx context.Context, menus domain.MenuList) error {
-	names := slice.Map(menus, func(_ int, m domain.Menu) string { return m.Name })
+// SyncMenus 实现高性能的原子级资产同步
+func (r *ResourceRepository) SyncMenus(ctx context.Context, service string, menus domain.MenuList) error {
+	names := lo.Map(menus, func(m domain.Menu, _ int) string { return m.Name })
 
 	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
-		// 元数据对齐
-		daoEntities := slice.Map(menus, func(_ int, m domain.Menu) dao.Menu { return r.toDAOMenu(m) })
+		// 1. 转换并预同步 (由于源头已注入 Service 且已打平，这里直接转换)
+		daoEntities := lo.Map(menus, func(m domain.Menu, _ int) dao.Menu {
+			return r.toDAOMenu(m)
+		})
+
 		if err := r.dao.BatchUpsertMenus(txCtx, daoEntities); err != nil {
 			return err
 		}
 
-		// 拓扑对齐 (基于 ParentName 修正 ParentID)
+		// 2. 拓扑对齐 (基于 ParentURN 精确修正 ParentID)
 		if err := r.alignTopology(txCtx, daoEntities, menus); err != nil {
 			return err
 		}
 
-		// 孤儿清理
-		return r.dao.DeleteMenusByNames(txCtx, names)
+		// 3. 孤儿标记 (全量对齐闭环)
+		return r.dao.MarkMenusAsOrphan(txCtx, service, names)
 	})
 }
 
 func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.Menu, source domain.MenuList) error {
-	names := slice.Map(source, func(_ int, m domain.Menu) string { return m.Name })
-	latest, err := r.dao.ListMenusByNames(ctx, names)
+	// 1. 聚合所有需要的 URN (包括当前批次上报的 URN 和它们显式指定的父级 URN)
+	batchURNs := lo.Map(source, func(m domain.Menu, _ int) string { return m.URN() })
+	parentURNs := lo.FilterMap(source, func(m domain.Menu, _ int) (string, bool) {
+		return m.ParentURN, m.ParentURN != ""
+	})
+	allNeededURNs := lo.Uniq(append(batchURNs, parentURNs...))
+
+	// 2. 批量获取菜单实体，建立 URN 到 ID 的映射索引 (Map[URN]ID)
+	latest, err := r.dao.ListMenusByURNs(ctx, allNeededURNs)
 	if err != nil {
 		return err
 	}
-	nameMap := slice.ToMap(latest, func(m dao.Menu) string { return m.Name })
+	urnMap := lo.Associate(latest, func(m dao.Menu) (string, int64) {
+		// 生成用于索引的 URN Key
+		return domain.Menu{Service: m.Service, Path: m.Path}.URN(), m.Id
+	})
 
-	for i := range entities {
-		pName := source[i].ParentName
-		if pName != "" {
-			if parent, exists := nameMap[pName]; exists {
-				entities[i].ParentId = parent.Id
-			}
-		} else {
-			entities[i].ParentId = 0
-		}
-	}
+	// 3. 修正 ParentID (利用 Map 零值特性：Key 不存在或为空时返回 0)
+	lo.ForEach(entities, func(_ dao.Menu, i int) {
+		entities[i].ParentId = urnMap[source[i].ParentURN]
+	})
 
 	return r.dao.BatchUpsertMenus(ctx, entities)
 }
@@ -105,7 +114,7 @@ func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64
 }
 
 func (r *ResourceRepository) BatchCreateAPI(ctx context.Context, apis []domain.API) error {
-	daoApis := slice.Map(apis, func(_ int, a domain.API) dao.API {
+	daoApis := lo.Map(apis, func(a domain.API, _ int) dao.API {
 		return dao.API{Service: a.Service, Name: a.Name, Method: a.Method, Path: a.Path}
 	})
 	return r.dao.BatchInsertAPI(ctx, daoApis)
@@ -129,7 +138,7 @@ func (r *ResourceRepository) ListAllAPIs(ctx context.Context) ([]domain.API, err
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(apis, func(_ int, a dao.API) domain.API { return r.toDomainAPI(a) }), nil
+	return lo.Map(apis, func(a dao.API, _ int) domain.API { return r.toDomainAPI(a) }), nil
 }
 
 func (r *ResourceRepository) ListAPIsByService(ctx context.Context, service string) ([]domain.API, error) {
@@ -137,15 +146,15 @@ func (r *ResourceRepository) ListAPIsByService(ctx context.Context, service stri
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(apis, func(_ int, a dao.API) domain.API { return r.toDomainAPI(a) }), nil
+	return lo.Map(apis, func(a dao.API, _ int) domain.API { return r.toDomainAPI(a) }), nil
 }
 
 func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis []domain.API) error {
-	urns := slice.Map(apis, func(_ int, a domain.API) string {
+	urns := lo.Map(apis, func(a domain.API, _ int) string {
 		return strings.ToLower(a.Method) + ":" + a.Path
 	})
 
-	daoApis := slice.Map(apis, func(_ int, a domain.API) dao.API {
+	daoApis := lo.Map(apis, func(a domain.API, _ int) dao.API {
 		return dao.API{
 			Service: service,
 			Name:    a.Name,
@@ -155,14 +164,18 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis 
 	})
 
 	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
-		// 1. 批量同步元数据 (OnConflict Upsert)
+		// 1. 批量同步元数据 (OnConflict Upsert 并强制设为 Active)
 		if err := r.dao.BatchInsertAPI(txCtx, daoApis); err != nil {
 			return err
 		}
 
-		// 2. 清理服务下不再存在的孤儿接口 (Full-Sync)
-		return r.dao.DeleteAPIsByServiceAndURNs(txCtx, service, urns)
+		// 2. 将不再存在的接口标记为孤儿 (而非直接删除)
+		return r.dao.MarkAPIsAsOrphan(txCtx, service, urns)
 	})
+}
+
+func (r *ResourceRepository) MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error {
+	return r.dao.MarkAPIsAsOrphan(ctx, service, urns)
 }
 
 func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) error {
@@ -185,7 +198,7 @@ func (r *ResourceRepository) ListAllMenus(ctx context.Context) ([]domain.Menu, e
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(menus, func(_ int, m dao.Menu) domain.Menu { return r.toDomainMenu(m) }), nil
+	return lo.Map(menus, func(m dao.Menu, _ int) domain.Menu { return r.toDomainMenu(m) }), nil
 }
 
 func (r *ResourceRepository) GetMenu(ctx context.Context, id int64) (domain.Menu, error) {
@@ -206,7 +219,7 @@ func (r *ResourceRepository) ListMenusByParentID(ctx context.Context, parentID i
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(menus, func(_ int, m dao.Menu) domain.Menu { return r.toDomainMenu(m) }), nil
+	return lo.Map(menus, func(m dao.Menu, _ int) domain.Menu { return r.toDomainMenu(m) }), nil
 }
 
 func (r *ResourceRepository) UpdateMenuSort(ctx context.Context, id int64, parentID int64, sortKey int64) error {
@@ -214,7 +227,7 @@ func (r *ResourceRepository) UpdateMenuSort(ctx context.Context, id int64, paren
 }
 
 func (r *ResourceRepository) BatchUpdateMenuSort(ctx context.Context, menus []domain.Menu) error {
-	daoMenus := slice.Map(menus, func(_ int, m domain.Menu) dao.Menu { return r.toDAOMenu(m) })
+	daoMenus := lo.Map(menus, func(m domain.Menu, _ int) dao.Menu { return r.toDAOMenu(m) })
 	return r.dao.BatchUpdateMenuSort(ctx, daoMenus)
 }
 
@@ -224,12 +237,14 @@ func (r *ResourceRepository) toDAOMenu(m domain.Menu) dao.Menu {
 	return dao.Menu{
 		Id:             m.ID,
 		ParentId:       m.ParentID,
+		Service:        m.Service,
 		Name:           m.Name,
 		Path:           m.Path,
 		Component:      m.Component,
 		Redirect:       m.Redirect,
 		PermissionCode: m.PermissionCode,
 		Sort:           m.Sort,
+		Status:         m.Status,
 		Meta: sqlx.JSONColumn[dao.MenuMeta]{
 			Valid: true,
 			Val: dao.MenuMeta{
@@ -248,6 +263,7 @@ func (r *ResourceRepository) toDomainMenu(m dao.Menu) domain.Menu {
 	return domain.Menu{
 		ID:             m.Id,
 		ParentID:       m.ParentId,
+		Service:        m.Service,
 		Name:           m.Name,
 		Path:           m.Path,
 		Component:      m.Component,
@@ -262,8 +278,9 @@ func (r *ResourceRepository) toDomainMenu(m dao.Menu) domain.Menu {
 			IsKeepAlive: m.Meta.Val.IsKeepAlive,
 			Platforms:   m.Meta.Val.Platforms,
 		},
-		Ctime: m.Ctime,
-		Utime: m.Utime,
+		Ctime:  m.Ctime,
+		Utime:  m.Utime,
+		Status: m.Status,
 	}
 }
 

@@ -3,9 +3,6 @@ package resource
 import (
 	"context"
 	_ "embed"
-	"fmt"
-
-	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
@@ -13,6 +10,7 @@ import (
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,6 +34,9 @@ type IInitializer interface {
 
 	// SyncServices 根据本地 YAML 定义，全量对齐服务目录
 	SyncServices(ctx context.Context) error
+
+	// NewPipeline 创建一个同步任务流 (Pipeline 模式)
+	NewPipeline(ctx context.Context) *SyncPipeline
 }
 
 // Initializer 资产同步引擎实现。
@@ -43,17 +44,27 @@ type Initializer struct {
 	repo        repository.IResourceRepository
 	permRepo    repository.IPermissionRepository
 	resourceSvc IResourceService
+	reconciler  Reconciler
+	registry    capability.Registry
 	service     string // 当前服务的唯一标识，用于 URN 生成的前缀上下文
+	logger      *elog.Component
 
 	sorter *utils.Sorter[*domain.Menu, *domain.Menu]
 }
 
-func NewResourceInitializer(repo repository.IResourceRepository, permRepo repository.IPermissionRepository, resourceSvc IResourceService, service string) IInitializer {
+func NewResourceInitializer(repo repository.IResourceRepository, permRepo repository.IPermissionRepository, resourceSvc IResourceService, reconciler Reconciler, registry capability.Registry, service string) IInitializer {
+	if service == "" {
+		service = "eiam"
+	}
+
 	return &Initializer{
 		repo:        repo,
 		permRepo:    permRepo,
 		resourceSvc: resourceSvc,
-		service:     iif(service != "", service, "eiam"),
+		reconciler:  reconciler,
+		registry:    registry,
+		service:     service,
+		logger:      elog.DefaultLogger.With(elog.FieldComponent("resource-initializer")),
 		sorter: utils.NewSorter(func(m *domain.Menu, idx int) *domain.Menu {
 			m.Sort = int64((idx + 1) * utils.DefaultIndexGap)
 			return m
@@ -61,109 +72,20 @@ func NewResourceInitializer(repo repository.IResourceRepository, permRepo reposi
 	}
 }
 
-// SyncDiscoveryAPIs 提供 EIAM 本地全量资产的“一键同步”封装。
+// SyncDiscoveryAPIs 为 EIAM 本地服务提供基于 SDK Collector 的自发现支持 (SDK 模式)
 func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error {
-	// 1. 资产收集：利用 SDK 扫描本地注册的 Provider 与路由装饰器
-	collector := capability.NewCollector(router).RegisterProviders(providers...)
-	perms, apis := collector.Collect()
-
-	// 2. 协议分发：转化为标准 SDK 协议语义执行同步内核逻辑
-	return i.SyncSDKDiscovery(ctx, capability.SyncRequest{
-		Service:     i.service,
-		Permissions: perms,
-		APIs:        apis,
-	})
+	return capability.NewSyncer(i.service, i.registry,
+		capability.WithPermissions(providers...),
+		capability.WithRouter(router),
+	).Sync(ctx)
 }
 
 // SyncSDKDiscovery 实现高性能同步内核逻辑 (SDK 模式)。
 // 流程：底座对齐 -> 资产分析 -> 批量落盘。
+// SyncSDKDiscovery 实现高性能同步内核逻辑 (SDK 模式)。
 func (i *Initializer) SyncSDKDiscovery(ctx context.Context, req capability.SyncRequest) error {
-	// 1. 确保权限底数存在
-	if err := i.syncPermissionsBatch(ctx, req.Service, req.Permissions); err != nil {
-		return err
-	}
-
-	// 2. 聚合所有上报资产，并聚合染色关系
-	allAPIs, bindings, err := i.analyzeDiscoveryAssets(ctx, req)
-	if err != nil {
-		return err
-	}
-
-	// 3. 执行高性能批量落地与染色
-	return i.persistenceDiscovery(ctx, req.Service, allAPIs, bindings)
-}
-
-// analyzeDiscoveryAssets 分析增量 API 资产并聚合逻辑染色映射关系
-func (i *Initializer) analyzeDiscoveryAssets(ctx context.Context, req capability.SyncRequest) ([]domain.API, map[string][]string, error) {
-	allAPIs := make([]domain.API, 0, len(req.APIs))
-	bindings := make(map[string][]string)
-
-	for _, a := range req.APIs {
-		service := req.Service
-		if a.Service != "" {
-			service = a.Service
-		}
-		api := domain.API{
-			Service: service,
-			Method:  a.Method,
-			Path:    a.Path,
-			Name:    a.Name,
-		}
-
-		allAPIs = append(allAPIs, api)
-
-		// 聚合：主权限码绑定到当前 API 的 URN
-		if a.Code != "" {
-			bindings[a.Code] = append(bindings[a.Code], api.URN())
-		}
-	}
-
-	return allAPIs, bindings, nil
-}
-
-// persistenceDiscovery 执行资产落地与最终染色关系对齐
-func (i *Initializer) persistenceDiscovery(ctx context.Context, service string, toSync []domain.API, bindings map[string][]string) error {
-	// 1. API 资产批量对齐 (Full-Sync)
-	if len(toSync) > 0 {
-		if err := i.repo.SyncAPIs(ctx, service, toSync); err != nil {
-			return fmt.Errorf("API 资产同步落地失败: %w", err)
-		}
-	}
-
-	// 2. 逻辑权限批量染色 (Global Binding)
-	if len(bindings) > 0 {
-		if err := i.permRepo.BatchBindResources(ctx, bindings); err != nil {
-			return fmt.Errorf("API 资产逻辑染色失败: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// syncPermissionsBatch 批量同步权限底数
-func (i *Initializer) syncPermissionsBatch(ctx context.Context, defaultService string, perms []capability.Permission) error {
-	// 1. 转化为领域对象清单 (全量同步，依赖 DAO 层的 Upsert 逻辑保证一致性)
-	toCreate := slice.Map(perms, func(_ int, p capability.Permission) domain.Permission {
-		service := defaultService
-		if parts := strings.Split(p.Code, ":"); len(parts) > 0 && parts[0] != "" {
-			service = parts[0]
-		}
-
-		return domain.Permission{
-			Service: service,
-			Code:    p.Code,
-			Name:    p.Name,
-			Group:   p.Group,
-			Needs:   p.Needs,
-			Scope:   p.Scope,
-		}
-	})
-
-	// 2. 批量落盘权限底数 (Upsert)
-	if len(toCreate) > 0 {
-		return i.permRepo.BatchCreatePermission(ctx, toCreate)
-	}
-	return nil
+	// 统一交付给对账引擎执行全量对账 (包含逻辑权限、物理 API、菜单资产及资源染色)
+	return i.reconciler.Reconcile(ctx, req)
 }
 
 func (i *Initializer) SyncServices(ctx context.Context) error {
@@ -189,7 +111,7 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 		return m.Children
 	})
 
-	flatList := menus.Flatten()
+	flatList := menus.Flatten(i.service)
 
 	// 提取映射
 	bindings := make(map[string][]string)
@@ -200,7 +122,7 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 	}
 
 	// 3.执行菜单资产的高速原子化同步
-	if err = i.repo.SyncMenus(ctx, flatList); err != nil {
+	if err = i.repo.SyncMenus(ctx, i.service, flatList); err != nil {
 		return err
 	}
 
@@ -209,6 +131,7 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 	return i.permRepo.SyncResourceBindings(ctx, allURNs, bindings)
 }
 
+
 // loadYAML 泛型 YAML 反序列化工具函数
 func loadYAML[T any](data []byte) (T, error) {
 	var res T
@@ -216,11 +139,4 @@ func loadYAML[T any](data []byte) (T, error) {
 		return res, err
 	}
 	return res, nil
-}
-
-func iif(cond bool, t, f string) string {
-	if cond {
-		return t
-	}
-	return f
 }

@@ -43,6 +43,12 @@ type IPermissionRepository interface {
 	FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error)
 	// CountByService 按服务分组统计权限点总数
 	CountByService(ctx context.Context) (map[string]int64, error)
+	// SyncPermissions 高性能同步逻辑权限点 (支持 Full-Sync)
+	SyncPermissions(ctx context.Context, service string, perms []domain.Permission) error
+	// MarkPermissionsAsOrphan 将不在给定列表中的权限标记为孤儿
+	MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error
+	// DeletePermissionsByServiceAndCodes 删除指定服务下不在给定 codes 列表中的所有权限
+	DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error
 }
 
 type PermissionRepository struct {
@@ -249,4 +255,26 @@ func (r *PermissionRepository) CountByService(ctx context.Context) (map[string]i
 		res[c.Service] = c.Count
 	}
 	return res, nil
+}
+
+func (r *PermissionRepository) SyncPermissions(ctx context.Context, service string, perms []domain.Permission) error {
+	codes := slice.Map(perms, func(_ int, p domain.Permission) string { return p.Code })
+
+	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
+		// 1. 批量更新元数据 (强制设为 Active)
+		if err := r.BatchCreatePermission(txCtx, perms); err != nil {
+			return err
+		}
+
+		// 2. 将废弃的资产标记为孤儿 (而非直接删除)
+		return r.dao.MarkPermissionsAsOrphan(txCtx, service, codes)
+	})
+}
+
+func (r *PermissionRepository) MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error {
+	return r.dao.MarkPermissionsAsOrphan(ctx, service, codes)
+}
+
+func (r *PermissionRepository) DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error {
+	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, codes)
 }

@@ -1,17 +1,20 @@
 package capability
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
 
-// Permission 权限项定义 (逻辑权限项)
+// --- 基础模型定义 ---
+
 const (
-	ScopeSystem = "system" // 仅系统租户 (TID=1) 可见/可用
-	ScopeTenant = "tenant" // 所有租户可见/可用 (默认)
+	ScopeSystem = "system"
+	ScopeTenant = "tenant"
 )
 
 type Permission struct {
@@ -20,151 +23,76 @@ type Permission struct {
 	Name    string   `json:"name"`
 	Group   string   `json:"group"`
 	Needs   []string `json:"needs"`
-	NoSync  bool     `json:"no_sync"` // 标识该权限项是否不进行数据库同步
-	Scope   string   `json:"scope"`   // 权限作用域
+	NoSync  bool     `json:"no_sync"`
+	Scope   string   `json:"scope"`
 }
 
-// PermissionProvider 定义了逻辑权限能力项的供应接口
-type PermissionProvider interface {
-	ProvidePermissions() []Permission
-}
-
-// ResourceInfo 存储 API 资产在 SDK 内部发现的元数据
 type ResourceInfo struct {
 	Name             string   `json:"name"`
 	Method           string   `json:"method"`
 	Path             string   `json:"path"`
-	Code             string   `json:"code"`  // 主绑定权限码 (Primary)
-	Needs            []string `json:"needs"` // 关联依赖权限码 (Needs)
+	Code             string   `json:"code"`
+	Needs            []string `json:"needs"`
 	Group            string   `json:"group"`
 	Service          string   `json:"service"`
-	AllowCrossTenant bool     `json:"allow_cross_tenant"` // 标识该资源是否允许跨租户操作 (针对超管穿透)
+	AllowCrossTenant bool     `json:"allow_cross_tenant"`
 }
 
-var (
-	// handlerRegistry 运行时内存注册表
-	handlerRegistry = make(map[uintptr]ResourceInfo)
+type Menu struct {
+	Name           string   `json:"name"`
+	Path           string   `json:"path"`
+	ParentURN      string   `json:"parent_urn"`
+	Component      string   `json:"component"`
+	Redirect       string   `json:"redirect"`
+	PermissionCode string   `json:"permission_code"`
+	Sort           int64    `json:"sort"`
+	Meta           MenuMeta `json:"meta"`
+	Children       []Menu   `json:"children"`
+}
 
-	// globalRegistries 自动发现：记录所有已实例化的注册中心
+type MenuMeta struct {
+	Title       string   `json:"title"`
+	Icon        string   `json:"icon"`
+	IsHidden    bool     `json:"is_hidden"`
+	IsAffix     bool     `json:"is_affix"`
+	IsKeepAlive bool     `json:"is_keepalive"`
+	Platforms   []string `json:"platforms"`
+}
+
+// --- Provider 接口定义 ---
+
+type PermissionProvider interface {
+	ProvidePermissions() []Permission
+}
+
+type MenuProvider interface {
+	ProvideMenus() []Menu
+}
+
+// --- 运行时内部注册表 (并发安全优化版) ---
+
+var (
+	handlerRegistry  = make(map[uintptr]ResourceInfo)
 	globalRegistries []IRegistry
 )
 
-// GetResourceInfo 根据 Handler 指针获取关联的资源元数据
-func GetResourceInfo(ptr uintptr) (ResourceInfo, bool) {
-	info, ok := handlerRegistry[ptr]
-	return info, ok
-}
-
-// Builder 辅助构建 API 能力声明
-type Builder struct {
-	registry         IRegistry
-	service          string
-	name             string
-	code             string
-	group            string
-	needs            []string
-	allowCrossTenant bool
-	noSync           bool
-	scope            string
-	module           string
-}
-
-// Group 设置权限所属分组
-func (b *Builder) Group(group string) *Builder {
-	b.group = group
-	if b.registry != nil {
-		b.registry.updatePermissionGroup(b.code, group)
-	}
-	return b
-}
-
-// Needs 声明依赖的其他权限码（仅作为依赖，不参与本 API 的主权限绑定）
-func (b *Builder) Needs(codes ...string) *Builder {
-	b.needs = append(b.needs, codes...)
-	if b.registry != nil {
-		b.registry.updatePermissionNeeds(b.code, b.needs)
-	}
-	return b
-}
-
-// AllowCrossTenant 声明该 API 允许跨租户操作 (通常针对穿透逻辑)
-func (b *Builder) AllowCrossTenant() *Builder {
-	b.allowCrossTenant = true
-	return b
-}
-
-// NoSync 声明该能力项不需要同步到数据库
-func (b *Builder) NoSync() *Builder {
-	b.noSync = true
-	if b.registry != nil {
-		b.registry.updatePermissionNoSync(b.code, true)
-	}
-	return b
-}
-
-// Scope 设置权限作用域
-func (b *Builder) Scope(scope string) *Builder {
-	b.scope = scope
-	if b.registry != nil {
-		b.registry.updatePermissionScope(b.code, scope)
-	}
-	return b
-}
-
-// Module 覆盖权限所属模块 (用于跨模块能力映射)
-func (b *Builder) Module(module string) *Builder {
-	b.module = module
-	if b.registry != nil {
-		b.code = b.registry.updatePermissionModule(b.code, module)
-	}
-	return b
-}
-
-// Handle 将能力声明应用到指定的 Gin Handler 上
-func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
-	ptr := reflect.ValueOf(h).Pointer()
-	handlerRegistry[ptr] = ResourceInfo{
-		Service:          b.service,
-		Name:             b.name,
-		Code:             b.code,
-		Needs:            b.needs,
-		Group:            b.group,
-		AllowCrossTenant: b.allowCrossTenant,
-	}
-	return h
-}
-
-// IRegistry 权限注册中心接口
 type IRegistry interface {
 	PermissionProvider
-	// Capability 在注册中心声明一个与 API 绑定的能力
 	Capability(name, code string) *Builder
-	// Declare 仅在注册中心声明一个逻辑权限（如菜单权限），不直接绑定到 API
 	Declare(name, code string) *Builder
-	// DefaultScope 设置注册中心默认权限作用域
 	DefaultScope(scope string) IRegistry
-	// updatePermissionGroup 内部方法：用于在链式调用中同步更新权限分组
+
+	// 增加精确检索接口，避免全量拷贝
+	GetPermission(code string) (Permission, bool)
+
+	// 内部同步方法
 	updatePermissionGroup(code string, group string)
-	// updatePermissionNeeds 内部方法：用于在链式调用中同步更新权限依赖
 	updatePermissionNeeds(code string, needs []string)
-	// updatePermissionNoSync 内部方法：用于在链式调用中同步更新同步标志
 	updatePermissionNoSync(code string, noSync bool)
-	// updatePermissionScope 内部方法：用于在链式调用中同步更新作用域
 	updatePermissionScope(code string, scope string)
-	// updatePermissionModule 内部方法：用于在链式调用中同步更新所属模块
 	updatePermissionModule(code string, module string) string
 }
 
-// registry 权限注册中心默认实现
-type registry struct {
-	service      string
-	module       string
-	group        string
-	defaultScope string
-	permissions  map[string]Permission
-}
-
-// NewRegistry 创建一个新的权限注册中心实例
 func NewRegistry(service, module, group string) IRegistry {
 	r := &registry{
 		service:      service,
@@ -173,10 +101,30 @@ func NewRegistry(service, module, group string) IRegistry {
 		defaultScope: ScopeTenant,
 		permissions:  make(map[string]Permission),
 	}
-
-	// 自动注册到全局列表，实现零配置自动发现
 	globalRegistries = append(globalRegistries, r)
 	return r
+}
+
+type registry struct {
+	mu           sync.RWMutex
+	service      string
+	module       string
+	group        string
+	defaultScope string
+	permissions  map[string]Permission
+}
+
+func (r *registry) ProvidePermissions() []Permission {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return lo.Values(r.permissions)
+}
+
+func (r *registry) GetPermission(code string) (Permission, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.permissions[code]
+	return p, ok
 }
 
 func (r *registry) DefaultScope(scope string) IRegistry {
@@ -186,6 +134,7 @@ func (r *registry) DefaultScope(scope string) IRegistry {
 
 func (r *registry) Capability(name, code string) *Builder {
 	fullCode := r.normalizeCode(code)
+	r.mu.Lock()
 	r.permissions[fullCode] = Permission{
 		Service: r.service,
 		Code:    fullCode,
@@ -193,13 +142,13 @@ func (r *registry) Capability(name, code string) *Builder {
 		Group:   r.group,
 		Scope:   r.defaultScope,
 	}
+	r.mu.Unlock()
+
 	return &Builder{
 		registry: r,
 		service:  r.service,
 		name:     name,
 		code:     fullCode,
-		group:    r.group,
-		scope:    r.defaultScope,
 	}
 }
 
@@ -208,103 +157,182 @@ func (r *registry) Declare(name, code string) *Builder {
 }
 
 func (r *registry) normalizeCode(code string) string {
-	// 场景 1：已经是完整路径 (eiam:iam:user:add) 或已包含服务 (iam:user:add)
-	// 判断标准：以 service: 开头
 	servicePrefix := r.service + ":"
 	if strings.HasPrefix(code, servicePrefix) {
 		return code
 	}
-
-	// 场景 2：包含模块但缺少服务 (user:add)
-	// 判断标准：包含 ":"
 	if strings.Contains(code, ":") {
 		return servicePrefix + code
 	}
-
-	// 场景 3：极致精简方案 (add -> iam:role:add)
-	// 判断标准：仅有动作
 	if r.module != "" {
 		return servicePrefix + r.module + ":" + code
 	}
-
 	return servicePrefix + code
 }
 
-func (r *registry) updatePermissionGroup(code string, group string) {
+// 优化点：抽象通用原子更新逻辑
+func (r *registry) update(code string, fn func(*Permission)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if p, ok := r.permissions[code]; ok {
-		p.Group = group
+		fn(&p)
 		r.permissions[code] = p
 	}
 }
+
+func (r *registry) updatePermissionGroup(code string, group string) {
+	r.update(code, func(p *Permission) { p.Group = group })
+}
+
 func (r *registry) updatePermissionNeeds(code string, needs []string) {
-	if p, ok := r.permissions[code]; ok {
-		p.Needs = needs
-		r.permissions[code] = p
-	}
+	r.update(code, func(p *Permission) { p.Needs = needs })
 }
 
 func (r *registry) updatePermissionNoSync(code string, noSync bool) {
-	if p, ok := r.permissions[code]; ok {
-		p.NoSync = noSync
-		r.permissions[code] = p
-	}
+	r.update(code, func(p *Permission) { p.NoSync = noSync })
 }
 
 func (r *registry) updatePermissionScope(code string, scope string) {
-	if p, ok := r.permissions[code]; ok {
-		p.Scope = scope
-		r.permissions[code] = p
-	}
+	r.update(code, func(p *Permission) { p.Scope = scope })
 }
 
 func (r *registry) updatePermissionModule(code string, module string) string {
-	if p, ok := r.permissions[code]; ok {
-		// 重新生成完整的 Code
-		oldCode := p.Code
-		delete(r.permissions, oldCode)
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-		parts := strings.Split(oldCode, ":")
-		p.Code = r.service + ":" + module + ":" + lo.LastOr(parts, "")
-		r.permissions[p.Code] = p
-		return p.Code
+	p, ok := r.permissions[code]
+	if !ok {
+		return code
 	}
-	return code
-}
 
-func (r *registry) ProvidePermissions() []Permission {
-	return lo.Values(r.permissions)
-}
-
-// Capability 声明 API 的元数据入口 (全局独立模式)
-func Capability(name string, code string) *Builder {
-	return &Builder{
-		name: name,
-		code: code,
+	delete(r.permissions, code)
+	// 优化点：健壮的模块替换逻辑，支持多级编码
+	parts := strings.Split(code, ":")
+	var newActionPart string
+	if len(parts) >= 3 {
+		// 之前是 service:module:action... 格式，保留从第三部分开始的所有内容
+		newActionPart = strings.Join(parts[2:], ":")
+	} else {
+		newActionPart = lo.LastOr(parts, "")
 	}
+
+	p.Code = fmt.Sprintf("%s:%s:%s", r.service, module, newActionPart)
+	p.Service = r.service
+	r.permissions[p.Code] = p
+	return p.Code
 }
 
-// Collector 资源收集器
+// --- Builder 链式装饰器 ---
+
+type Builder struct {
+	registry         IRegistry
+	service          string
+	name             string
+	code             string
+	allowCrossTenant bool
+}
+
+func (b *Builder) Group(group string) *Builder {
+	if b.registry != nil {
+		b.registry.updatePermissionGroup(b.code, group)
+	}
+	return b
+}
+
+func (b *Builder) Needs(codes ...string) *Builder {
+	if b.registry != nil {
+		b.registry.updatePermissionNeeds(b.code, codes)
+	}
+	return b
+}
+
+func (b *Builder) NoSync() *Builder {
+	if b.registry != nil {
+		b.registry.updatePermissionNoSync(b.code, true)
+	}
+	return b
+}
+
+func (b *Builder) Scope(scope string) *Builder {
+	if b.registry != nil {
+		b.registry.updatePermissionScope(b.code, scope)
+	}
+	return b
+}
+
+func (b *Builder) Module(module string) *Builder {
+	if b.registry != nil {
+		b.code = b.registry.updatePermissionModule(b.code, module)
+	}
+	return b
+}
+
+func (b *Builder) AllowCrossTenant() *Builder {
+	b.allowCrossTenant = true
+	return b
+}
+
+func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
+	ptr := reflect.ValueOf(h).Pointer()
+	if b.registry != nil {
+		// 优化点：直接通过 O(1) 索引获取权限信息，消除切片拷贝和遍历
+		if p, ok := b.registry.GetPermission(b.code); ok {
+			handlerRegistry[ptr] = ResourceInfo{
+				Service:          b.service,
+				Name:             b.name,
+				Code:             b.code,
+				Needs:            p.Needs,
+				Group:            p.Group,
+				AllowCrossTenant: b.allowCrossTenant,
+			}
+		}
+	}
+	return h
+}
+
+// GetResourceInfo 运行时检索 (供中间件使用)
+func GetResourceInfo(ptr uintptr) (ResourceInfo, bool) {
+	info, ok := handlerRegistry[ptr]
+	return info, ok
+}
+
+// --- Collector 资产收集器 ---
+
 type Collector struct {
-	providers []PermissionProvider
-	engine    *gin.Engine
+	providers     []PermissionProvider
+	menuProviders []MenuProvider
+	engine        *gin.Engine
 }
 
-func NewCollector(engine *gin.Engine) *Collector {
-	return &Collector{
-		engine: engine,
+func NewCollector() *Collector {
+	return &Collector{}
+}
+
+type SyncOption func(*Collector)
+
+func WithPermissions(p ...PermissionProvider) SyncOption {
+	return func(c *Collector) { c.providers = append(c.providers, p...) }
+}
+func WithMenus(m ...MenuProvider) SyncOption {
+	return func(c *Collector) { c.menuProviders = append(c.menuProviders, m...) }
+}
+func WithRouter(engine *gin.Engine) SyncOption {
+	return func(c *Collector) { c.engine = engine }
+}
+
+func (c *Collector) Collect(opts ...SyncOption) SyncRequest {
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return SyncRequest{
+		Permissions: c.collectPermissions(),
+		APIs:        c.collectAPIs(),
+		Menus:       c.collectMenus(),
 	}
 }
 
-func (c *Collector) RegisterProviders(p ...PermissionProvider) *Collector {
-	c.providers = append(c.providers, p...)
-	return c
-}
-
-// Collect 执行全量资产收集
-// 优化了 API 扫描逻辑，通过卫语句避免深层嵌套，并预分配切片容量提升性能
-func (c *Collector) Collect() ([]Permission, []ResourceInfo) {
-	// 1. 收集逻辑权限 (支持显式 Provider + 全局自动发现)
-	// 使用 FlatMap 提取并打平所有权限
+func (c *Collector) collectPermissions() []Permission {
 	providerPerms := lo.FlatMap(c.providers, func(p PermissionProvider, _ int) []Permission {
 		return p.ProvidePermissions()
 	})
@@ -312,18 +340,18 @@ func (c *Collector) Collect() ([]Permission, []ResourceInfo) {
 		return r.ProvidePermissions()
 	})
 
-	// 核心逻辑：显式注册 (providerPerms) 优先级高于自动发现 (globalPerms)
-	// lo.Concat 合并切片，lo.Associate 转 Map (后者覆盖前者)
 	uniquePermsMap := lo.Associate(lo.Concat(globalPerms, providerPerms), func(p Permission) (string, Permission) {
 		return p.Code, p
 	})
 
-	// 最终转回切片
-	perms := lo.Values(uniquePermsMap)
+	return lo.Filter(lo.Values(uniquePermsMap), func(p Permission, _ int) bool {
+		return !p.NoSync
+	})
+}
 
-	// 2. 收集物理 API 资产
+func (c *Collector) collectAPIs() []ResourceInfo {
 	if c.engine == nil {
-		return perms, nil
+		return nil
 	}
 
 	routes := c.engine.Routes()
@@ -334,11 +362,15 @@ func (c *Collector) Collect() ([]Permission, []ResourceInfo) {
 		if !ok {
 			continue
 		}
-
 		info.Method = route.Method
 		info.Path = route.Path
 		apis = append(apis, info)
 	}
+	return apis
+}
 
-	return perms, apis
+func (c *Collector) collectMenus() []Menu {
+	return lo.FlatMap(c.menuProviders, func(p MenuProvider, _ int) []Menu {
+		return p.ProvideMenus()
+	})
 }

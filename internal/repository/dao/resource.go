@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/sqlx"
+	"github.com/Duke1616/eiam/pkg/urn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -13,7 +14,8 @@ import (
 type Menu struct {
 	Id             int64                     `gorm:"type:bigint;primaryKey;autoIncrement;comment:'菜单ID'"`
 	ParentId       int64                     `gorm:"type:bigint;not null;default:0;index:idx_parent_id;comment:'父菜单ID'"`
-	Name           string                    `gorm:"type:varchar(255);not null;uniqueIndex:uni_name;comment:'名称'"`
+	Service        string                    `gorm:"type:varchar(128);not null;default:'eiam';uniqueIndex:uni_service_name;comment:'所属服务'"`
+	Name           string                    `gorm:"type:varchar(255);not null;uniqueIndex:uni_service_name;comment:'名称'"`
 	Path           string                    `gorm:"type:varchar(255);comment:'前端路由地址'"`
 	Component      string                    `gorm:"type:varchar(255);comment:'前端组件地址'"`
 	Redirect       string                    `gorm:"type:varchar(255);comment:'重定向地址'"`
@@ -22,7 +24,13 @@ type Menu struct {
 	Meta           sqlx.JSONColumn[MenuMeta] `gorm:"type:json;comment:'展示元数据'"`
 	Ctime          int64                     `gorm:"type:bigint;not null;comment:'创建时间'"`
 	Utime          int64                     `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Status         uint8                     `gorm:"type:tinyint;not null;default:1;comment:'状态 1-正常 2-孤儿'"`
 }
+
+const (
+	MenuStatusActive uint8 = 1
+	MenuStatusOrphan uint8 = 2
+)
 
 // MenuMeta 镜像结构，用于 JSON 序列化
 type MenuMeta struct {
@@ -43,7 +51,13 @@ type API struct {
 	Path    string `gorm:"type:varchar(255);not null;uniqueIndex:idx_service_method_path;comment:'接口路径'"`
 	Ctime   int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
 	Utime   int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Status  uint8  `gorm:"type:tinyint;not null;default:1;comment:'状态 1-正常 2-孤儿'"`
 }
+
+const (
+	APIStatusActive uint8 = 1
+	APIStatusOrphan uint8 = 2
+)
 
 // IResourceDAO 定义了物理资产 (Menu/API) 项目的底层持久化接口
 type IResourceDAO interface {
@@ -57,10 +71,12 @@ type IResourceDAO interface {
 
 	UpdateMenuSort(ctx context.Context, id int64, parentID int64, sort int64) error
 	BatchUpdateMenuSort(ctx context.Context, menus []Menu) error
-	// DeleteMenusByNames 删除不在指定名称列表中的所有菜单
-	DeleteMenusByNames(ctx context.Context, names []string) error
-	// BatchInsertMenus 批量插入或更新菜单
+	// MarkMenusAsOrphan 将不在指定名称列表中的所有菜单标记为孤儿
+	MarkMenusAsOrphan(ctx context.Context, service string, names []string) error
+	// BatchUpsertMenus 批量插入或更新菜单
 	BatchUpsertMenus(ctx context.Context, menus []Menu) error
+	// ListMenusByURNs 批量获取指定 URN 的菜单 (内部会解析 URN 为 Service + Path 匹配)
+	ListMenusByURNs(ctx context.Context, urns []string) ([]Menu, error)
 
 	InsertAPI(ctx context.Context, a API) (int64, error)
 	BatchInsertAPI(ctx context.Context, apis []API) error
@@ -68,6 +84,8 @@ type IResourceDAO interface {
 	ListAPIsByService(ctx context.Context, service string) ([]API, error)
 	// DeleteAPIsByServiceAndURNs 删除指定服务下不在给定 URN 列表中的所有接口
 	DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error
+	// MarkAPIsAsOrphan 将不在 URN 列表中的接口标记为孤儿状态
+	MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error
 
 	// Transaction 开启事务支持
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
@@ -77,10 +95,10 @@ type ResourceDAO struct {
 	db *gorm.DB
 }
 
-type txKey struct{}
+type resTxKey struct{}
 
 func (d *ResourceDAO) getDB(ctx context.Context) *gorm.DB {
-	tx, ok := ctx.Value(txKey{}).(*gorm.DB)
+	tx, ok := ctx.Value(resTxKey{}).(*gorm.DB)
 	if ok {
 		return tx
 	}
@@ -168,23 +186,46 @@ func (d *ResourceDAO) BatchUpsertMenus(ctx context.Context, menus []Menu) error 
 
 	now := time.Now().UnixMilli()
 	for i := range menus {
-		menus[i].Ctime = now
+		if menus[i].Ctime == 0 {
+			menus[i].Ctime = now
+		}
 		menus[i].Utime = now
+		menus[i].Status = MenuStatusActive
 	}
 
 	return d.getDB(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "name"}},
-		DoUpdates: clause.AssignmentColumns([]string{"parent_id", "path", "component", "redirect", "permission_code", "sort", "meta", "utime"}),
+		Columns:   []clause.Column{{Name: "service"}, {Name: "name"}},
+		DoUpdates: clause.AssignmentColumns([]string{"parent_id", "path", "component", "redirect", "permission_code", "sort", "meta", "utime", "status"}),
 	}).Create(&menus).Error
 }
 
-func (d *ResourceDAO) DeleteMenusByNames(ctx context.Context, names []string) error {
+func (d *ResourceDAO) MarkMenusAsOrphan(ctx context.Context, service string, names []string) error {
 	if len(names) == 0 {
-		// 如果 YAML 为空，理论上要删全量，但为了安全，如果 names 为空通常不操作或显式传空。
-		// 在这里我们假定 Full Sync 需要传入所有合法的 Name。
-		return d.getDB(ctx).Where("1=1").Delete(&Menu{}).Error
+		return d.getDB(ctx).Model(&Menu{}).Where("service = ?", service).Update("status", MenuStatusOrphan).Error
 	}
-	return d.getDB(ctx).Where("name NOT IN ?", names).Delete(&Menu{}).Error
+	return d.getDB(ctx).Model(&Menu{}).Where("service = ?", service).
+		Where("name NOT IN ?", names).
+		Update("status", MenuStatusOrphan).Error
+}
+
+func (d *ResourceDAO) ListMenusByURNs(ctx context.Context, urns []string) ([]Menu, error) {
+	if len(urns) == 0 {
+		return nil, nil
+	}
+
+	var res []Menu
+	query := d.getDB(ctx)
+
+	for _, u := range urns {
+		parsed, err := urn.Parse(u)
+		if err != nil {
+			continue
+		}
+		query = query.Or("service = ? AND path = ?", parsed.Service, parsed.ResourceID)
+	}
+
+	err := query.Find(&res).Error
+	return res, err
 }
 
 func (d *ResourceDAO) InsertAPI(ctx context.Context, a API) (int64, error) {
@@ -204,10 +245,11 @@ func (d *ResourceDAO) BatchInsertAPI(ctx context.Context, apis []API) error {
 	for i := range apis {
 		apis[i].Ctime = now
 		apis[i].Utime = now
+		apis[i].Status = APIStatusActive
 	}
 
 	return d.getDB(ctx).Clauses(clause.OnConflict{
-		DoUpdates: clause.AssignmentColumns([]string{"name", "utime"}),
+		DoUpdates: clause.AssignmentColumns([]string{"name", "utime", "status"}),
 	}).Create(&apis).Error
 }
 
@@ -234,9 +276,19 @@ func (d *ResourceDAO) DeleteAPIsByServiceAndURNs(ctx context.Context, service st
 		Delete(&API{}).Error
 }
 
+func (d *ResourceDAO) MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error {
+	if len(urns) == 0 {
+		return d.getDB(ctx).Model(&API{}).Where("service = ?", service).Update("status", APIStatusOrphan).Error
+	}
+
+	return d.getDB(ctx).Model(&API{}).Where("service = ?", service).
+		Where("LOWER(CONCAT(method, ':', path)) NOT IN ?", urns).
+		Update("status", APIStatusOrphan).Error
+}
+
 func (d *ResourceDAO) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		newCtx := context.WithValue(ctx, txKey{}, tx)
+		newCtx := context.WithValue(ctx, resTxKey{}, tx)
 		return fn(newCtx)
 	})
 }

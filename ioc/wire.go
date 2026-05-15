@@ -6,6 +6,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/internal/service/discovery"
 	invitationsvc "github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
@@ -35,6 +36,9 @@ var BaseSet = wire.NewSet(
 	InitCasbin,
 	InitListener,
 	InitOPA,
+	InitEtcd,
+	InitDLock,
+	InitRegistry,
 
 	// LDAP 基础设施
 	InitRedisSearch,
@@ -88,7 +92,9 @@ func InitApp() (*App, error) {
 		role.NewRoleService,
 		resource.NewResourceService,
 		resource.NewResourceInitializer,
+		resource.NewReconciler,
 		permission.NewPermissionService,
+		discovery.NewWorker,
 		checker.NewBoundaryChecker,
 		policysvc.NewPolicyService,
 		invitationsvc.NewInvitationService,
@@ -112,6 +118,7 @@ func InitApp() (*App, error) {
 		InitSearchSubjectProviders,
 
 		// App Component
+		InitTasks,
 		InitGinMiddlewares,
 		InitGinWebServer,
 		wire.Struct(new(App), "*"),

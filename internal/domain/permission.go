@@ -85,9 +85,16 @@ type Permission struct {
 	// Bindings 权限项包含的物理资源映射 (全局通用，不分租户)
 	Bindings []ResourceBinding `json:"bindings"`
 
+	Status uint8 `json:"status"` // 状态：1-正常，2-孤儿
+
 	Ctime int64 `json:"ctime"`
 	Utime int64 `json:"utime"`
 }
+
+const (
+	PermissionStatusActive uint8 = 1
+	PermissionStatusOrphan uint8 = 2
+)
 
 // PermissionTree 领域级别的权限树
 type PermissionTree struct {
