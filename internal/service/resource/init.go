@@ -5,10 +5,9 @@ import (
 	_ "embed"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	"github.com/Duke1616/eiam/pkg/utils"
 	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"gopkg.in/yaml.v3"
@@ -41,24 +40,18 @@ type IInitializer interface {
 
 // Initializer 资产同步引擎实现。
 type Initializer struct {
-	repo        repository.IResourceRepository
-	permRepo    repository.IPermissionRepository
-	resourceSvc IResourceService
-	reconciler  Reconciler
-	registry    capability.Registry
-	logger      *elog.Component
+	engine   ingestion.Engine
+	registry capability.Registry
+	logger   *elog.Component
 
 	sorter *utils.Sorter[*domain.Menu, *domain.Menu]
 }
 
-func NewResourceInitializer(repo repository.IResourceRepository, permRepo repository.IPermissionRepository, resourceSvc IResourceService, reconciler Reconciler, registry capability.Registry) IInitializer {
+func NewResourceInitializer(engine ingestion.Engine, registry capability.Registry) IInitializer {
 	return &Initializer{
-		repo:        repo,
-		permRepo:    permRepo,
-		resourceSvc: resourceSvc,
-		reconciler:  reconciler,
-		registry:    registry,
-		logger:      elog.DefaultLogger.With(elog.FieldComponent("resource-initializer")),
+		engine:   engine,
+		registry: registry,
+		logger:   elog.DefaultLogger.With(elog.FieldComponent("resource-initializer")),
 		sorter: utils.NewSorter(func(m *domain.Menu, idx int) *domain.Menu {
 			m.Sort = int64((idx + 1) * utils.DefaultIndexGap)
 			return m
@@ -74,12 +67,9 @@ func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capabil
 	).Sync(ctx)
 }
 
-// SyncSDKDiscovery 实现高性能同步内核逻辑 (SDK 模式)。
-// 流程：底座对齐 -> 资产分析 -> 批量落盘。
-// SyncSDKDiscovery 实现高性能同步内核逻辑 (SDK 模式)。
+// SyncSDKDiscovery 处理符合标准 SDK 协议定义的资产同步请求 (SDK 模式)。
 func (i *Initializer) SyncSDKDiscovery(ctx context.Context, req capability.SyncRequest) error {
-	// 统一交付给对账引擎执行全量对账 (包含逻辑权限、物理 API、菜单资产及资源染色)
-	return i.reconciler.Reconcile(ctx, req)
+	return i.engine.Ingest(ctx, ingestion.FromSyncRequest(req))
 }
 
 func (i *Initializer) SyncServices(ctx context.Context) error {
@@ -90,7 +80,7 @@ func (i *Initializer) SyncServices(ctx context.Context) error {
 	}
 
 	// 2. 执行批量对齐
-	return i.resourceSvc.BatchRegisterServices(ctx, services)
+	return i.engine.IngestServices(ctx, services)
 }
 
 func (i *Initializer) SyncMenus(ctx context.Context) error {
@@ -105,24 +95,8 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 		return m.Children
 	})
 
-	flatList := menus.Flatten()
-
-	// 提取映射
-	bindings := make(map[string][]string)
-	for _, m := range flatList {
-		if m.PermissionCode != "" {
-			bindings[m.PermissionCode] = append(bindings[m.PermissionCode], m.URN())
-		}
-	}
-
-	// 3.执行菜单资产的高速原子化同步
-	if err = i.repo.SyncMenus(ctx, flatList); err != nil {
-		return err
-	}
-
-	// 4. 一次性执行菜单与权限码的全局绑定 (Full-Sync 版)
-	allURNs := slice.Map(flatList, func(_ int, m domain.Menu) string { return m.URN() })
-	return i.permRepo.SyncResourceBindings(ctx, allURNs, bindings)
+	// 3. 委托给统一录入引擎执行落盘与绑定
+	return i.engine.IngestMenus(ctx, menus)
 }
 
 // loadYAML 泛型 YAML 反序列化工具函数

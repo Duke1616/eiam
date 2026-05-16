@@ -72,20 +72,25 @@ type MenuProvider interface {
 // --- 运行时内部注册表 (并发安全优化版) ---
 
 var (
-	handlerRegistry  = make(map[uintptr]ResourceInfo)
-	globalRegistries []IRegistry
+	handlerRegistryMu sync.RWMutex
+	handlerRegistry   = make(map[uintptr]ResourceInfo)
+	globalRegistries  []IRegistry
 )
 
+// IRegistry 是 capability 注册表的公共接口，供 Handler 嵌入使用。
 type IRegistry interface {
 	PermissionProvider
 	Capability(name, code string) *Builder
 	Declare(name, code string) *Builder
 	DefaultScope(scope string) IRegistry
 
-	// GetPermission 增加精确检索接口，避免全量拷贝
+	// GetPermission 根据 code 精确检索权限元数据，避免全量拷贝
 	GetPermission(code string) (Permission, bool)
+}
 
-	// 内部同步方法
+// internalRegistry 是 registry 内部接口，仅供 Builder 链式调用回调使用。
+type internalRegistry interface {
+	IRegistry
 	updatePermissionGroup(code string, group string)
 	updatePermissionNeeds(code string, needs []string)
 	updatePermissionNoSync(code string, noSync bool)
@@ -205,27 +210,31 @@ func (r *registry) updatePermissionModule(code string, module string) string {
 		return code
 	}
 
-	delete(r.permissions, code)
-	// 优化点：健壮的模块替换逻辑，支持多级编码
-	parts := strings.Split(code, ":")
-	var newActionPart string
-	if len(parts) >= 3 {
-		// 之前是 service:module:action... 格式，保留从第三部分开始的所有内容
-		newActionPart = strings.Join(parts[2:], ":")
-	} else {
-		newActionPart = lo.LastOr(parts, "")
+	// code 格式: service[:oldModule]:action...
+	// 用 SplitN 最多分 3 段，保留 service 和 action，替换 module
+	parts := strings.SplitN(code, ":", 3)
+	var action string
+	switch len(parts) {
+	case 3:
+		action = parts[2]
+	case 2:
+		action = parts[1]
+	default:
+		return code
 	}
 
-	p.Code = fmt.Sprintf("%s:%s:%s", r.service, module, newActionPart)
+	newCode := fmt.Sprintf("%s:%s:%s", r.service, module, action)
+	delete(r.permissions, code)
+	p.Code = newCode
 	p.Service = r.service
-	r.permissions[p.Code] = p
-	return p.Code
+	r.permissions[newCode] = p
+	return newCode
 }
 
 // --- Builder 链式装饰器 ---
 
 type Builder struct {
-	registry         IRegistry
+	registry         internalRegistry
 	service          string
 	name             string
 	code             string
@@ -276,6 +285,7 @@ func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
 	if b.registry != nil {
 		if p, ok := b.registry.GetPermission(b.code); ok {
+			handlerRegistryMu.Lock()
 			handlerRegistry[ptr] = ResourceInfo{
 				Service:          b.service,
 				Name:             b.name,
@@ -284,6 +294,7 @@ func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 				Group:            p.Group,
 				AllowCrossTenant: b.allowCrossTenant,
 			}
+			handlerRegistryMu.Unlock()
 		}
 	}
 	return h
@@ -291,6 +302,8 @@ func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 
 // GetResourceInfo 运行时检索 (供中间件使用)
 func GetResourceInfo(ptr uintptr) (ResourceInfo, bool) {
+	handlerRegistryMu.RLock()
+	defer handlerRegistryMu.RUnlock()
 	info, ok := handlerRegistry[ptr]
 	return info, ok
 }
@@ -347,20 +360,27 @@ func (c *Collector) Collect(opts ...SyncOption) SyncRequest {
 }
 
 func (c *Collector) collectPermissions() []Permission {
-	providerPerms := lo.FlatMap(c.providers, func(p PermissionProvider, _ int) []Permission {
-		return p.ProvidePermissions()
-	})
-	globalPerms := lo.FlatMap(globalRegistries, func(r IRegistry, _ int) []Permission {
-		return r.ProvidePermissions()
-	})
+	unique := make(map[string]Permission)
 
-	uniquePermsMap := lo.Associate(lo.Concat(globalPerms, providerPerms), func(p Permission) (string, Permission) {
-		return p.Code, p
-	})
+	// 1. 收集显式提供的权限
+	for _, provider := range c.providers {
+		for _, p := range provider.ProvidePermissions() {
+			if !p.NoSync {
+				unique[p.Code] = p
+			}
+		}
+	}
 
-	return lo.Filter(lo.Values(uniquePermsMap), func(p Permission, _ int) bool {
-		return !p.NoSync
-	})
+	// 2. 收集全局注册表中的权限（显式提供者优先，后续覆盖）
+	for _, reg := range globalRegistries {
+		for _, p := range reg.ProvidePermissions() {
+			if !p.NoSync {
+				unique[p.Code] = p
+			}
+		}
+	}
+
+	return lo.Values(unique)
 }
 
 func (c *Collector) collectAPIs() []ResourceInfo {

@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gotomicro/ego/core/elog"
@@ -33,20 +34,21 @@ func (p *SyncPipeline) Step(name string, fn func(context.Context) error) *SyncPi
 	return p
 }
 
-// Run 执行流水线，增加耗时统计与监控可见性
-func (p *SyncPipeline) Run() {
+// Run 执行流水线，增加耗时统计与监控可见性。
+// 任一步骤失败即返回错误，由调用者决定是否需要中断或继续。
+func (p *SyncPipeline) Run() error {
 	p.l.Info("开始执行内置资产同步流水线", elog.Int("total_tasks", len(p.tasks)))
 	totalStart := time.Now()
 
 	for _, task := range p.tasks {
 		start := time.Now()
 		if err := task.fn(p.ctx); err != nil {
-			p.l.Warn("内置资产同步任务执行失败",
+			p.l.Error("内置资产同步任务执行失败",
 				elog.String("task_name", task.name),
 				elog.FieldErr(err),
 				elog.FieldCost(time.Since(start)),
 			)
-			continue
+			return fmt.Errorf("流水线步骤 [%s] 失败: %w", task.name, err)
 		}
 		p.l.Info("内置资产同步任务完成",
 			elog.String("task_name", task.name),
@@ -55,4 +57,5 @@ func (p *SyncPipeline) Run() {
 	}
 
 	p.l.Info("内置资产同步流水线执行完毕", elog.FieldCost(time.Since(totalStart)))
+	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
+	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	role "github.com/Duke1616/eiam/internal/service/role"
 	tenantsvc "github.com/Duke1616/eiam/internal/service/tenant"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
@@ -104,7 +105,7 @@ func InitApp() (*App, error) {
 		role.NewRoleService,
 		resource.NewResourceService,
 		resource.NewResourceInitializer,
-		resource.NewReconciler,
+		ingestion.NewEngine,
 		permission.NewPermissionService,
 		discovery.NewWorker,
 		checker.NewBoundaryChecker,

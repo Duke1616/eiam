@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"github.com/samber/lo"
+	"gorm.io/gorm"
 )
 
 // IResourceRepository 物理资源仓库，负责全量 Menu 和 API 资产的底数管理
@@ -138,16 +140,15 @@ func (r *ResourceRepository) BatchCreateAPI(ctx context.Context, apis []domain.A
 }
 
 func (r *ResourceRepository) FindAPIByPath(ctx context.Context, service, method, path string) (domain.API, error) {
-	apis, err := r.dao.ListAllAPIs(ctx)
+	a, err := r.dao.FindAPIByPath(ctx, service, method, path)
 	if err != nil {
+		// 将记录不存在视为正常空结果，而非错误
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.API{}, nil
+		}
 		return domain.API{}, err
 	}
-	for _, a := range apis {
-		if a.Service == service && a.Method == method && a.Path == path {
-			return r.toDomainAPI(a), nil
-		}
-	}
-	return domain.API{}, nil
+	return r.toDomainAPI(a), nil
 }
 
 func (r *ResourceRepository) ListAllAPIs(ctx context.Context) ([]domain.API, error) {

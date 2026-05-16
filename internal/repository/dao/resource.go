@@ -59,33 +59,48 @@ const (
 	APIStatusOrphan uint8 = 2
 )
 
-// IResourceDAO 定义了物理资产 (Menu/API) 项目的底层持久化接口
+// IResourceDAO 定义了物理资源 (Menu/API) 的底层持久化接口。
+// 所有查询方法默认仅返回 status = Active 的有效资产，已标记为 orphan 的数据对业务层不可见。
 type IResourceDAO interface {
+	// InsertMenu 插入一条菜单记录，返回自增 ID
 	InsertMenu(ctx context.Context, m Menu) (int64, error)
+	// UpdateMenu 根据 ID 更新菜单的完整字段
 	UpdateMenu(ctx context.Context, m Menu) error
+	// FindMenuByName 根据菜单名称精确查找（不区分 active/orphan，用于 Upsert 场景）
 	FindMenuByName(ctx context.Context, name string) (Menu, error)
+	// ListAllMenus 列出所有状态为 Active 的菜单，按 sort 升序排列
 	ListAllMenus(ctx context.Context) ([]Menu, error)
+	// ListMenusByParentID 列出指定父菜单下所有状态为 Active 的子菜单
 	ListMenusByParentID(ctx context.Context, parentID int64) ([]Menu, error)
-	// ListMenusByNames 批量获取指定名称的菜单
+	// ListMenusByNames 根据名称列表批量查找状态为 Active 的菜单
 	ListMenusByNames(ctx context.Context, names []string) ([]Menu, error)
 
+	// UpdateMenuSort 更新单个菜单的 parent_id 与 sort（原子操作）
 	UpdateMenuSort(ctx context.Context, id int64, parentID int64, sort int64) error
+	// BatchUpdateMenuSort 批量更新菜单排序（用于重平衡）
 	BatchUpdateMenuSort(ctx context.Context, menus []Menu) error
-	// MarkMenusAsOrphan 将不在指定名称列表中的所有菜单标记为孤儿
+	// MarkMenusAsOrphan 将不在 names 列表中的菜单标记为 orphan 状态
 	MarkMenusAsOrphan(ctx context.Context, names []string) error
-	// BatchUpsertMenus 批量插入或更新菜单
+	// BatchUpsertMenus 基于 name 唯一键批量插入或更新菜单，并强制重置 status = Active
 	BatchUpsertMenus(ctx context.Context, menus []Menu) error
 
+	// InsertAPI 插入一条接口记录，返回自增 ID
 	InsertAPI(ctx context.Context, a API) (int64, error)
+	// BatchInsertAPI 批量插入或更新接口，并强制重置 status = Active
 	BatchInsertAPI(ctx context.Context, apis []API) error
+	// FindAPIByPath 根据 service + method + path 精确查找状态为 Active 的接口
+	// 未找到时返回 gorm.ErrRecordNotFound
+	FindAPIByPath(ctx context.Context, service, method, path string) (API, error)
+	// ListAllAPIs 列出所有状态为 Active 的接口
 	ListAllAPIs(ctx context.Context) ([]API, error)
+	// ListAPIsByService 列出指定服务下所有状态为 Active 的接口
 	ListAPIsByService(ctx context.Context, service string) ([]API, error)
-	// DeleteAPIsByServiceAndURNs 删除指定服务下不在给定 URN 列表中的所有接口
+	// DeleteAPIsByServiceAndURNs 删除指定服务下不在给定 URN 列表中的接口（物理删除）
 	DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error
-	// MarkAPIsAsOrphan 将不在 URN 列表中的接口标记为孤儿状态
+	// MarkAPIsAsOrphan 将指定服务下不在 URN 列表中的接口标记为 orphan 状态
 	MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error
 
-	// Transaction 开启事务支持
+	// Transaction 在事务上下文中执行 fn，通过 ctx 传递 tx 对象
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
@@ -137,19 +152,19 @@ func (d *ResourceDAO) FindMenuByName(ctx context.Context, name string) (Menu, er
 
 func (d *ResourceDAO) ListAllMenus(ctx context.Context) ([]Menu, error) {
 	var menus []Menu
-	err := d.getDB(ctx).Order("sort ASC").Find(&menus).Error
+	err := d.getDB(ctx).Where("status = ?", MenuStatusActive).Order("sort ASC").Find(&menus).Error
 	return menus, err
 }
 
 func (d *ResourceDAO) ListMenusByNames(ctx context.Context, names []string) ([]Menu, error) {
 	var menus []Menu
-	err := d.getDB(ctx).Where("name IN ?", names).Order("sort ASC").Find(&menus).Error
+	err := d.getDB(ctx).Where("name IN ?", names).Where("status = ?", MenuStatusActive).Order("sort ASC").Find(&menus).Error
 	return menus, err
 }
 
 func (d *ResourceDAO) ListMenusByParentID(ctx context.Context, parentID int64) ([]Menu, error) {
 	var menus []Menu
-	err := d.getDB(ctx).Where("parent_id = ?", parentID).Order("sort ASC").Find(&menus).Error
+	err := d.getDB(ctx).Where("parent_id = ?", parentID).Where("status = ?", MenuStatusActive).Order("sort ASC").Find(&menus).Error
 	return menus, err
 }
 
@@ -231,15 +246,22 @@ func (d *ResourceDAO) BatchInsertAPI(ctx context.Context, apis []API) error {
 	}).Create(&apis).Error
 }
 
+func (d *ResourceDAO) FindAPIByPath(ctx context.Context, service, method, path string) (API, error) {
+	var a API
+	err := d.getDB(ctx).Where("service = ? AND method = ? AND path = ? AND status = ?",
+		service, method, path, APIStatusActive).First(&a).Error
+	return a, err
+}
+
 func (d *ResourceDAO) ListAllAPIs(ctx context.Context) ([]API, error) {
 	var apis []API
-	err := d.getDB(ctx).Find(&apis).Error
+	err := d.getDB(ctx).Where("status = ?", APIStatusActive).Find(&apis).Error
 	return apis, err
 }
 
 func (d *ResourceDAO) ListAPIsByService(ctx context.Context, service string) ([]API, error) {
 	var apis []API
-	err := d.getDB(ctx).Where("service = ?", service).Find(&apis).Error
+	err := d.getDB(ctx).Where("service = ?", service).Where("status = ?", APIStatusActive).Find(&apis).Error
 	return apis, err
 }
 

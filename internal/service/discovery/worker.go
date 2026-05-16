@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/service/resource"
+	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/meoying/dlock-go"
@@ -20,23 +21,23 @@ const (
 	lockExpiration = 30 * time.Second
 )
 
-// Worker 资产发现调度器，负责监听 Etcd 状态并驱动对账引擎
+// Worker 资产发现调度器，负责监听 Etcd 状态并驱动统一录入引擎
 type Worker struct {
-	client     *clientv3.Client
-	reconciler resource.Reconciler
-	init       resource.IInitializer
-	l          *elog.Component
-	dClient    dlock.Client
+	client  *clientv3.Client
+	engine  ingestion.Engine
+	init    resource.IInitializer
+	l       *elog.Component
+	dClient dlock.Client
 }
 
 // NewWorker 构建一个新的调度器实例
-func NewWorker(client *clientv3.Client, reconciler resource.Reconciler, init resource.IInitializer, dClient dlock.Client) *Worker {
+func NewWorker(client *clientv3.Client, engine ingestion.Engine, init resource.IInitializer, dClient dlock.Client) *Worker {
 	return &Worker{
-		client:     client,
-		reconciler: reconciler,
-		init:       init,
-		dClient:    dClient,
-		l:          elog.DefaultLogger,
+		client:  client,
+		engine:  engine,
+		init:    init,
+		dClient: dClient,
+		l:       elog.DefaultLogger,
 	}
 }
 
@@ -92,10 +93,12 @@ func (w *Worker) tryExecuteTask(ctx context.Context) error {
 // runReconcileJob 核心对账监听逻辑
 func (w *Worker) runReconcileJob(ctx context.Context) error {
 	// 0. 执行内置静态资产同步 (Pipeline 模式)
-	w.init.NewPipeline(ctx).
+	if err := w.init.NewPipeline(ctx).
 		Step("同步内置服务", w.init.SyncServices).
 		Step("同步内置菜单", w.init.SyncMenus).
-		Run()
+		Run(); err != nil {
+		w.l.Error("内置资产同步流水线失败", elog.FieldErr(err))
+	}
 
 	// 1. 冷启动快照全量扫描
 	if err := w.scanInitialManifests(ctx); err != nil {
@@ -141,7 +144,7 @@ func (w *Worker) handleWatchEvents(ctx context.Context, events []*clientv3.Event
 	}
 }
 
-// process 解析快照并驱动对账引擎执行同步
+// process 解析快照并驱动统一录入引擎执行同步
 func (w *Worker) process(ctx context.Context, data []byte) {
 	if len(data) == 0 {
 		return
@@ -153,8 +156,9 @@ func (w *Worker) process(ctx context.Context, data []byte) {
 		return
 	}
 
-	if err := w.reconciler.Reconcile(ctx, req); err != nil {
-		w.l.Error("驱动资产对账失败",
+	snap := ingestion.FromSyncRequest(req)
+	if err := w.engine.Ingest(ctx, snap); err != nil {
+		w.l.Error("驱动资产录入失败",
 			elog.String("service", req.Service),
 			elog.FieldErr(err))
 	}

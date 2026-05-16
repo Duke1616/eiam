@@ -16,6 +16,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	"github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
+	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/internal/service/user"
@@ -32,7 +33,9 @@ import (
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
+)
 
+import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -94,11 +97,11 @@ func InitApp() (*App, error) {
 	discoveryHandler := discovery.NewHandler(registry)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, identity_sourceHandler, invitationHandler, discoveryHandler, tenancyBuilder, iPermissionService)
-	reconciler := resource.NewReconciler(iPermissionRepository, iResourceRepository)
-	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, iResourceService, reconciler, registry)
+	engine := ingestion.NewEngine(iPermissionRepository, iResourceRepository, iServiceRepository)
+	iInitializer := resource.NewResourceInitializer(engine, registry)
 	v3 := InitProviders()
 	dlockClient := InitDLock(cmdable)
-	worker := discovery2.NewWorker(clientv3Client, reconciler, iInitializer, dlockClient)
+	worker := discovery2.NewWorker(clientv3Client, engine, iInitializer, dlockClient)
 	v4 := InitTasks(worker)
 	app := &App{
 		Web:       component,

@@ -115,8 +115,12 @@ func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, 
 func (s *permissionService) CheckAPI(ctx context.Context, username string, serviceName, method, path string) (bool, error) {
 	// 1. 资产发现
 	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
-	if err != nil || api.ID == 0 {
-		return false, errs.ErrApiNotFound
+	if err != nil {
+		return false, fmt.Errorf("查询接口资产失败: %w", err)
+	}
+	if api.ID == 0 {
+		// Fail-closed: 未注册资产直接拒绝，不暴露资产缺失细节
+		return false, nil
 	}
 
 	// 2. 映射发现 (找到该接口绑定的逻辑权限码)

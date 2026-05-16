@@ -28,6 +28,7 @@ type IResourceService interface {
 	ReorderMenu(ctx context.Context, id, targetPid, targetPosition int64) error
 
 	// --- 3. 服务目录管理 (Service Catalog) ---
+
 	// BatchRegisterServices 批量注册或更新服务元数据
 	BatchRegisterServices(ctx context.Context, services []domain.Service) error
 	// ListServices 获取所有已登记的服务
