@@ -204,8 +204,8 @@
     is_keepalive: false
     platforms: ["order", "automation"]
   children:
-  - name: JobGovernance
-    permission_code: "automation:job:view"
+  - name: TaskGovernance
+    permission_code: "task:manager:view"
     path: /task/manager
     component: /views/task/manager/index.vue
     meta:

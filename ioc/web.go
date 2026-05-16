@@ -28,11 +28,14 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	tenantHdl *tenanthdl.Handler, permissionHdl *permissionhdl.Handler,
 	roleHdl *rolehdl.Handler,
 	identitySourceHdl *idhdl.Handler, invitationHdl *invitationhdl.Handler,
-	discoveryHdl *discovery.Handler,
+	discoveryHdl *discovery.Handler, tenancyBuilder *pkgmiddleware.TenancyBuilder,
 	permSvc permission.IPermissionService) *egin.Component {
 	session.SetDefaultProvider(sp)
 
 	server := egin.Load("server.egin").Build(egin.WithListener(listener))
+	// 开启 ContextWithFallback：使 ctx.Context.Value() 自动 fallback 到 ctx.Request.Context().Value()
+	// 这样 ctxutil.GetTenantID(ctx.Context) 无需 ctx.Set 双通道注入即可正确读取
+	server.Engine.ContextWithFallback = true
 	server.Use(mdls...)
 
 	// 1. 注册公开路由 (无鉴权)
@@ -46,8 +49,8 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())
-	// 2.1 租户身份构建与防篡权校验 (合并后的中间件)
-	server.Use(pkgmiddleware.BuildTenancyContext(sp))
+	// 2.1 租户身份构建
+	server.Use(tenancyBuilder.Build())
 
 	// 3. 基础权限层：仅需登录即可访问的私有接口 (如获取菜单)
 	permissionHdl.IdentityRoutes(server.Engine)
@@ -70,7 +73,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	return server
 }
 
-func InitGinMiddlewares(sp session.Provider) []gin.HandlerFunc {
+func InitGinMiddlewares() []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		corsHdl(),
 		accessLogger(),
@@ -81,7 +84,7 @@ func corsHdl() gin.HandlerFunc {
 	return cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization", "X-Bind-Token"},
+		AllowHeaders:     []string{"Content-Type", "Authorization", "X-Bind-Token", "X-Tenant-ID"},
 		ExposeHeaders:    []string{"x-jwt-token", "x-refresh-token"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,

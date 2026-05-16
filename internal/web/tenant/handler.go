@@ -9,6 +9,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
@@ -47,9 +48,9 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 
 	// 【核心：租户上下文切换】
 	// 跨租户切换需要特殊放行中间件拦截
-	g.POST("/switch", h.Capability("切换租户空间", "switch").
+	g.POST("/switch", middleware.WithTenantSwitch(h.Capability("切换租户空间", "switch").
 		AllowCrossTenant().Scope(capability.ScopeTenant).NoSync().
-		Handle(ginx.B[SwitchTenantReq](h.SwitchTenant)),
+		Handle(ginx.W(h.SwitchTenant))),
 	)
 }
 
@@ -78,19 +79,19 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 
 	// 查看租户成员
-	g.POST("/members", h.Capability("查看租户成员", "view_members").
+	g.POST("/members", middleware.WithTenantOverride(h.Capability("查看租户成员", "view_members").
 		Scope(capability.ScopeTenant).
-		Handle(ginx.B[ListMembersReq](h.ListMembers)),
+		Handle(ginx.B[ListMembersReq](h.ListMembers))),
 	)
 
 	// 租户成员管理，只有系统租户才可以直接分配，否则通过邀请
-	g.POST("/assign", h.Capability("分配租户成员", "assign").
+	g.POST("/assign", middleware.WithTenantOverride(h.Capability("分配租户成员", "assign").
 		Scope(capability.ScopeTenant).
-		Handle(ginx.B[AssignUserReq](h.AssignUser)),
+		Handle(ginx.B[AssignUserReq](h.AssignUser))),
 	)
-	g.POST("/unassign", h.Capability("移除租户成员", "unassign").
+	g.POST("/unassign", middleware.WithTenantOverride(h.Capability("移除租户成员", "unassign").
 		Scope(capability.ScopeTenant).
-		Handle(ginx.B[RemoveMemberReq](h.RemoveMember)),
+		Handle(ginx.B[RemoveMemberReq](h.RemoveMember))),
 	)
 	g.POST("/batch_assign", h.Capability("批量分配租户成员", "batch_assign").
 		Scope(capability.ScopeTenant).
@@ -102,11 +103,11 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 
 	// 查询特定用户的关联租户 (管理侧使用)
-	g.POST("/list/attached/user", h.Capability("查询用户所属租户", "view_user_tenants").
+	g.POST("/list/attached/user", middleware.WithTenantOverride(h.Capability("查询用户所属租户", "view_user_tenants").
 		Scope(capability.ScopeTenant).
 		Module("user").
 		Group("用户管理").
-		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId)),
+		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId))),
 	)
 }
 
@@ -206,8 +207,10 @@ func (h *Handler) ListMyTenants(ctx *ginx.Context) (ginx.Result, error) {
 	}, nil
 }
 
-// SwitchTenant 实现“租户上下文动态录入”
-func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantReq) (ginx.Result, error) {
+// SwitchTenant 实现"租户上下文动态录入"
+func (h *Handler) SwitchTenant(ctx *ginx.Context) (ginx.Result, error) {
+	// 获取要切换的租户信息
+	tid := ctxutil.GetTenantID(ctx.Context).Int64()
 	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
 	if err != nil {
 		return ErrUnauthorized, err
@@ -229,11 +232,11 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantReq) (ginx.Res
 	// 使用 SessionBuilder 签发包含了租户信息的正式 JWT
 	_, err = session.NewSessionBuilder(&gctx.Context{Context: ctx.Context}, uid).
 		SetJwtData(map[string]string{
-			"tenant_id": strconv.FormatInt(req.TenantID, 10),
+			"tenant_id": strconv.FormatInt(tid, 10),
 			"username":  username,
 		}).
 		SetSessData(map[string]any{
-			"tenant_id": req.TenantID,
+			"tenant_id": tid,
 			"username":  username,
 		}).
 		Build()

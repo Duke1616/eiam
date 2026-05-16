@@ -123,7 +123,7 @@ func (s *permissionService) CheckAPI(ctx context.Context, username string, servi
 	urn := api.URN()
 	targetCodes, err := s.permRepo.FindCodesByResource(ctx, urn)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("查询接口映射错误: %w", err)
 	}
 
 	// 3. 放行逻辑：未绑定权限代码的资源视为公共资产，仅需登录即可访问
@@ -345,8 +345,6 @@ func (s *permissionService) getEffectivePolicies(ctx context.Context, username s
 		ctx = ctxutil.WithTenantID(ctx, authTid.Int64())
 	}
 
-	ttid := ctxutil.GetTenantID(ctx)
-	fmt.Println("TTID", ttid)
 	// 1. 获取用户的所有角色（包括继承）
 	roleSubjects, err := s.GetRolesForUser(ctx, username)
 	if err != nil {

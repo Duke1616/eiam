@@ -33,7 +33,6 @@ func CheckPermission(svc permission.IPermissionService) gin.HandlerFunc {
 		}
 
 		// 2. 识别当前请求对应的逻辑元数据
-		// 通过 Gin 的 HandlerFunc 指针反查在路由注册时通过 h.Capability 注入的信息
 		ptr := reflect.ValueOf(ctx.Handler()).Pointer()
 		info, ok := capability.GetResourceInfo(ptr)
 		if !ok {

@@ -8,6 +8,7 @@ import (
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -45,8 +46,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Needs("iam:role:view").
 		Handle(ginx.B[CreateInvitationReq](h.CreateInvitation)),
 	)
-	g.POST("/list", h.Capability("邀请列表", "view").
-		Handle(ginx.B[Page](h.ListInvitations)),
+	g.POST("/list", middleware.WithTenantOverride(h.Capability("邀请列表", "view").
+		Handle(ginx.B[Page](h.ListInvitations))),
 	)
 	g.DELETE("/revoke/:code", h.Capability("撤回邀请", "delete").
 		Handle(ginx.W(h.RevokeInvitation)),
@@ -56,8 +57,8 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 
 	// 申请管理
-	g.POST("/requests", h.Capability("申请列表", "view_requests").
-		Handle(ginx.B[Page](h.ListJoinRequests)),
+	g.POST("/requests", middleware.WithTenantOverride(h.Capability("申请列表", "view_requests").
+		Handle(ginx.B[Page](h.ListJoinRequests))),
 	)
 	g.POST("/requests/handle", h.Capability("处理申请", "handle_request").
 		Handle(ginx.B[HandleJoinRequestReq](h.HandleJoinRequest)),

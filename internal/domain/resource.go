@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/Duke1616/eiam/pkg/urn"
@@ -13,13 +14,12 @@ type MenuTree []*Menu
 // MenuList 定义扁平菜单列表类型，代表打平后用于物理存储或传输的切片
 type MenuList []Menu
 
-// Flatten 将层级结构的菜单树打平为扁平切片，并自动修正 ParentName 与 ParentURN 拓扑 (需注入 Service 上下文)
-func (t MenuTree) Flatten(service string) MenuList {
+// Flatten 将层级结构的菜单树打平为扁平切片，并自动修正 ParentName 与 ParentURN 拓扑
+func (t MenuTree) Flatten() MenuList {
 	var res MenuList
 	utils.WalkHierarchical[*Menu](t, func(m *Menu) []*Menu {
 		return m.Children
 	}, func(m *Menu, parent *Menu) {
-		m.Service = service
 		if parent != nil {
 			m.ParentName = parent.Name
 			m.ParentURN = parent.URN()
@@ -64,13 +64,13 @@ func (l MenuList) ToTree() MenuTree {
 }
 
 // Menu 菜单资源 (纯展示层元数据)
+// 菜单是前端 UI 路由项，属于平台而非后端服务，不需要 Service 命名空间
 type Menu struct {
 	ID             int64    `json:"id" yaml:"-"`
 	ParentID       int64    `json:"parent_id" yaml:"-"`
 	ParentName     string   `json:"parent_name" yaml:"-"`                   // 父级名称缓存，用于拓扑解析
 	ParentURN      string   `json:"parent_urn" yaml:"parent_urn"`           // 父级 URN 显式指定（支持跨服务挂载）
-	Service        string   `json:"service" yaml:"service"`                 // 所属服务
-	Name           string   `json:"name" yaml:"name"`                       // 菜单标识
+	Name           string   `json:"name" yaml:"name"`                       // 菜单标识 (全局唯一)
 	Path           string   `json:"path" yaml:"path"`                       // 路由路径
 	Component      string   `json:"component" yaml:"component"`             // 前端组件
 	Redirect       string   `json:"redirect" yaml:"redirect"`               // 重定向地址
@@ -84,8 +84,9 @@ type Menu struct {
 }
 
 func (m Menu) URN() string {
-	// 使用服务名作为 URN 的前缀命名空间，确保全局唯一
-	return urn.New(m.Service, "menu", m.Path).String()
+	// 菜单 URN 采用 3 段格式: eiam:menu:{name}
+	// 菜单是平台级 UI 资源，不属于特定后端服务，用 Name (全局唯一) 作为标识
+	return fmt.Sprintf("eiam:menu:%s", m.Name)
 }
 
 func (m Menu) GetID() int64 {

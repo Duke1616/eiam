@@ -29,11 +29,10 @@ import (
 	role2 "github.com/Duke1616/eiam/internal/web/role"
 	tenant2 "github.com/Duke1616/eiam/internal/web/tenant"
 	user2 "github.com/Duke1616/eiam/internal/web/user"
+	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
-)
 
-import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -43,7 +42,7 @@ func InitApp() (*App, error) {
 	cmdable := InitRedis()
 	provider := InitSession(cmdable)
 	listener := InitListener()
-	v := InitGinMiddlewares(provider)
+	v := InitGinMiddlewares()
 	db := InitDB()
 	iUserDAO := dao.NewUserDAO(db)
 	iTenantDAO := dao.NewTenantDAO(db)
@@ -93,10 +92,10 @@ func InitApp() (*App, error) {
 	clientv3Client := InitEtcd()
 	registry := InitRegistry(clientv3Client)
 	discoveryHandler := discovery.NewHandler(registry)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, identity_sourceHandler, invitationHandler, discoveryHandler, iPermissionService)
+	tenancyBuilder := middleware.NewTenancyBuilder(provider)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, identity_sourceHandler, invitationHandler, discoveryHandler, tenancyBuilder, iPermissionService)
 	reconciler := resource.NewReconciler(iPermissionRepository, iResourceRepository)
-	string2 := InitServiceConfig()
-	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, iResourceService, reconciler, registry, string2)
+	iInitializer := resource.NewResourceInitializer(iResourceRepository, iPermissionRepository, iResourceService, reconciler, registry)
 	v3 := InitProviders()
 	dlockClient := InitDLock(cmdable)
 	worker := discovery2.NewWorker(clientv3Client, reconciler, iInitializer, dlockClient)

@@ -59,15 +59,14 @@ type Syncer interface {
 }
 
 type defaultSyncer struct {
-	service   string
 	registry  Registry
 	collector *Collector
 }
 
 // NewSyncer 构造函数，支持预设同步选项
-func NewSyncer(service string, registry Registry, opts ...SyncOption) Syncer {
+// Service 从 Collector 收集的 Permission/ResourceInfo 中自动推导，无需显式传递
+func NewSyncer(registry Registry, opts ...SyncOption) Syncer {
 	s := &defaultSyncer{
-		service:   service,
 		registry:  registry,
 		collector: NewCollector(),
 	}
@@ -88,10 +87,7 @@ func (s *defaultSyncer) WithOption(opts ...SyncOption) Syncer {
 }
 
 func (s *defaultSyncer) Sync(ctx context.Context) error {
-	// 1. 资产收集：利用持有的 Collector 聚合所有类型的资产
+	// 资产收集：Collector.Collect() 自动推导 Service
 	req := s.collector.Collect()
-	req.Service = s.service
-
-	// 2. 执行报备
 	return s.registry.Sync(ctx, req)
 }

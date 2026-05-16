@@ -14,10 +14,9 @@ type UpdateRoleRequest struct {
 }
 
 type ListRoleRequest struct {
-	Offset   int64  `json:"offset"`
-	Limit    int64  `json:"limit"`
-	Keyword  string `json:"keyword"`
-	TenantID int64  `json:"tenant_id"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
 }
 
 type BatchDeleteReq struct {

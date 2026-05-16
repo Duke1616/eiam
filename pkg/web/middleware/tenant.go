@@ -1,73 +1,65 @@
 package middleware
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
 	"net/http"
-	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
-	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
-	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 )
 
-// BuildTenancyContext 租户与用户信息上下文解析、安全校验及注入中间件
-// 该中间件集成了：身份注入、多租户防篡权校验、租户上下文篡改三大功能
-func BuildTenancyContext(sp session.Provider) gin.HandlerFunc {
+// TenancyBuilder 租户中间件构建器，封装 session.Provider 和 logger
+// IOC 层通过 NewTenancyBuilder(sp).Build() 注册全局中间件
+//
+// 用法:
+//
+//	builder := middleware.NewTenancyBuilder(sp)
+//	server.Use(builder.Build())
+//	// 路由级: WithTenantOverride / WithTenantSwitch 无需 builder，直接使用包级函数
+type TenancyBuilder struct {
+	sp     session.Provider
+	logger *elog.Component
+}
+
+// NewTenancyBuilder 创建租户中间件构建器
+func NewTenancyBuilder(sp session.Provider) *TenancyBuilder {
+	return &TenancyBuilder{
+		sp:     sp,
+		logger: elog.DefaultLogger.With(elog.FieldComponentName("tenancy")),
+	}
+}
+
+// Build 构建全局租户身份注入中间件 (InjectIdentity)
+// 在登录校验之后、业务路由之前执行，是身份上下文的基础设施
+func (b *TenancyBuilder) Build() gin.HandlerFunc {
+	if b.sp == nil {
+		b.sp = session.DefaultProvider()
+	}
+
 	return func(ctx *gin.Context) {
-		// 1. 获取当前 Session 信息
-		sess, err := sp.Get(&gctx.Context{Context: ctx})
+		gCtx := &ginx.Context{Context: ctx}
+		sess, err := b.sp.Get(gCtx)
 		if err != nil {
-			// 如果没有 Session（如公开接口），直接跳过
-			ctx.Next()
+			gCtx.AbortWithStatus(http.StatusForbidden)
+			b.logger.Debug("用户未登录", elog.FieldErr(err))
 			return
 		}
 
-		uid := sess.Claims().Uid
-		currentTid, _ := strconv.ParseInt(sess.Claims().Data["tenant_id"], 10, 64)
+		claims := sess.Claims()
+		currentTid, _ := claims.Get("tenant_id").AsInt64()
 
-		// 2. 探测请求中的目标租户 (target_tid)
-		targetTid := extractTargetTid(ctx)
-
-		// 3. 确定最终执行租户 (Final Tenant ID)
-		finalTid := currentTid
-
-		// 如果请求显式指定了目标租户，且与当前租户不符
-		if targetTid != 0 && targetTid != currentTid {
-			// 安全校验：只有系统级管理员允许跨租户操作
-			// 特殊情况：如果当前请求在 Capability 中声明了 AllowCrossTenant (如切换租户)，则允许跨租户
-			isExempt := false
-			if handler := ctx.Handler(); handler != nil {
-				ptr := reflect.ValueOf(handler).Pointer()
-				if info, ok := capability.GetResourceInfo(ptr); ok && info.AllowCrossTenant {
-					isExempt = true
-				}
-			}
-
-			if currentTid != ctxutil.SystemTenantID && !isExempt {
-				ctx.AbortWithStatusJSON(http.StatusForbidden, ginx.Result{
-					Code: 403001,
-					Msg:  "检测到跨租户越权操作，该请求已被安全拦截",
-				})
-				return
-			}
-			// 授权通过（超管或白名单接口）：使用目标租户 ID 注入上下文，确保 Service 层能正确穿透
-			finalTid = targetTid
-		}
-
-		// 4. 注入上下文 (Web 层与标准 Context 同步)
-		ctx.Set("uid", uid)
-		ctx.Set("tenant_id", finalTid)
-		ctx.Set("origin_tenant_id", currentTid)
-
-		newCtx := ctxutil.WithUserID(ctx.Request.Context(), uid)
-		newCtx = ctxutil.WithTenantID(newCtx, finalTid)
+		// 注入 context.WithValue (仅单通道)
+		// Gin Engine 已开启 ContextWithFallback=true，handler 通过 ctx.Context.Value() 可直接读取
+		//
+		// 语义区分：
+		//   tenant_id        = 执行租户 (操作谁的数据 → GORM 数据隔离)
+		//   origin_tenant_id = 身份租户 (你是谁 → 鉴权校验)
+		// 注入时两者相同；后续 WithTenantOverride 只覆写 tenant_id，origin_tenant_id 保留会话真实身份
+		newCtx := ctxutil.WithUserID(ctx.Request.Context(), claims.Uid)
+		newCtx = ctxutil.WithTenantID(newCtx, currentTid)
 		newCtx = ctxutil.WithOriginTenantID(newCtx, currentTid)
 		ctx.Request = ctx.Request.WithContext(newCtx)
 
@@ -75,45 +67,96 @@ func BuildTenancyContext(sp session.Provider) gin.HandlerFunc {
 	}
 }
 
-// extractTargetTid 高效提取请求中的目标租户 ID
+// WithTenantOverride 路由级跨租户上下文覆写 (仅限系统管理员)
+//
+// 从 X-Tenant-ID Header 读取目标租户，若与当前会话租户不同则覆写上下文
+// 仅系统管理员 (tenant_id=1) 允许跨租户操作，普通用户将被安全拦截
+//
+// 适用场景：超管在系统空间下管理其他租户的数据 (如查租户成员、管理角色等)
+// 替代原全局 GuardCrossTenant 对非白名单路由的拦截逻辑
+//
+// 用法:
+//
+//	g.POST("/members", WithTenantOverride(
+//	    h.Capability("查看租户成员", "view_members").
+//	        Scope(capability.ScopeTenant).
+//	        Handle(ginx.B[ListMembersReq](h.ListMembers)),
+//	))
+func WithTenantOverride(h gin.HandlerFunc) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		// 鉴权看身份租户 (你是谁)，不是执行租户 (操作谁的数据)
+		originTid := ctxutil.GetOriginTenantID(ctx.Request.Context()).Int64()
+		targetTid := extractTargetTid(ctx)
+
+		if targetTid == 0 || targetTid == originTid {
+			h(ctx)
+			return
+		}
+
+		// 安全校验：只有系统级管理员允许跨租户操作
+		if originTid != ctxutil.SystemTenantID {
+			ctx.AbortWithStatusJSON(http.StatusForbidden, ginx.Result{
+				Code: 403001,
+				Msg:  "检测到跨租户越权操作，该请求已被安全拦截",
+			})
+			return
+		}
+
+		// 授权通过（超管）：仅覆写执行租户 (tenant_id)
+		// origin_tenant_id 保留会话真实身份 (1=系统租户)，鉴权时仍可识别超管身份
+		newCtx := ctxutil.WithTenantID(ctx.Request.Context(), targetTid)
+		ctx.Request = ctx.Request.WithContext(newCtx)
+
+		h(ctx)
+	}
+}
+
+// WithTenantSwitch 路由级租户切换 (无需系统管理员权限)
+//
+// 从 X-Tenant-ID Header 读取目标租户，若与当前会话租户不同则覆写上下文
+// 不做超管校验，handler 层负责校验用户是否属于目标租户 (如 CheckUserTenantAccess)
+//
+// 适用场景：租户切换路由，普通用户也需要切换自己的租户空间
+// 替代原全局 GuardCrossTenant 对 AllowCrossTenant 白名单路由的放行逻辑
+//
+// 用法:
+//
+//	g.POST("/switch", WithTenantSwitch(
+//	    h.Capability("切换租户", "switch").
+//	        AllowCrossTenant().
+//	        Handle(ginx.W(h.SwitchTenant)),
+//	))
+func WithTenantSwitch(h gin.HandlerFunc) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		// 用身份租户判断是否需要覆写 (与执行租户初始值相同)
+		originTid := ctxutil.GetOriginTenantID(ctx.Request.Context()).Int64()
+		targetTid := extractTargetTid(ctx)
+
+		if targetTid == 0 || targetTid == originTid {
+			h(ctx)
+			return
+		}
+
+		// 覆写执行租户 (tenant_id)，origin_tenant_id 保留会话真实身份
+		// handler 层负责校验用户是否属于目标租户 (如 CheckUserTenantAccess)
+		newCtx := ctxutil.WithTenantID(ctx.Request.Context(), targetTid)
+		ctx.Request = ctx.Request.WithContext(newCtx)
+
+		h(ctx)
+	}
+}
+
+// extractTargetTid 从请求中提取目标租户 ID
+// 仅从 X-Tenant-ID Header 读取
 func extractTargetTid(ctx *gin.Context) int64 {
-	// 1. 优先尝试从 URL Query 中提取 (性能开销极低)
-	if tidStr := ctx.Query("tenant_id"); tidStr != "" {
-		if tid, err := strconv.ParseInt(tidStr, 10, 64); err == nil {
-			return tid
-		}
-	}
+	val := ctx.GetHeader("X-Tenant-ID")
 
-	// 2. 性能优化点：仅针对有 Body 的方法尝试解析 JSON
-	method := ctx.Request.Method
-	if method != http.MethodPost && method != http.MethodPut && method != http.MethodPatch {
+	if val == "" {
 		return 0
 	}
-
-	// 3. 性能优化点：检查 Content-Type，避免对非 JSON 请求做无用功
-	if !strings.Contains(ctx.GetHeader("Content-Type"), "application/json") {
+	tid, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
 		return 0
 	}
-
-	// 4. 读取并解析 Body
-	bodyBytes, err := io.ReadAll(io.LimitReader(ctx.Request.Body, 1024*1024))
-	if err == nil {
-		// 回放 Body 确保后续 Handler 可读
-		ctx.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-		var bodyMap map[string]interface{}
-		if err := json.Unmarshal(bodyBytes, &bodyMap); err == nil {
-			if v, ok := bodyMap["tenant_id"]; ok {
-				switch val := v.(type) {
-				case float64:
-					return int64(val)
-				case string:
-					tid, _ := strconv.ParseInt(val, 10, 64)
-					return tid
-				}
-			}
-		}
-	}
-
-	return 0
+	return tid
 }

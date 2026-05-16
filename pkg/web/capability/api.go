@@ -82,7 +82,7 @@ type IRegistry interface {
 	Declare(name, code string) *Builder
 	DefaultScope(scope string) IRegistry
 
-	// 增加精确检索接口，避免全量拷贝
+	// GetPermission 增加精确检索接口，避免全量拷贝
 	GetPermission(code string) (Permission, bool)
 
 	// 内部同步方法
@@ -275,7 +275,6 @@ func (b *Builder) AllowCrossTenant() *Builder {
 func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
 	if b.registry != nil {
-		// 优化点：直接通过 O(1) 索引获取权限信息，消除切片拷贝和遍历
 		if p, ok := b.registry.GetPermission(b.code); ok {
 			handlerRegistry[ptr] = ResourceInfo{
 				Service:          b.service,
@@ -302,6 +301,7 @@ type Collector struct {
 	providers     []PermissionProvider
 	menuProviders []MenuProvider
 	engine        *gin.Engine
+	service       string // 显式 Service 覆写 (通常从 Permission/ResourceInfo 自动推导)
 }
 
 func NewCollector() *Collector {
@@ -319,17 +319,31 @@ func WithMenus(m ...MenuProvider) SyncOption {
 func WithRouter(engine *gin.Engine) SyncOption {
 	return func(c *Collector) { c.engine = engine }
 }
+func WithService(name string) SyncOption {
+	return func(c *Collector) { c.service = name }
+}
 
 func (c *Collector) Collect(opts ...SyncOption) SyncRequest {
 	for _, opt := range opts {
 		opt(c)
 	}
 
-	return SyncRequest{
+	req := SyncRequest{
 		Permissions: c.collectPermissions(),
 		APIs:        c.collectAPIs(),
 		Menus:       c.collectMenus(),
 	}
+
+	// Service 推导：优先显式覆写 → Permission → ResourceInfo
+	if c.service != "" {
+		req.Service = c.service
+	} else if len(req.Permissions) > 0 {
+		req.Service = req.Permissions[0].Service
+	} else if len(req.APIs) > 0 {
+		req.Service = req.APIs[0].Service
+	}
+
+	return req
 }
 
 func (c *Collector) collectPermissions() []Permission {

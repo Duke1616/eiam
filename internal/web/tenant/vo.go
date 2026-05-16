@@ -69,10 +69,9 @@ func ToTenantVO(t domain.Tenant) TenantVO {
 }
 
 type ListMembersReq struct {
-	TenantID int64  `json:"tenant_id"`
-	Offset   int64  `json:"offset"`
-	Limit    int64  `json:"limit"`
-	Keyword  string `json:"keyword"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
 }
 
 type ListMembersRes struct {
@@ -93,8 +92,7 @@ type MemberVO struct {
 }
 
 type AssignUserReq struct {
-	TenantID int64 `json:"tenant_id" binding:"required"`
-	UserID   int64 `json:"user_id" binding:"required"`
+	UserID int64 `json:"user_id" binding:"required"`
 }
 
 type BatchAssignTenantsReq struct {
@@ -108,11 +106,9 @@ type BatchUnassignTenantsReq struct {
 }
 
 type RemoveMemberReq struct {
-	TenantID int64 `json:"tenant_id" binding:"required"`
-	UserID   int64 `json:"user_id" binding:"required"`
+	UserID int64 `json:"user_id" binding:"required"`
 }
 
 type BatchRemoveMembersReq struct {
-	TenantID int64   `json:"tenant_id" binding:"required"`
-	UserIDs  []int64 `json:"user_ids" binding:"required"`
+	UserIDs []int64 `json:"user_ids" binding:"required"`
 }

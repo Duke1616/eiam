@@ -1,11 +1,10 @@
 package invitation
 
 type Page struct {
-	Offset   int   `json:"offset"`
-	Limit    int   `json:"limit"`
-	Page     int   `json:"page"`
-	PageSize int   `json:"page_size"`
-	TenantID int64 `json:"tenant_id"` // 可选，支持管理面指定目标租户
+	Offset   int `json:"offset"`
+	Limit    int `json:"limit"`
+	Page     int `json:"page"`
+	PageSize int `json:"page_size"`
 }
 
 type CreateInvitationReq struct {
@@ -13,7 +12,6 @@ type CreateInvitationReq struct {
 	ExpiryDays      int      `json:"expiry_days"` // 前端按天传，后端计算成毫秒
 	RoleCodes       []string `json:"role_codes"`
 	RequireApproval bool     `json:"require_approval"`
-	TenantID        int64    `json:"tenant_id"` // 可选，支持管理面指定目标租户
 }
 
 type AcceptInvitationReq struct {
@@ -25,9 +23,8 @@ type BatchRevokeInvitationReq struct {
 }
 
 type HandleJoinRequestReq struct {
-	ID       int64 `json:"id" binding:"required"`
-	Approve  bool  `json:"approve"`
-	TenantID int64 `json:"tenant_id"` // 可选，支持管理面指定目标租户
+	ID      int64 `json:"id" binding:"required"`
+	Approve bool  `json:"approve"`
 }
 
 type Invitation struct {

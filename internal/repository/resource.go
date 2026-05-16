@@ -30,7 +30,7 @@ type IResourceRepository interface {
 	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
 	UpsertMenu(ctx context.Context, m *domain.Menu) error
 	// SyncMenus 高性能同步菜单资产，基于领域对象自带的 ParentName 自动解析拓扑
-	SyncMenus(ctx context.Context, service string, menus domain.MenuList) error
+	SyncMenus(ctx context.Context, menus domain.MenuList) error
 	// ListAllMenus 获取系统中注册的所有全量菜单
 	ListAllMenus(ctx context.Context) ([]domain.Menu, error)
 	// GetMenu 根据 ID 获取菜单
@@ -53,11 +53,11 @@ func NewResourceRepository(dao dao.IResourceDAO) IResourceRepository {
 }
 
 // SyncMenus 实现高性能的原子级资产同步
-func (r *ResourceRepository) SyncMenus(ctx context.Context, service string, menus domain.MenuList) error {
+func (r *ResourceRepository) SyncMenus(ctx context.Context, menus domain.MenuList) error {
 	names := lo.Map(menus, func(m domain.Menu, _ int) string { return m.Name })
 
 	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
-		// 1. 转换并预同步 (由于源头已注入 Service 且已打平，这里直接转换)
+		// 1. 转换并预同步
 		daoEntities := lo.Map(menus, func(m domain.Menu, _ int) dao.Menu {
 			return r.toDAOMenu(m)
 		})
@@ -72,31 +72,48 @@ func (r *ResourceRepository) SyncMenus(ctx context.Context, service string, menu
 		}
 
 		// 3. 孤儿标记 (全量对齐闭环)
-		return r.dao.MarkMenusAsOrphan(txCtx, service, names)
+		return r.dao.MarkMenusAsOrphan(txCtx, names)
 	})
 }
 
 func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.Menu, source domain.MenuList) error {
-	// 1. 聚合所有需要的 URN (包括当前批次上报的 URN 和它们显式指定的父级 URN)
-	batchURNs := lo.Map(source, func(m domain.Menu, _ int) string { return m.URN() })
-	parentURNs := lo.FilterMap(source, func(m domain.Menu, _ int) (string, bool) {
-		return m.ParentURN, m.ParentURN != ""
+	// 1. 聚合所有需要的 Name (当前批次 + 显式指定的父级 Name)
+	batchNames := lo.Map(source, func(m domain.Menu, _ int) string { return m.Name })
+	parentNames := lo.FilterMap(source, func(m domain.Menu, _ int) (string, bool) {
+		// 从 ParentURN 解析出父级 Name (格式: eiam:menu:{name})
+		if m.ParentURN == "" {
+			return "", false
+		}
+		// 解析 3 段格式: eiam:menu:{name}
+		parts := strings.Split(m.ParentURN, ":")
+		if len(parts) == 3 {
+			return parts[2], true
+		}
+		return "", false
 	})
-	allNeededURNs := lo.Uniq(append(batchURNs, parentURNs...))
+	allNeededNames := lo.Uniq(append(batchNames, parentNames...))
 
-	// 2. 批量获取菜单实体，建立 URN 到 ID 的映射索引 (Map[URN]ID)
-	latest, err := r.dao.ListMenusByURNs(ctx, allNeededURNs)
+	// 2. 批量获取菜单实体，建立 Name → ID 的映射索引
+	latest, err := r.dao.ListMenusByNames(ctx, allNeededNames)
 	if err != nil {
 		return err
 	}
-	urnMap := lo.Associate(latest, func(m dao.Menu) (string, int64) {
-		// 生成用于索引的 URN Key
-		return domain.Menu{Service: m.Service, Path: m.Path}.URN(), m.Id
+	nameMap := lo.Associate(latest, func(m dao.Menu) (string, int64) {
+		return m.Name, m.Id
 	})
 
-	// 3. 修正 ParentID (利用 Map 零值特性：Key 不存在或为空时返回 0)
+	// 3. 修正 ParentID
 	lo.ForEach(entities, func(_ dao.Menu, i int) {
-		entities[i].ParentId = urnMap[source[i].ParentURN]
+		// 从 ParentURN 解析出父级 Name，再从 nameMap 中查找 ID
+		parentURN := source[i].ParentURN
+		if parentURN == "" {
+			entities[i].ParentId = 0
+			return
+		}
+		parts := strings.Split(parentURN, ":")
+		if len(parts) == 3 {
+			entities[i].ParentId = nameMap[parts[2]]
+		}
 	})
 
 	return r.dao.BatchUpsertMenus(ctx, entities)
@@ -237,7 +254,6 @@ func (r *ResourceRepository) toDAOMenu(m domain.Menu) dao.Menu {
 	return dao.Menu{
 		Id:             m.ID,
 		ParentId:       m.ParentID,
-		Service:        m.Service,
 		Name:           m.Name,
 		Path:           m.Path,
 		Component:      m.Component,
@@ -263,7 +279,6 @@ func (r *ResourceRepository) toDomainMenu(m dao.Menu) domain.Menu {
 	return domain.Menu{
 		ID:             m.Id,
 		ParentID:       m.ParentId,
-		Service:        m.Service,
 		Name:           m.Name,
 		Path:           m.Path,
 		Component:      m.Component,

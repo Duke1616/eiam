@@ -53,7 +53,7 @@ func (r *defaultReconciler) Reconcile(ctx context.Context, req capability.SyncRe
 	})
 
 	// 3. 转换菜单数据模型并打平
-	menus := r.mapMenus(req.Service, req.Menus).Flatten(req.Service)
+	menus := r.mapMenus(req.Menus).Flatten()
 
 	// 4. 执行对账同步（逻辑权限、物理 API、菜单资产分别原子化）
 	if err := r.permRepo.SyncPermissions(ctx, req.Service, perms); err != nil {
@@ -64,7 +64,7 @@ func (r *defaultReconciler) Reconcile(ctx context.Context, req capability.SyncRe
 		return fmt.Errorf("对账 API 资产失败: %w", err)
 	}
 
-	if err := r.resRepo.SyncMenus(ctx, req.Service, menus); err != nil {
+	if err := r.resRepo.SyncMenus(ctx, menus); err != nil {
 		return fmt.Errorf("对账菜单资产失败: %w", err)
 	}
 
@@ -89,10 +89,9 @@ func (r *defaultReconciler) Reconcile(ctx context.Context, req capability.SyncRe
 	return nil
 }
 
-func (r *defaultReconciler) mapMenus(service string, menus []capability.Menu) domain.MenuTree {
+func (r *defaultReconciler) mapMenus(menus []capability.Menu) domain.MenuTree {
 	return lo.Map(menus, func(m capability.Menu, _ int) *domain.Menu {
 		return &domain.Menu{
-			Service:        service,
 			Name:           m.Name,
 			Path:           m.Path,
 			Component:      m.Component,
@@ -107,7 +106,7 @@ func (r *defaultReconciler) mapMenus(service string, menus []capability.Menu) do
 				IsKeepAlive: m.Meta.IsKeepAlive,
 				Platforms:   m.Meta.Platforms,
 			},
-			Children: r.mapMenus(service, m.Children),
+			Children: r.mapMenus(m.Children),
 		}
 	})
 }

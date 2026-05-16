@@ -25,6 +25,7 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
+	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
 )
@@ -131,6 +132,7 @@ func InitApp() (*App, error) {
 		// App Component
 		InitTasks,
 		InitGinMiddlewares,
+		middleware.NewTenancyBuilder,
 		InitGinWebServer,
 		wire.Struct(new(App), "*"),
 	)

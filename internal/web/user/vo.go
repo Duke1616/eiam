@@ -197,10 +197,6 @@ type LdapUserList struct {
 	Users []LdapSyncUser `json:"users"`
 }
 
-type SwitchTenantRequest struct {
-	TenantID int64 `json:"tenant_id"`
-}
-
 type IdentityVo struct {
 	Provider    string      `json:"provider"`
 	IdentityID  string      `json:"identity_id"`

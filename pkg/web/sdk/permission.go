@@ -1,4 +1,4 @@
-package middleware
+package sdk
 
 import (
 	"bytes"
@@ -82,12 +82,8 @@ func (s *SDK) CheckLogin() gin.HandlerFunc {
 		uid, _ := res.Data.Uid.Int64()
 		tid, _ := res.Data.TenantID.Int64()
 
-		// 1. 注入 Gin 上下文 (Web层使用)
-		ctx.Set("uid", uid)
-		ctx.Set("tenant_id", tid)
-		ctx.Set("origin_tenant_id", tid)
-
-		// 2. 注入标准 Context (确保下游全链路可见)
+		// 注入 context.WithValue (仅单通道，SDK 下游服务同样开启 ContextWithFallback)
+		// tenant_id = 执行租户 (数据隔离)，origin_tenant_id = 身份租户 (鉴权校验)
 		newCtx := ctxutil.WithUserID(ctx.Request.Context(), uid)
 		newCtx = ctxutil.WithTenantID(newCtx, tid)
 		newCtx = ctxutil.WithOriginTenantID(newCtx, tid)
@@ -100,9 +96,8 @@ func (s *SDK) CheckLogin() gin.HandlerFunc {
 // CheckPolicy 权限鉴权中间件
 // resource: 填写授权判断的业务资源标识 (逻辑维度)，如 "project:1"
 // 如果不传或传空，中间件将尝试通过 capability SDK 自动识别 Service 和模板 Path 信息。
-func (s *SDK) CheckPolicy(resource string) gin.HandlerFunc {
+func (s *SDK) CheckPolicy() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		// 1. 获取物理元数据：优先通过 Handler 指针反查
 		ptr := reflect.ValueOf(ctx.Handler()).Pointer()
 		info, ok := capability.GetResourceInfo(ptr)
 		if !ok {
@@ -111,18 +106,12 @@ func (s *SDK) CheckPolicy(resource string) gin.HandlerFunc {
 			return
 		}
 
-		// 2. 环境聚合
-		if resource == "" {
-			resource = "*"
-		}
-
 		// 3. 发起远程判定
 		var res apiResult[authorizeResult]
 		if err := s.callAPI(ctx, "/api/permission/check_policy", checkPolicyReq{
-			Service:  info.Service,
-			Path:     ctx.FullPath(),
-			Method:   ctx.Request.Method,
-			Resource: resource,
+			Service: info.Service,
+			Path:    ctx.FullPath(),
+			Method:  ctx.Request.Method,
 		}, &res); err != nil {
 			return
 		}
@@ -130,8 +119,8 @@ func (s *SDK) CheckPolicy(resource string) gin.HandlerFunc {
 		if !res.Data.Allowed {
 			s.logger.Warn("鉴权拒绝",
 				elog.String("service", info.Service),
+				elog.String("method", info.Method),
 				elog.String("path", ctx.FullPath()),
-				elog.String("resource", resource),
 				elog.String("reason", res.Data.Reason))
 			ctx.AbortWithStatus(http.StatusForbidden)
 			return

@@ -42,10 +42,9 @@ type AttachPolicyReq struct {
 }
 
 type CheckPolicyReq struct {
-	Service  string `json:"service"`
-	Path     string `json:"path"`
-	Method   string `json:"method"`
-	Resource string `json:"resource"`
+	Service string `json:"service"`
+	Path    string `json:"path"`
+	Method  string `json:"method"`
 }
 
 type AuthorizeResult struct {

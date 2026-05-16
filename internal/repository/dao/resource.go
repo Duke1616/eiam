@@ -5,17 +5,17 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/sqlx"
-	"github.com/Duke1616/eiam/pkg/urn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // Menu 菜单资源表 (物理元数据)
+// 菜单是平台级 UI 资源，Name 全局唯一，Service 降级为普通列 (仅用于孤儿标记分组)
 type Menu struct {
 	Id             int64                     `gorm:"type:bigint;primaryKey;autoIncrement;comment:'菜单ID'"`
 	ParentId       int64                     `gorm:"type:bigint;not null;default:0;index:idx_parent_id;comment:'父菜单ID'"`
-	Service        string                    `gorm:"type:varchar(128);not null;default:'eiam';uniqueIndex:uni_service_name;comment:'所属服务'"`
-	Name           string                    `gorm:"type:varchar(255);not null;uniqueIndex:uni_service_name;comment:'名称'"`
+	Service        string                    `gorm:"type:varchar(128);not null;default:'eiam';index:idx_service;comment:'所属服务 (仅分组用途)'"`
+	Name           string                    `gorm:"type:varchar(255);not null;uniqueIndex:uni_name;comment:'名称 (全局唯一)'"`
 	Path           string                    `gorm:"type:varchar(255);comment:'前端路由地址'"`
 	Component      string                    `gorm:"type:varchar(255);comment:'前端组件地址'"`
 	Redirect       string                    `gorm:"type:varchar(255);comment:'重定向地址'"`
@@ -72,11 +72,9 @@ type IResourceDAO interface {
 	UpdateMenuSort(ctx context.Context, id int64, parentID int64, sort int64) error
 	BatchUpdateMenuSort(ctx context.Context, menus []Menu) error
 	// MarkMenusAsOrphan 将不在指定名称列表中的所有菜单标记为孤儿
-	MarkMenusAsOrphan(ctx context.Context, service string, names []string) error
+	MarkMenusAsOrphan(ctx context.Context, names []string) error
 	// BatchUpsertMenus 批量插入或更新菜单
 	BatchUpsertMenus(ctx context.Context, menus []Menu) error
-	// ListMenusByURNs 批量获取指定 URN 的菜单 (内部会解析 URN 为 Service + Path 匹配)
-	ListMenusByURNs(ctx context.Context, urns []string) ([]Menu, error)
 
 	InsertAPI(ctx context.Context, a API) (int64, error)
 	BatchInsertAPI(ctx context.Context, apis []API) error
@@ -194,38 +192,18 @@ func (d *ResourceDAO) BatchUpsertMenus(ctx context.Context, menus []Menu) error 
 	}
 
 	return d.getDB(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "service"}, {Name: "name"}},
+		Columns:   []clause.Column{{Name: "name"}},
 		DoUpdates: clause.AssignmentColumns([]string{"parent_id", "path", "component", "redirect", "permission_code", "sort", "meta", "utime", "status"}),
 	}).Create(&menus).Error
 }
 
-func (d *ResourceDAO) MarkMenusAsOrphan(ctx context.Context, service string, names []string) error {
+func (d *ResourceDAO) MarkMenusAsOrphan(ctx context.Context, names []string) error {
 	if len(names) == 0 {
-		return d.getDB(ctx).Model(&Menu{}).Where("service = ?", service).Update("status", MenuStatusOrphan).Error
+		return nil
 	}
-	return d.getDB(ctx).Model(&Menu{}).Where("service = ?", service).
+	return d.getDB(ctx).Model(&Menu{}).
 		Where("name NOT IN ?", names).
 		Update("status", MenuStatusOrphan).Error
-}
-
-func (d *ResourceDAO) ListMenusByURNs(ctx context.Context, urns []string) ([]Menu, error) {
-	if len(urns) == 0 {
-		return nil, nil
-	}
-
-	var res []Menu
-	query := d.getDB(ctx)
-
-	for _, u := range urns {
-		parsed, err := urn.Parse(u)
-		if err != nil {
-			continue
-		}
-		query = query.Or("service = ? AND path = ?", parsed.Service, parsed.ResourceID)
-	}
-
-	err := query.Find(&res).Error
-	return res, err
 }
 
 func (d *ResourceDAO) InsertAPI(ctx context.Context, a API) (int64, error) {

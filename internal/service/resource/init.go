@@ -46,24 +46,18 @@ type Initializer struct {
 	resourceSvc IResourceService
 	reconciler  Reconciler
 	registry    capability.Registry
-	service     string // 当前服务的唯一标识，用于 URN 生成的前缀上下文
 	logger      *elog.Component
 
 	sorter *utils.Sorter[*domain.Menu, *domain.Menu]
 }
 
-func NewResourceInitializer(repo repository.IResourceRepository, permRepo repository.IPermissionRepository, resourceSvc IResourceService, reconciler Reconciler, registry capability.Registry, service string) IInitializer {
-	if service == "" {
-		service = "eiam"
-	}
-
+func NewResourceInitializer(repo repository.IResourceRepository, permRepo repository.IPermissionRepository, resourceSvc IResourceService, reconciler Reconciler, registry capability.Registry) IInitializer {
 	return &Initializer{
 		repo:        repo,
 		permRepo:    permRepo,
 		resourceSvc: resourceSvc,
 		reconciler:  reconciler,
 		registry:    registry,
-		service:     service,
 		logger:      elog.DefaultLogger.With(elog.FieldComponent("resource-initializer")),
 		sorter: utils.NewSorter(func(m *domain.Menu, idx int) *domain.Menu {
 			m.Sort = int64((idx + 1) * utils.DefaultIndexGap)
@@ -74,7 +68,7 @@ func NewResourceInitializer(repo repository.IResourceRepository, permRepo reposi
 
 // SyncDiscoveryAPIs 为 EIAM 本地服务提供基于 SDK Collector 的自发现支持 (SDK 模式)
 func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error {
-	return capability.NewSyncer(i.service, i.registry,
+	return capability.NewSyncer(i.registry,
 		capability.WithPermissions(providers...),
 		capability.WithRouter(router),
 	).Sync(ctx)
@@ -111,7 +105,7 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 		return m.Children
 	})
 
-	flatList := menus.Flatten(i.service)
+	flatList := menus.Flatten()
 
 	// 提取映射
 	bindings := make(map[string][]string)
@@ -122,7 +116,7 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 	}
 
 	// 3.执行菜单资产的高速原子化同步
-	if err = i.repo.SyncMenus(ctx, i.service, flatList); err != nil {
+	if err = i.repo.SyncMenus(ctx, flatList); err != nil {
 		return err
 	}
 
@@ -130,7 +124,6 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 	allURNs := slice.Map(flatList, func(_ int, m domain.Menu) string { return m.URN() })
 	return i.permRepo.SyncResourceBindings(ctx, allURNs, bindings)
 }
-
 
 // loadYAML 泛型 YAML 反序列化工具函数
 func loadYAML[T any](data []byte) (T, error) {
