@@ -133,6 +133,9 @@ func (d *RoleDAO) GetByCode(ctx context.Context, code string) (Role, error) {
 
 func (d *RoleDAO) ListByIncludeCodes(ctx context.Context, codes []string) ([]Role, error) {
 	var roles []Role
+	if len(codes) == 0 {
+		return roles, nil
+	}
 	err := d.db.WithContext(ctx).Where("code IN ?", codes).
 		Order("tenant_id DESC, ctime DESC").Find(&roles).Error
 	return roles, err
@@ -167,24 +170,23 @@ func (d *RoleDAO) GetAttachedRolesWithFilter(ctx context.Context, username strin
 		Select("REPLACE(v1, ?, '')", domain.PrefixRole).
 		Where("ptype = 'g' AND v0 = ? AND v2 = ?", domain.UserSubject(username), tid)
 
-	// 3. 主查询：注入子查询字段并执行过滤
-	query := d.db.WithContext(ctx).Model(&Role{}).
-		Select("*, (?) AS ctime", subQueryExpr).
+	// 3. 主查询：构建基础过滤查询（不带 Select 关联子查询，专用于 Count 计算）
+	baseQuery := d.db.WithContext(ctx).Model(&Role{}).
 		Where("code IN (?)", filterSubQuery)
 
 	if keyword != "" {
 		kw := "%" + keyword + "%"
-		query = query.Where("(name LIKE ? OR code LIKE ?)", kw, kw)
+		baseQuery = baseQuery.Where("(name LIKE ? OR code LIKE ?)", kw, kw)
 	}
 
-	err := query.Count(&total).Error
+	err := baseQuery.Count(&total).Error
 	if err != nil || total == 0 {
 		return nil, 0, err
 	}
 
-	// 按照角色关联时间 (ctime) 倒序排列
-	// 注意：v3 存的是字符串，在数据库层面进行排序
-	err = query.Offset(int(offset)).Limit(int(limit)).
+	// 4. 将关联子查询结果注入 Select 字段，执行具体的分页与 Order 详情获取
+	err = baseQuery.Select("*, (?) AS ctime", subQueryExpr).
+		Offset(int(offset)).Limit(int(limit)).
 		Order("ctime DESC").Find(&rs).Error
 
 	return rs, total, err
@@ -195,6 +197,9 @@ func (d *RoleDAO) Delete(ctx context.Context, id int64) error {
 }
 
 func (d *RoleDAO) DeleteByIDs(ctx context.Context, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
 	res := d.db.WithContext(ctx).Delete(&Role{}, ids)
 	return res.RowsAffected, res.Error
 }
@@ -207,6 +212,9 @@ func (d *RoleDAO) GetByID(ctx context.Context, id int64) (Role, error) {
 
 func (d *RoleDAO) FindByIDs(ctx context.Context, ids []int64) ([]Role, error) {
 	var rs []Role
+	if len(ids) == 0 {
+		return rs, nil
+	}
 	err := d.db.WithContext(ctx).Where("id IN ?", ids).Find(&rs).Error
 	return rs, err
 }

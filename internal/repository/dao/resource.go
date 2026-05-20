@@ -158,6 +158,9 @@ func (d *ResourceDAO) ListAllMenus(ctx context.Context) ([]Menu, error) {
 
 func (d *ResourceDAO) ListMenusByNames(ctx context.Context, names []string) ([]Menu, error) {
 	var menus []Menu
+	if len(names) == 0 {
+		return menus, nil
+	}
 	err := d.getDB(ctx).Where("name IN ?", names).Where("status = ?", MenuStatusActive).Order("sort ASC").Find(&menus).Error
 	return menus, err
 }
@@ -186,10 +189,11 @@ func (d *ResourceDAO) BatchUpdateMenuSort(ctx context.Context, menus []Menu) err
 		menus[i].Utime = now
 	}
 
+	// 升级为 CreateInBatches 分批保护
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"parent_id", "sort", "utime"}),
-	}).Create(&menus).Error
+	}).CreateInBatches(menus, 100).Error
 }
 
 func (d *ResourceDAO) BatchUpsertMenus(ctx context.Context, menus []Menu) error {
@@ -206,10 +210,11 @@ func (d *ResourceDAO) BatchUpsertMenus(ctx context.Context, menus []Menu) error 
 		menus[i].Status = MenuStatusActive
 	}
 
+	// 升级为 CreateInBatches 分批保护
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}},
 		DoUpdates: clause.AssignmentColumns([]string{"parent_id", "path", "component", "redirect", "permission_code", "sort", "meta", "utime", "status"}),
-	}).Create(&menus).Error
+	}).CreateInBatches(menus, 100).Error
 }
 
 func (d *ResourceDAO) MarkMenusAsOrphan(ctx context.Context, names []string) error {
@@ -241,9 +246,10 @@ func (d *ResourceDAO) BatchInsertAPI(ctx context.Context, apis []API) error {
 		apis[i].Status = APIStatusActive
 	}
 
+	// 升级为 CreateInBatches 分批保护，阻断超大服务注册下的包溢出
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		DoUpdates: clause.AssignmentColumns([]string{"name", "utime", "status"}),
-	}).Create(&apis).Error
+	}).CreateInBatches(apis, 100).Error
 }
 
 func (d *ResourceDAO) FindAPIByPath(ctx context.Context, service, method, path string) (API, error) {

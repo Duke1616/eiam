@@ -217,6 +217,9 @@ func (d *invitationDAO) Delete(ctx context.Context, code string) error {
 }
 
 func (d *invitationDAO) BatchDelete(ctx context.Context, codes []string) error {
+	if len(codes) == 0 {
+		return nil
+	}
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. 批量软删除邀请码记录
 		if err := tx.Where("code IN ?", codes).Delete(&Invitation{}).Error; err != nil {

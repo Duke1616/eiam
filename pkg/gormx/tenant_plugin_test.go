@@ -40,6 +40,13 @@ type TestConditionResource struct {
 	TenantID int64 `gorm:"column:tenant_id" eiam:"shared:type=1"`
 }
 
+// TestIgnoreResource 显式声明为需要彻底免除隔离过滤的实体
+type TestIgnoreResource struct {
+	ID       uint `gorm:"primaryKey"`
+	Name     string
+	TenantID int64 `gorm:"column:tenant_id" eiam:"ignore"`
+}
+
 // tenantTestCase 统一的声明式多租户测试用例结构定义
 type tenantTestCase struct {
 	name       string
@@ -444,4 +451,55 @@ func TestTenantPlugin_CustomOptions(t *testing.T) {
 		WithTenantColumn("custom_tenant_id"),
 		WithSystemTenantID(999),
 	)
+}
+
+// TestTenantPlugin_Ignore 单元测试：验证标注了 eiam:"ignore" 的实体是否彻底免除隔离拦截
+func TestTenantPlugin_Ignore(t *testing.T) {
+	defaultModels := []any{&TestIgnoreResource{}}
+
+	seedData := func(t *testing.T, db *gorm.DB) {
+		require.NoError(t, db.Session(&gorm.Session{}).Create([]TestIgnoreResource{
+			{Name: "ResourceA", TenantID: 10},
+			{Name: "ResourceB", TenantID: 20},
+		}).Error)
+	}
+
+	tests := []tenantTestCase{
+		{
+			name:     "Ignore标注模型_普通业务租户写入_不强制填充租户ID",
+			tenantID: 100,
+			run: func(t *testing.T, db *gorm.DB) {
+				res := TestIgnoreResource{Name: "ResourceC", TenantID: 888}
+				err := db.Create(&res).Error
+				require.NoError(t, err)
+				// 正常被创建，其 TenantID 仍为显式指定的 888，未被 context 里的 100 覆盖
+				assert.Equal(t, int64(888), res.TenantID)
+			},
+		},
+		{
+			name:     "Ignore标注模型_业务租户查询_可跨租户获取全量数据",
+			tenantID: 10,
+			before:   seedData,
+			run: func(t *testing.T, db *gorm.DB) {
+				var list []TestIgnoreResource
+				err := db.Find(&list).Error
+				require.NoError(t, err)
+				// 不进行 tenant_id = 10 的水平过滤拦截，可跨租户查出全量 2 条记录
+				assert.Len(t, list, 2)
+			},
+		},
+		{
+			name:     "Ignore标注模型_业务租户跨租户更新_放行硬写限制",
+			tenantID: 10,
+			before:   seedData,
+			run: func(t *testing.T, db *gorm.DB) {
+				// 业务租户 10 去更新租户 20 的 ResourceB，正常完成且不受写屏障限制
+				res := db.Model(&TestIgnoreResource{}).Where("name = ?", "ResourceB").Update("name", "ResourceBUpdated")
+				require.NoError(t, res.Error)
+				assert.Equal(t, int64(1), res.RowsAffected)
+			},
+		},
+	}
+
+	runTenantTests(t, defaultModels, tests)
 }

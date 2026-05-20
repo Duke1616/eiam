@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
-	"github.com/Duke1616/eiam/pkg/gormx"
 	"github.com/ecodeclub/ekit/slice"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -77,7 +76,7 @@ type Tenant struct {
 // Membership 映射表：仅代表入驻契约，不存储动态授权。
 type Membership struct {
 	ID       int64 `gorm:"primaryKey;autoIncrement"`
-	TenantID int64 `gorm:"uniqueIndex:idx_tenant_user"`
+	TenantID int64 `gorm:"uniqueIndex:idx_tenant_user" eiam:"ignore"`
 	UserID   int64 `gorm:"uniqueIndex:idx_tenant_user"`
 	Ctime    int64 `gorm:"comment:'创建时间'"`
 }
@@ -95,17 +94,21 @@ func (d *TenantDAO) Create(ctx context.Context, t Tenant) (int64, error) {
 }
 
 func (d *TenantDAO) BatchCreate(ctx context.Context, ts []Tenant) ([]Tenant, error) {
+	if len(ts) == 0 {
+		return ts, nil
+	}
 	now := time.Now().UnixMilli()
 	for i := range ts {
 		ts[i].Ctime = now
 		ts[i].Utime = now
 	}
-	err := d.db.WithContext(ctx).Create(&ts).Error
+	// 升级为 CreateInBatches 分批保护
+	err := d.db.WithContext(ctx).CreateInBatches(&ts, 100).Error
 	return ts, err
 }
 
 func (d *TenantDAO) membershipDB(ctx context.Context) *gorm.DB {
-	return d.db.WithContext(ctx).Model(&Membership{}).Scopes(gormx.IgnoreTenant())
+	return d.db.WithContext(ctx).Model(&Membership{})
 }
 
 func (d *TenantDAO) CreateBind(ctx context.Context, m Membership) error {
@@ -116,13 +119,17 @@ func (d *TenantDAO) CreateBind(ctx context.Context, m Membership) error {
 }
 
 func (d *TenantDAO) BatchCreateBinds(ctx context.Context, ms []Membership) error {
+	if len(ms) == 0 {
+		return nil
+	}
 	now := time.Now().UnixMilli()
 	for i := range ms {
 		ms[i].Ctime = now
 	}
+	// 升级为 CreateInBatches 分批保护，抵御同步海量绑定记录过载
 	return d.membershipDB(ctx).Clauses(clause.OnConflict{
 		DoNothing: true,
-	}).Create(&ms).Error
+	}).CreateInBatches(&ms, 100).Error
 }
 
 func (d *TenantDAO) DeleteBind(ctx context.Context, userID int64) error {
@@ -133,13 +140,10 @@ func (d *TenantDAO) DeleteBind(ctx context.Context, userID int64) error {
 }
 
 func (d *TenantDAO) BatchDeleteBinds(ctx context.Context, userIDs []int64, tenantIDs []int64) error {
-	if len(tenantIDs) == 1 {
-		return d.membershipDB(ctx).Where("tenant_id = ? AND user_id IN ?", tenantIDs[0], userIDs).Delete(&Membership{}).Error
+	if len(userIDs) == 0 || len(tenantIDs) == 0 {
+		return nil
 	}
-	if len(userIDs) == 1 {
-		return d.membershipDB(ctx).Where("user_id = ? AND tenant_id IN ?", userIDs[0], tenantIDs).Delete(&Membership{}).Error
-	}
-	return nil
+	return d.membershipDB(ctx).Where("tenant_id IN ? AND user_id IN ?", tenantIDs, userIDs).Delete(&Membership{}).Error
 }
 
 func (d *TenantDAO) GetBind(ctx context.Context, userId int64) (Membership, error) {
@@ -227,7 +231,10 @@ func (d *TenantDAO) ListTenantIDsByUser(ctx context.Context, userId int64) ([]in
 
 func (d *TenantDAO) FindTenantsByIDs(ctx context.Context, ids []int64) ([]Tenant, error) {
 	var ts []Tenant
-	err := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Where("id IN ?", ids).Find(&ts).Error
+	if len(ids) == 0 {
+		return ts, nil
+	}
+	err := d.db.WithContext(ctx).Where("id IN ?", ids).Find(&ts).Error
 	return ts, err
 }
 
@@ -237,14 +244,8 @@ func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, ti
 		total int64
 	)
 
-	// 1. 构造内部关联子查询：获取该用户入驻该租户的时间
-	subQueryExpr := d.db.Model(&Membership{}).
-		Select("CAST(ctime AS SIGNED)").
-		Where("membership.tenant_id = tenant.id").
-		Where("membership.user_id = ?", userID)
-	// 2. 将子查询注入主查询：直接覆盖到 tenant 的 ctime 字段中
-	query := d.db.WithContext(ctx).Scopes(gormx.IgnoreTenant()).Model(&Tenant{}).
-		Select("*, (?) AS ctime", subQueryExpr)
+	// 1. 构造基础查询（剔除了复杂的子查询，用于纯粹统计总数）
+	baseQuery := d.db.WithContext(ctx).Model(&Tenant{})
 
 	// 构造子查询，用于过滤出该用户有关联记录的租户 ID
 	subQuery := d.db.WithContext(ctx).Model(&Membership{}).
@@ -258,22 +259,30 @@ func (d *TenantDAO) GetAttachedTenantsWithFilter(ctx context.Context, userID, ti
 		subQuery = subQuery.Where("tenant_id = ?", tid)
 	}
 
-	// 将子查询结果作为过滤条件
-	query = query.Where("id IN (?)", subQuery)
+	// 将子查询结果作为过滤条件注入
+	baseQuery = baseQuery.Where("id IN (?)", subQuery)
 
 	// 支持按租户名称或编码进行模糊搜索
 	if keyword != "" {
 		kw := "%" + keyword + "%"
-		query = query.Where("(name LIKE ? OR code LIKE ?)", kw, kw)
+		baseQuery = baseQuery.Where("(name LIKE ? OR code LIKE ?)", kw, kw)
 	}
 
-	err := query.Count(&total).Error
+	// 2. 进行 Count 统计。此时没有复杂的 Select 子查询干扰，能获得最佳的 MySQL 索引覆盖与执行效率
+	err := baseQuery.Count(&total).Error
 	if err != nil || total == 0 {
 		return nil, 0, err
 	}
 
-	// 按照“关联时间 (ctime)”倒序排列，确保用户最近加入的租户排在最前面
-	err = query.Offset(int(offset)).Limit(int(limit)).
+	// 3. 构造内部关联子查询：获取该用户入驻该租户的时间
+	subQueryExpr := d.db.Model(&Membership{}).
+		Select("CAST(ctime AS SIGNED)").
+		Where("membership.tenant_id = tenant.id").
+		Where("membership.user_id = ?", userID)
+
+	// 4. 将子查询结果注入 Select 字段，执行具体的分页与 Order 详情获取
+	err = baseQuery.Select("*, (?) AS ctime", subQueryExpr).
+		Offset(int(offset)).Limit(int(limit)).
 		Order("ctime DESC").Find(&ts).Error
 
 	return ts, total, err

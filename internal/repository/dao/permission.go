@@ -132,10 +132,11 @@ func (d *PermissionDAO) BatchInsert(ctx context.Context, perms []Permission) err
 		perms[i].Status = PermissionStatusActive
 	}
 
+	// 升级为 CreateInBatches 分批抗压
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "code"}},
 		DoUpdates: clause.AssignmentColumns([]string{"name", "group", "needs", "scope", "utime", "status"}),
-	}).Create(&perms).Error
+	}).CreateInBatches(perms, 100).Error
 }
 
 func (d *PermissionDAO) Delete(ctx context.Context, id int64) error {
@@ -164,10 +165,11 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 		return nil
 	}
 
+	// 升级为 CreateInBatches 分批保护
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 		DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
-	}).Create(&bindings).Error
+	}).CreateInBatches(bindings, 100).Error
 }
 
 func (d *PermissionDAO) GetBindingsByRes(ctx context.Context, resURN string) ([]PermissionBinding, error) {
@@ -184,6 +186,9 @@ func (d *PermissionDAO) ListBindingsByPerm(ctx context.Context, permId int64) ([
 
 func (d *PermissionDAO) ListBindingsByResURNs(ctx context.Context, resURNs []string) ([]PermissionBinding, error) {
 	var res []PermissionBinding
+	if len(resURNs) == 0 {
+		return res, nil
+	}
 	err := d.getDB(ctx).Where("resource_urn IN ?", resURNs).Find(&res).Error
 	return res, err
 }
@@ -196,10 +201,11 @@ func (d *PermissionDAO) SyncResourceBindings(ctx context.Context, resURNs []stri
 			}
 		}
 		if len(bindings) > 0 {
+			// 升级为 CreateInBatches 分批保护
 			return d.getDB(txCtx).Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 				DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
-			}).Create(&bindings).Error
+			}).CreateInBatches(bindings, 100).Error
 		}
 		return nil
 	})
@@ -236,6 +242,11 @@ func (d *PermissionDAO) ListCasbinRules(ctx context.Context, tid, offset, limit 
 }
 
 func (d *PermissionDAO) FindByActions(ctx context.Context, actions []string) ([]Permission, error) {
+	var res []Permission
+	if len(actions) == 0 {
+		return res, nil
+	}
+
 	db := d.getDB(ctx).Model(&Permission{})
 	query := d.getDB(ctx)
 
@@ -255,7 +266,6 @@ func (d *PermissionDAO) FindByActions(ctx context.Context, actions []string) ([]
 		db = db.Where("code IN ?", actions)
 	}
 
-	var res []Permission
 	err := db.Find(&res).Error
 	return res, err
 }
@@ -285,6 +295,9 @@ func (d *PermissionDAO) CountByService(ctx context.Context) ([]ServiceCount, err
 }
 
 func (d *PermissionDAO) DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error {
+	if service == "" {
+		return nil
+	}
 	if len(codes) == 0 {
 		return d.getDB(ctx).Where("service = ?", service).Delete(&Permission{}).Error
 	}

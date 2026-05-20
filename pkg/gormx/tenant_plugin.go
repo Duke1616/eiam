@@ -23,6 +23,7 @@ const (
 type SharedConfig struct {
 	IsShared     bool   // 是否为共享资源，允许跨租户或与系统租户共享
 	IsPrivate    bool   // 是否为纯私有资源，强制隔离
+	IsIgnore     bool   // 是否为忽略模型，免除多租户插件的一切拦截
 	Condition    string // 共享的附加 SQL 条件过滤表达式
 	ConditionSQL string // 预构建好的 SQL 查询子句，避免运行时动态拼接
 }
@@ -254,11 +255,13 @@ func (p *TenantPlugin) buildConditionSQL(conf SharedConfig) string {
 	return fmt.Sprintf("%s = ? OR %s = ?", p.tenantColumn, p.tenantColumn)
 }
 
-// parseEiamTag 解析 eiam 专属标签，支持 shared:condition 或 private 声明
+// parseEiamTag 解析 eiam 专属标签，支持 shared:condition, private 或 ignore 声明
 func (p *TenantPlugin) parseEiamTag(tag string) SharedConfig {
 	conf := SharedConfig{}
 	parts := strings.SplitN(tag, ":", 2)
 	switch parts[0] {
+	case "ignore":
+		conf.IsIgnore = true
 	case "shared":
 		conf.IsShared = true
 		if len(parts) > 1 {
@@ -284,7 +287,13 @@ func (p *TenantPlugin) shouldSkip(db *gorm.DB) bool {
 		}
 	}
 
-	return db.Statement.Schema == nil
+	if db.Statement.Schema == nil {
+		return true
+	}
+
+	// 如果实体标注了 eiam:"ignore" 标签，则多租户插件自动跳过对此表的一切处理
+	conf := p.getSharedConfig(db.Statement.Schema)
+	return conf.IsIgnore
 }
 
 // IgnoreTenant 获取 GORM 链式调用的 Option，用于临时提权，绕过数据多租户隔离

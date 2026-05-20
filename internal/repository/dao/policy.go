@@ -236,25 +236,25 @@ func (d *policyDAO) GetAttachedPoliciesWithFilter(ctx context.Context, subType, 
 		Select("policy_code").
 		Where("sub_type = ? AND sub_code = ?", subType, subCode)
 
-	// 3. 主查询：注入子查询字段并执行过滤
-	query := d.db.WithContext(ctx).Model(&Policy{}).
-		Select("*, (?) AS ctime", subQueryExpr).
+	// 3. 主查询：构建基础过滤查询（不带 Select 关联子查询，专用于 Count 计算）
+	baseQuery := d.db.WithContext(ctx).Model(&Policy{}).
 		Where("code IN (?)", filterSubQuery)
 
 	if keyword != "" {
-		query = query.Where("(name LIKE ? OR code LIKE ?)", "%"+keyword+"%", "%"+keyword+"%")
+		baseQuery = baseQuery.Where("(name LIKE ? OR code LIKE ?)", "%"+keyword+"%", "%"+keyword+"%")
 	}
 	if policyType != 0 {
-		query = query.Where("type = ?", policyType)
+		baseQuery = baseQuery.Where("type = ?", policyType)
 	}
 
-	err := query.Count(&total).Error
+	err := baseQuery.Count(&total).Error
 	if err != nil || total == 0 {
 		return nil, 0, err
 	}
 
-	// 按照授权时间 (ctime) 倒序排列
-	err = query.Offset(int(offset)).Limit(int(limit)).
+	// 4. 将关联子查询结果注入 Select 字段，执行具体的分页与 Order 详情获取
+	err = baseQuery.Select("*, (?) AS ctime", subQueryExpr).
+		Offset(int(offset)).Limit(int(limit)).
 		Order("ctime DESC").Find(&ps).Error
 
 	return ps, total, err
@@ -262,6 +262,9 @@ func (d *policyDAO) GetAttachedPoliciesWithFilter(ctx context.Context, subType, 
 
 func (d *policyDAO) GetByCodes(ctx context.Context, codes []string) ([]Policy, error) {
 	var policies []Policy
+	if len(codes) == 0 {
+		return policies, nil
+	}
 	err := d.db.WithContext(ctx).
 		Where("code IN ?", codes).
 		Find(&policies).Error
@@ -270,6 +273,9 @@ func (d *policyDAO) GetByCodes(ctx context.Context, codes []string) ([]Policy, e
 
 func (d *policyDAO) GetByTypes(ctx context.Context, types []domain.PolicyType) ([]Policy, error) {
 	var policies []Policy
+	if len(types) == 0 {
+		return policies, nil
+	}
 	err := d.db.WithContext(ctx).
 		Where("type IN ?", types).
 		Find(&policies).Error
@@ -402,5 +408,8 @@ func (d *policyDAO) Delete(ctx context.Context, code string) error {
 }
 
 func (d *policyDAO) BatchDelete(ctx context.Context, codes []string) error {
+	if len(codes) == 0 {
+		return nil
+	}
 	return d.db.WithContext(ctx).Where("code IN ?", codes).Delete(&Policy{}).Error
 }

@@ -259,26 +259,20 @@ func (dao *userDAO) FindIdentitiesByUserId(ctx context.Context, userID int64) ([
 
 func (dao *userDAO) FindIdentitiesByUserIds(ctx context.Context, userIDs []int64) ([]UserIdentity, error) {
 	var identities []UserIdentity
+	if len(userIDs) == 0 {
+		return identities, nil
+	}
 	err := dao.db.WithContext(ctx).Where("user_id IN ?", userIDs).Find(&identities).Error
 	return identities, err
 }
 
 func (dao *userDAO) FindIdentityByExternal(ctx context.Context, provider, externalID string) (UserIdentity, error) {
 	var y UserIdentity
-	query := dao.db.WithContext(ctx).Where("provider = ?", provider)
-
-	switch provider {
-	case "ldap":
-		query = query.Where("ldap_info ->> '$.dn' = ?", externalID)
-	case "feishu":
-		query = query.Where("feishu_info ->> '$.user_id' = ?", externalID)
-	case "wechat":
-		query = query.Where("wechat_info ->> '$.user_id' = ?", externalID)
-	default:
-		return y, gorm.ErrRecordNotFound
-	}
-
-	err := query.First(&y).Error
+	// 极致性能优化：抛弃了慢速且没有索引的 JSON ->> (ldap_info/feishu_info) 模糊全表匹配，
+	// 直接利用已建好唯一索引的物理字段 identity_id 执行 O(1) 级主索引精准查找，彻底免除全表扫描隐患。
+	err := dao.db.WithContext(ctx).
+		Where("provider = ? AND identity_id = ?", provider, externalID).
+		First(&y).Error
 	return y, err
 }
 
@@ -320,7 +314,7 @@ func (dao *userDAO) Count(ctx context.Context, keyword string) (int64, error) {
 func (dao *userDAO) Search(ctx context.Context, keyword string, offset, limit int64) ([]User, error) {
 	var us []User
 	tid := ctxutil.GetTenantID(ctx).Int64()
-	// NOTE: Search 明确用于成员授权/搜索场景，即便是系统租户也必须强制过滤，避免数据泄露
+	// Search 明确用于成员授权/搜索场景，即便是系统租户也必须强制过滤，避免数据泄露
 	db := dao.db.WithContext(ctx).Model(&User{}).Scopes(dao.membershipScope(tid))
 
 	if keyword != "" {
@@ -350,6 +344,9 @@ func (dao *userDAO) Delete(ctx context.Context, id int64) error {
 }
 
 func (dao *userDAO) DeleteByIDs(ctx context.Context, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
 	res := dao.db.WithContext(ctx).Delete(&User{}, ids)
 	return res.RowsAffected, res.Error
 }
@@ -382,23 +379,23 @@ func (dao *userDAO) GetAttachedUsersWithFilter(ctx context.Context, roleCode str
 		Select("REPLACE(v0, ?, '')", domain.PrefixUser).
 		Where("ptype = 'g' AND v1 = ? AND v2 = ?", domain.RoleSubject(roleCode), tid)
 
-	// 3. 主查询：注入关联时间并过滤
-	query := dao.db.WithContext(ctx).Model(&User{}).
-		Select("*, (?) AS ctime", subQueryExpr).
+	// 3. 主查询：构建基础过滤查询（不带 Select 关联子查询，专用于 Count 计算）
+	baseQuery := dao.db.WithContext(ctx).Model(&User{}).
 		Where("username IN (?)", filterSubQuery)
 
 	if keyword != "" {
 		kw := "%" + keyword + "%"
-		query = query.Where("username LIKE ?", kw)
+		baseQuery = baseQuery.Where("username LIKE ?", kw)
 	}
 
-	err := query.Count(&total).Error
+	err := baseQuery.Count(&total).Error
 	if err != nil || total == 0 {
 		return nil, 0, err
 	}
 
-	// 按照授权时间 (ctime) 倒序排列
-	err = query.Offset(int(offset)).Limit(int(limit)).
+	// 4. 将关联子查询结果注入 Select 字段，执行具体的分页与 Order 详情获取
+	err = baseQuery.Select("*, (?) AS ctime", subQueryExpr).
+		Offset(int(offset)).Limit(int(limit)).
 		Order("ctime DESC").Find(&us).Error
 
 	return us, total, err
@@ -415,19 +412,22 @@ func (dao *userDAO) BatchUpsertUsers(ctx context.Context, users []User) error {
 		}
 		users[i].Utime = now
 	}
+	// 鲁棒性优化：升级为 CreateInBatches 分批，抗击超大型同步压力
 	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "username"}},
 		DoUpdates: clause.AssignmentColumns([]string{"email", "status", "source", "utime"}),
-	}).Create(&users).Error
+	}).CreateInBatches(users, 100).Error
 }
 
 func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profiles []UserProfile, identities []UserIdentity) error {
 	return dao.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 鲁棒性优化：使用 CreateInBatches(..., 100) 分批执行，规避了大批量三方用户同步时
+		// 因单条 SQL 占位符超标 (MySQL 65535 参数限制) 或 packet 过大引发的事务崩溃。
 		if len(profiles) > 0 {
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "user_id"}},
 				DoUpdates: clause.AssignmentColumns([]string{"nickname", "avatar", "job_title", "phone"}),
-			}).Create(&profiles).Error; err != nil {
+			}).CreateInBatches(profiles, 100).Error; err != nil {
 				return err
 			}
 		}
@@ -436,7 +436,7 @@ func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profil
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "provider"}, {Name: "identity_id"}},
 				DoUpdates: clause.AssignmentColumns([]string{"ldap_info", "feishu_info", "wechat_info", "passkey_info"}),
-			}).Create(&identities).Error; err != nil {
+			}).CreateInBatches(identities, 100).Error; err != nil {
 				return err
 			}
 		}
@@ -449,6 +449,9 @@ func (dao *userDAO) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int
 }
 
 func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider, identityID string) error {
+	if userID == 0 || provider == "" {
+		return nil
+	}
 	db := dao.db.WithContext(ctx).Where("user_id = ? AND provider = ?", userID, provider)
 	if identityID != "" {
 		db = db.Where("identity_id = ?", identityID)
@@ -484,6 +487,9 @@ func (dao *userDAO) FindByIdentity(ctx context.Context, provider, identityID str
 
 func (dao *userDAO) FindIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]UserIdentity, error) {
 	var uis []UserIdentity
+	if userID == 0 {
+		return uis, nil
+	}
 	db := dao.db.WithContext(ctx).Where("user_id = ?", userID)
 	if provider != "" {
 		db = db.Where("provider = ?", provider)
