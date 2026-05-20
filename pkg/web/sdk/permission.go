@@ -107,11 +107,12 @@ func (s *SDK) CheckPolicy() gin.HandlerFunc {
 		}
 
 		// 3. 发起远程判定
+		path, method := ctx.FullPath(), ctx.Request.Method
 		var res apiResult[authorizeResult]
 		if err := s.callAPI(ctx, "/api/permission/check_policy", checkPolicyReq{
 			Service: info.Service,
-			Path:    ctx.FullPath(),
-			Method:  ctx.Request.Method,
+			Path:    path,
+			Method:  method,
 		}, &res); err != nil {
 			return
 		}
@@ -119,8 +120,8 @@ func (s *SDK) CheckPolicy() gin.HandlerFunc {
 		if !res.Data.Allowed {
 			s.logger.Warn("鉴权拒绝",
 				elog.String("service", info.Service),
-				elog.String("method", info.Method),
-				elog.String("path", ctx.FullPath()),
+				elog.String("method", method),
+				elog.String("path", path),
 				elog.String("reason", res.Data.Reason))
 			ctx.AbortWithStatus(http.StatusForbidden)
 			return

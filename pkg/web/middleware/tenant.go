@@ -19,6 +19,10 @@ import (
 //	builder := middleware.NewTenancyBuilder(sp)
 //	server.Use(builder.Build())
 //	// 路由级: WithTenantOverride / WithTenantSwitch 无需 builder，直接使用包级函数
+//
+// 工作模式:
+//  1. 优先复用上游 CheckLogin / CheckLoginMiddleware 已注入到 context 的租户信息（远程鉴权模式）
+//  2. 若 context 中无租户信息，用 session.Provider fallback（本地 JWT 模式）
 type TenancyBuilder struct {
 	sp     session.Provider
 	logger *elog.Component
@@ -35,30 +39,42 @@ func NewTenancyBuilder(sp session.Provider) *TenancyBuilder {
 // Build 构建全局租户身份注入中间件 (InjectIdentity)
 // 在登录校验之后、业务路由之前执行，是身份上下文的基础设施
 func (b *TenancyBuilder) Build() gin.HandlerFunc {
-	if b.sp == nil {
-		b.sp = session.DefaultProvider()
-	}
-
 	return func(ctx *gin.Context) {
-		gCtx := &ginx.Context{Context: ctx}
-		sess, err := b.sp.Get(gCtx)
-		if err != nil {
-			gCtx.AbortWithStatus(http.StatusForbidden)
-			b.logger.Debug("用户未登录", elog.FieldErr(err))
+		var uid, currentTid int64
+
+		// 1. 优先复用上游 CheckLogin / CheckLoginMiddleware 已注入的信息
+		uid = ctxutil.GetUserID(ctx.Request.Context()).Int64()
+		currentTid = ctxutil.GetTenantID(ctx.Request.Context()).Int64()
+
+		// 2. context 中没有租户信息，用 session.Provider fallback（本地 JWT 模式）
+		if uid == 0 && b.sp != nil {
+			gCtx := &ginx.Context{Context: ctx}
+			sess, err := b.sp.Get(gCtx)
+			if err != nil {
+				// 如果没有 Session（如公开接口），直接跳过
+				ctx.Next()
+				return
+			}
+
+			claims := sess.Claims()
+			uid = claims.Uid
+			currentTid, _ = claims.Get("tenant_id").AsInt64()
+		}
+
+		// 没有任何租户信息，跳过
+		if uid == 0 && currentTid == 0 {
+			ctx.Next()
 			return
 		}
 
-		claims := sess.Claims()
-		currentTid, _ := claims.Get("tenant_id").AsInt64()
-
-		// 注入 context.WithValue (仅单通道)
+		// 3. 注入上下文
 		// Gin Engine 已开启 ContextWithFallback=true，handler 通过 ctx.Context.Value() 可直接读取
 		//
 		// 语义区分：
 		//   tenant_id        = 执行租户 (操作谁的数据 → GORM 数据隔离)
 		//   origin_tenant_id = 身份租户 (你是谁 → 鉴权校验)
 		// 注入时两者相同；后续 WithTenantOverride 只覆写 tenant_id，origin_tenant_id 保留会话真实身份
-		newCtx := ctxutil.WithUserID(ctx.Request.Context(), claims.Uid)
+		newCtx := ctxutil.WithUserID(ctx.Request.Context(), uid)
 		newCtx = ctxutil.WithTenantID(newCtx, currentTid)
 		newCtx = ctxutil.WithOriginTenantID(newCtx, currentTid)
 		ctx.Request = ctx.Request.WithContext(newCtx)
@@ -73,7 +89,6 @@ func (b *TenancyBuilder) Build() gin.HandlerFunc {
 // 仅系统管理员 (tenant_id=1) 允许跨租户操作，普通用户将被安全拦截
 //
 // 适用场景：超管在系统空间下管理其他租户的数据 (如查租户成员、管理角色等)
-// 替代原全局 GuardCrossTenant 对非白名单路由的拦截逻辑
 //
 // 用法:
 //
@@ -117,7 +132,6 @@ func WithTenantOverride(h gin.HandlerFunc) gin.HandlerFunc {
 // 不做超管校验，handler 层负责校验用户是否属于目标租户 (如 CheckUserTenantAccess)
 //
 // 适用场景：租户切换路由，普通用户也需要切换自己的租户空间
-// 替代原全局 GuardCrossTenant 对 AllowCrossTenant 白名单路由的放行逻辑
 //
 // 用法:
 //
