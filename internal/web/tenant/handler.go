@@ -48,9 +48,9 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 
 	// 【核心：租户上下文切换】
 	// 跨租户切换需要特殊放行中间件拦截
-	g.POST("/switch", middleware.WithTenantSwitch(h.Capability("切换租户空间", "switch").
+	g.POST("/switch", h.Capability("切换租户空间", "switch").
 		AllowCrossTenant().Scope(capability.ScopeTenant).NoSync().
-		Handle(ginx.W(h.SwitchTenant))),
+		Handle(middleware.WTS(h.SwitchTenant)),
 	)
 }
 

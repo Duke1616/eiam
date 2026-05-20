@@ -174,3 +174,33 @@ func extractTargetTid(ctx *gin.Context) int64 {
 	}
 	return tid
 }
+
+// WTO 封装 ginx.W，自动注入 WithTenantOverride 中间件拦截逻辑 (Without Request + Tenant Override)
+func WTO(h func(*ginx.Context) (ginx.Result, error)) gin.HandlerFunc {
+	return WithTenantOverride(ginx.W(h))
+}
+
+// BTO 封装 ginx.B，自动注入 WithTenantOverride 中间件拦截逻辑 (Bind + Tenant Override)
+func BTO[T any](h func(*ginx.Context, T) (ginx.Result, error)) gin.HandlerFunc {
+	return WithTenantOverride(ginx.B(h))
+}
+
+// BSTO 封装 ginx.BS，自动注入 WithTenantOverride 中间件拦截逻辑 (Bind + Session + Tenant Override)
+func BSTO[T any](h func(*ginx.Context, T, session.Session) (ginx.Result, error)) gin.HandlerFunc {
+	return WithTenantOverride(ginx.BS(h))
+}
+
+// WTS 封装 ginx.W，自动注入 WithTenantSwitch 中间件拦截逻辑 (Without Request + Tenant Switch)
+func WTS(h func(*ginx.Context) (ginx.Result, error)) gin.HandlerFunc {
+	return WithTenantSwitch(ginx.W(h))
+}
+
+// BTS 封装 ginx.B，自动注入 WithTenantSwitch 中间件拦截逻辑 (Bind + Tenant Switch)
+func BTS[T any](h func(*ginx.Context, T) (ginx.Result, error)) gin.HandlerFunc {
+	return WithTenantSwitch(ginx.B(h))
+}
+
+// BSTS 封装 ginx.BS，自动注入 WithTenantSwitch 中间件拦截逻辑 (Bind + Session + Tenant Switch)
+func BSTS[T any](h func(*ginx.Context, T, session.Session) (ginx.Result, error)) gin.HandlerFunc {
+	return WithTenantSwitch(ginx.BS(h))
+}
