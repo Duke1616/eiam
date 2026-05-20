@@ -11,6 +11,9 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 )
 
+// ActiveTenantHeaderKey 代表当前正在被操作或切换的激活租户 ID 标识
+const ActiveTenantHeaderKey = "X-Active-Tenant-ID"
+
 // TenancyBuilder 租户中间件构建器，封装 session.Provider 和 logger
 // IOC 层通过 NewTenancyBuilder(sp).Build() 注册全局中间件
 //
@@ -161,9 +164,9 @@ func WithTenantSwitch(h gin.HandlerFunc) gin.HandlerFunc {
 }
 
 // extractTargetTid 从请求中提取目标租户 ID
-// 仅从 X-Tenant-ID Header 读取
+// 仅从 X-Active-Tenant-ID Header 读取
 func extractTargetTid(ctx *gin.Context) int64 {
-	val := ctx.GetHeader("X-Tenant-ID")
+	val := ctx.GetHeader(ActiveTenantHeaderKey)
 
 	if val == "" {
 		return 0

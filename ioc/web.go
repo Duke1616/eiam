@@ -2,7 +2,6 @@ package ioc
 
 import (
 	"net"
-	"time"
 
 	"github.com/Duke1616/eiam/internal/pkg/middleware"
 	"github.com/Duke1616/eiam/internal/service/permission"
@@ -16,10 +15,7 @@ import (
 	"github.com/Duke1616/eiam/internal/web/user"
 	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx/session"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/gotomicro/ego/core/econf"
-	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/server/egin"
 )
 
@@ -75,41 +71,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 
 func InitGinMiddlewares() []gin.HandlerFunc {
 	return []gin.HandlerFunc{
-		corsHdl(),
-		accessLogger(),
-	}
-}
-
-func corsHdl() gin.HandlerFunc {
-	return cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization", "X-Bind-Token", "X-Tenant-ID"},
-		ExposeHeaders:    []string{"x-jwt-token", "x-refresh-token"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	})
-}
-
-// accessLogger 自定义 access 日志中间件
-func accessLogger() gin.HandlerFunc {
-	// 关闭默认的日志输出
-	econf.Set("server.egin.enableAccessInterceptor", false)
-
-	// ego DefaultLogger 针对框架内部做了 caller skip 校准，直接 from 用户代码调用需减一层
-	logger := elog.DefaultLogger.With(elog.FieldComponentName("access")).WithCallerSkip(-1)
-	return func(ctx *gin.Context) {
-		beg := time.Now()
-		ctx.Next()
-		cost := time.Since(beg)
-
-		fields := []elog.Field{
-			elog.FieldMethod(ctx.Request.Method + "." + ctx.FullPath()),
-			elog.FieldAddr(ctx.Request.URL.RequestURI()),
-			elog.FieldCost(cost),
-			elog.FieldCode(int32(ctx.Writer.Status())),
-		}
-
-		logger.Info("access", fields...)
+		pkgmiddleware.NewCorsBuilder().Build(),
+		pkgmiddleware.AccessLogger(),
 	}
 }

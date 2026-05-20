@@ -65,6 +65,7 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	g.POST("/signup", ginx.B[SignupRequest](h.Signup))
 	g.POST("/ldap/login", ginx.B[LoginRequest](h.LoginLdap))
 	g.POST("/system/login", ginx.B[LoginRequest](h.LoginSystem))
+	g.POST("/bind/confirm", ginx.B[BindConfirmRequest](h.BindConfirm))
 
 	// OIDC 授权跳转：未登录用户触发，不需要登录态
 	g.GET("/oidc/render", ginx.W(h.OIDCAuthURL))
@@ -204,12 +205,26 @@ func (h *Handler) executeLogin(ctx *ginx.Context, provider, username, password s
 		return ErrUnauthorized, err
 	}
 
-	// 优雅地处理绑定逻辑：从 Header 中获取 X-Bind-Token
-	if bindToken := ctx.GetHeader("X-Bind-Token"); bindToken != "" {
-		_ = h.userSvc.ConsumeBindToken(ctx.Request.Context(), result.User.ID, bindToken)
-		h.logger.Info("登录时自动完成第三方身份绑定", elog.Int64("uid", result.User.ID))
+	return h.handleLoginResult(ctx, result)
+}
+
+// BindConfirm 接收显式的账户绑定确认请求，保证常规登录流程的职责纯粹与高安全性
+func (h *Handler) BindConfirm(ctx *ginx.Context, req BindConfirmRequest) (ginx.Result, error) {
+	// 1. 验证常规系统身份登录，确保密码匹配
+	result, err := h.userSvc.Login(ctx.Request.Context(), "local", req.Username, req.Password)
+	if err != nil {
+		return ErrUnauthorized, err
 	}
 
+	// 2. 验证成功后，消费绑定令牌完成外部账号关联
+	err = h.userSvc.ConsumeBindToken(ctx.Request.Context(), result.User.ID, req.BindToken)
+	if err != nil {
+		return ErrBindFailed, err
+	}
+
+	h.logger.Info("用户显式确认并自动完成第三方身份绑定", elog.Int64("uid", result.User.ID))
+
+	// 3. 统一签发 Session
 	return h.handleLoginResult(ctx, result)
 }
 

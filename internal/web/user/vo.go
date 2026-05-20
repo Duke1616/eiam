@@ -26,6 +26,13 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// BindConfirmRequest 账号绑定确认请求
+type BindConfirmRequest struct {
+	Username  string `json:"username" binding:"required"`
+	Password  string `json:"password" binding:"required"`
+	BindToken string `json:"bind_token" binding:"required"`
+}
+
 // User 用户展示对象
 type User struct {
 	ID          int64  `json:"id"`

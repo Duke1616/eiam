@@ -37,4 +37,7 @@ var (
 
 	// OIDC 授权错误
 	ErrOIDCDenied = ginx.Result{Code: 4010301, Msg: "OIDC 授权被拒绝"}
+
+	// ErrBindFailed 绑定类错误
+	ErrBindFailed = ginx.Result{Code: 4010601, Msg: "外部身份绑定失败，令牌可能已失效"}
 )
