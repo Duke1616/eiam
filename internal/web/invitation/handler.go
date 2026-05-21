@@ -44,7 +44,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 	g.POST("/create", h.Capability("创建邀请", "add").
 		Needs("iam:role:view").
-		Handle(ginx.B[CreateInvitationReq](h.CreateInvitation)),
+		Handle(middleware.BTO[CreateInvitationReq](h.CreateInvitation)),
 	)
 	g.POST("/list", h.Capability("邀请列表", "view").
 		Handle(middleware.BTO[Page](h.ListInvitations)),

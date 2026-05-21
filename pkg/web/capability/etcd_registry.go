@@ -43,7 +43,6 @@ func NewEtcdRegistry(client *clientv3.Client, ttl int) Registry {
 	}
 }
 
-// Sync 执行资产同步 (支持幂等调用与动态数据更新)
 func (r *etcdRegistry) Sync(ctx context.Context, req SyncRequest) error {
 	service := req.Service
 
@@ -54,10 +53,37 @@ func (r *etcdRegistry) Sync(ctx context.Context, req SyncRequest) error {
 	ctrl := actual.(*registrationController)
 
 	if loaded {
-		// 2. 如果已存在，仅更新数据（Controller 内部循环会自动感知变化）
+		// 2. 如果已存在，更新数据并比较哈希值
 		ctrl.mu.Lock()
+		oldHash := (&ctrl.req).Hash()
+		newHash := (&req).Hash()
 		ctrl.req = req
 		ctrl.mu.Unlock()
+
+		// 如果资产哈希发生变化（说明有新的权限、API或 code 码变更），
+		// 此时旧的控制器很有可能正挂起在 Leader 维持的 select 中（executeLeaderRegistration 第五步）而无法感知。
+		// 我们必须主动 cancel 终止旧控制器，并为该服务建立并启动全新的控制器，以秒级执行对账。
+		if oldHash != newHash {
+			r.l.Info("EIAM SDK 检测到运行中服务的资产哈希变更，正在重构控制器协程...",
+				elog.String("service", service),
+				elog.String("oldHash", oldHash),
+				elog.String("newHash", newHash))
+
+			if ctrl.cancel != nil {
+				ctrl.cancel()
+			}
+
+			// 重新构建一个全新的控制器实例
+			cCtx, cancel := context.WithCancel(context.Background())
+			newCtrl := &registrationController{
+				req:    req,
+				cancel: cancel,
+			}
+			r.controllers.Store(service, newCtrl)
+
+			// 异步启动全新的注册控制器以秒级重新竞选 Leader 并执行全量对账
+			go r.runRegistrationController(cCtx, newCtrl)
+		}
 		return nil
 	}
 

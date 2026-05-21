@@ -14,29 +14,29 @@ import (
 	"github.com/spf13/viper"
 )
 
-type httpRegistry struct {
+type httpReporter struct {
 	endpoint string
 	client   *http.Client
 	l        *elog.Component
 
-	// 简化为单个服务的注册控制器
+	// 简化为单个服务的上报控制器
 	mu   sync.RWMutex
 	req  SyncRequest
 	once sync.Once
 }
 
-// NewHttpRegistry 从 viper 配置中自动读取地址并构建注册器
-func NewHttpRegistry() Registry {
+// NewHttpReporter 从 viper 配置中自动读取地址并构建上报器
+func NewHttpReporter() Registry {
 	url := viper.GetString("policy.discovery_url")
 	if url == "" {
 		// 如果未配置，默认走本地或者报错
 		url = "http://127.0.0.1:8000"
 	}
-	return NewHttpRegistryWithURL(url)
+	return NewHttpReporterWithURL(url)
 }
 
-// NewHttpRegistryWithURL 显式传入地址构建注册器
-func NewHttpRegistryWithURL(endpoint string) Registry {
+// NewHttpReporterWithURL 显式传入地址构建上报器
+func NewHttpReporterWithURL(endpoint string) Registry {
 	endpoint = strings.TrimRight(endpoint, "/")
 	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
 		endpoint = "http://" + endpoint
@@ -46,7 +46,7 @@ func NewHttpRegistryWithURL(endpoint string) Registry {
 		endpoint = endpoint + "/api/v1/discovery/sync"
 	}
 
-	return &httpRegistry{
+	return &httpReporter{
 		endpoint: endpoint,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
@@ -55,13 +55,13 @@ func NewHttpRegistryWithURL(endpoint string) Registry {
 	}
 }
 
-func (r *httpRegistry) Sync(ctx context.Context, req SyncRequest) error {
+func (r *httpReporter) Sync(ctx context.Context, req SyncRequest) error {
 	// 1. 更新当前要同步的数据
 	r.mu.Lock()
 	r.req = req
 	r.mu.Unlock()
 
-	// 2. 确保心跳协程只启动一次
+	// 2. 确保上报协程只启动一次
 	r.once.Do(func() {
 		go r.runRegistrationLoop()
 	})
@@ -69,7 +69,7 @@ func (r *httpRegistry) Sync(ctx context.Context, req SyncRequest) error {
 	return nil
 }
 
-func (r *httpRegistry) runRegistrationLoop() {
+func (r *httpReporter) runRegistrationLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -83,7 +83,7 @@ func (r *httpRegistry) runRegistrationLoop() {
 		r.mu.RUnlock()
 
 		if err := r.doPost(ctx, req); err != nil {
-			r.l.Error("EIAM SDK HTTP 资产报备异常",
+			r.l.Error("EIAM SDK HTTP 资产上报异常",
 				elog.String("service", req.Service),
 				elog.FieldErr(err))
 		}
@@ -92,7 +92,7 @@ func (r *httpRegistry) runRegistrationLoop() {
 	}
 }
 
-func (r *httpRegistry) doPost(ctx context.Context, req SyncRequest) error {
+func (r *httpReporter) doPost(ctx context.Context, req SyncRequest) error {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return err
@@ -115,4 +115,20 @@ func (r *httpRegistry) doPost(ctx context.Context, req SyncRequest) error {
 	}
 
 	return nil
+}
+
+// ==========================================
+// 以下为向后兼容保留的废弃 (Deprecated) 别名函数
+// ==========================================
+
+// NewHttpRegistry 已废弃：请使用 NewHttpReporter 替代
+// @deprecated
+func NewHttpRegistry() Registry {
+	return NewHttpReporter()
+}
+
+// NewHttpRegistryWithURL 已废弃：请使用 NewHttpReporterWithURL 替代
+// @deprecated
+func NewHttpRegistryWithURL(endpoint string) Registry {
+	return NewHttpReporterWithURL(endpoint)
 }

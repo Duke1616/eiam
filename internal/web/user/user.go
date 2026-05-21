@@ -358,13 +358,11 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 
 	// 并发获取用户信息和租户列表
 	eg.Go(func() error {
-		var err error
 		u, err = h.userSvc.GetById(ctx.Request.Context(), uid)
 		return err
 	})
 
 	eg.Go(func() error {
-		var err error
 		tenants, err = h.tenantSvc.GetTenantsByUserId(ctx.Request.Context(), uid)
 		return err
 	})
