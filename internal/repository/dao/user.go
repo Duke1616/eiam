@@ -25,6 +25,8 @@ type IUserDAO interface {
 	FindByIds(ctx context.Context, ids []int64) ([]User, error)
 	// FindByUsername 根据用户名获取基础用户对象
 	FindByUsername(ctx context.Context, username string) (User, error)
+	// FindByUsernames 根据用户名获取基础用户对象
+	FindByUsernames(ctx context.Context, usernames []string) ([]User, error)
 	// FindByEmail 根据邮箱获取基础用户对象
 	FindByEmail(ctx context.Context, email string) (User, error)
 
@@ -200,6 +202,12 @@ func (dao *userDAO) FindByIds(ctx context.Context, ids []int64) ([]User, error) 
 		return users, nil
 	}
 	err := dao.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error
+	return users, err
+}
+
+func (dao *userDAO) FindByUsernames(ctx context.Context, usernames []string) ([]User, error) {
+	var users []User
+	err := dao.db.WithContext(ctx).Where("username IN ?", usernames).Find(&users).Error
 	return users, err
 }
 

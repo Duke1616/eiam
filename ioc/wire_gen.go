@@ -7,6 +7,7 @@
 package ioc
 
 import (
+	"github.com/Duke1616/eiam/internal/grpc"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
@@ -93,10 +94,13 @@ func InitApp() (*App, error) {
 	iInvitationService := invitation.NewInvitationService(iInvitationRepository, iTenantRepository, iPermissionService, iUserService)
 	invitationHandler := invitation2.NewHandler(iInvitationService, provider)
 	clientv3Client := InitEtcd()
-	registry := InitRegistry(clientv3Client)
+	registry := InitCapabilityRegistry(clientv3Client)
 	discoveryHandler := discovery.NewHandler(registry)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, identity_sourceHandler, invitationHandler, discoveryHandler, tenancyBuilder, iPermissionService)
+	registryRegistry := InitRegistry(clientv3Client)
+	userServiceServer := grpc.NewUserServer(iUserService)
+	server := InitGrpcServer(registryRegistry, userServiceServer)
 	engine := ingestion.NewEngine(iPermissionRepository, iResourceRepository, iServiceRepository)
 	iInitializer := resource.NewResourceInitializer(engine, registry)
 	v3 := InitProviders()
@@ -105,6 +109,7 @@ func InitApp() (*App, error) {
 	v4 := InitTasks(worker)
 	app := &App{
 		Web:       component,
+		Server:    server,
 		Init:      iInitializer,
 		Providers: v3,
 		Tasks:     v4,
@@ -113,8 +118,6 @@ func InitApp() (*App, error) {
 }
 
 // wire.go:
-
-var webSet = wire.NewSet(user2.NewUserHandler, policy2.NewHandler, tenant2.NewHandler, permission2.NewHandler, role2.NewHandler, identity_source.NewHandler, invitation2.NewHandler, discovery.NewHandler)
 
 var BaseSet = wire.NewSet(
 	InitDB,
@@ -126,6 +129,7 @@ var BaseSet = wire.NewSet(
 	InitEtcd,
 	InitDLock,
 	InitRegistry,
+	InitCapabilityRegistry,
 
 	InitRedisSearch,
 	InitCredentialProviders,

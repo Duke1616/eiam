@@ -25,6 +25,8 @@ type IUserRepository interface {
 	FindByIds(ctx context.Context, ids []int64) ([]domain.User, error)
 	// FindByUsername 根据用户名查找用户
 	FindByUsername(ctx context.Context, username string) (domain.User, error)
+	// FindByUsernames 根据用户名查找用户
+	FindByUsernames(ctx context.Context, usernames []string) ([]domain.User, error)
 	// FindByEmail 根据邮箱查找用户
 	FindByEmail(ctx context.Context, email string) (domain.User, error)
 
@@ -137,6 +139,14 @@ func (repo *userRepository) FindByUsername(ctx context.Context, username string)
 		return domain.User{}, err
 	}
 	return repo.fullHydration(ctx, u)
+}
+
+func (repo *userRepository) FindByUsernames(ctx context.Context, usernames []string) ([]domain.User, error) {
+	users, err := repo.dao.FindByUsernames(ctx, usernames)
+	if err != nil {
+		return nil, err
+	}
+	return repo.batchHydration(ctx, users)
 }
 
 func (repo *userRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {

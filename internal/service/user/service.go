@@ -34,6 +34,9 @@ type IUserService interface {
 	// GetByUsername 根据用户名获取用户信息
 	GetByUsername(ctx context.Context, username string) (domain.User, error)
 
+	// GetByUsernames 根据用户名获取用户信息
+	GetByUsernames(ctx context.Context, usernames []string) ([]domain.User, error)
+
 	// SwitchTenant 切换当前激活的租户空间
 	SwitchTenant(ctx context.Context, uid int64, targetTenantID int64) error
 	// Invite 邀请用户进入系统
@@ -97,6 +100,10 @@ type userService struct {
 	idsSvc              idsource.IService
 	credentialProviders map[string]domain.CredentialProvider
 	cm                  *cryptox.CryptoManager
+}
+
+func (s *userService) GetByUsernames(ctx context.Context, usernames []string) ([]domain.User, error) {
+	return s.repo.FindByUsernames(ctx, usernames)
 }
 
 func (s *userService) GetByIDs(ctx context.Context, ids []int64) ([]domain.User, error) {
@@ -167,9 +174,9 @@ func (s *userService) Signup(ctx context.Context, u domain.User) (int64, error) 
 			return 0, err
 		}
 
-		hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
-		if err != nil {
-			return 0, err
+		hash, err1 := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+		if err1 != nil {
+			return 0, err1
 		}
 		u.Password = string(hash)
 	}

@@ -3,6 +3,7 @@
 package ioc
 
 import (
+	"github.com/Duke1616/eiam/internal/grpc"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
@@ -31,17 +32,6 @@ import (
 	"github.com/google/wire"
 )
 
-var webSet = wire.NewSet(
-	userhdl.NewUserHandler,
-	policy.NewHandler,
-	tenanthdl.NewHandler,
-	permissionhdl.NewHandler,
-	rolehdl.NewHandler,
-	idhdl.NewHandler,
-	invitationhdl.NewHandler,
-	discoveryhdl.NewHandler,
-)
-
 var BaseSet = wire.NewSet(
 	InitDB,
 	InitRedis,
@@ -52,6 +42,7 @@ var BaseSet = wire.NewSet(
 	InitEtcd,
 	InitDLock,
 	InitRegistry,
+	InitCapabilityRegistry,
 
 	// LDAP 基础设施
 	InitRedisSearch,
@@ -135,6 +126,10 @@ func InitApp() (*App, error) {
 		InitGinMiddlewares,
 		middleware.NewTenancyBuilder,
 		InitGinWebServer,
+
+		// GRPC Server
+		grpc.NewUserServer,
+		InitGrpcServer,
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

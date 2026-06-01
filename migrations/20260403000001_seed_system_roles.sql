@@ -30,18 +30,26 @@ INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`, `v3`)
 VALUES ('g', 'user:admin', 'role:super_admin', '1', FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`), `v3` = VALUES(`v3`);
 
+-- 授予 admin 用户在租户 2 中的 admin 角色
+INSERT INTO `casbin_rule` (`ptype`, `v0`, `v1`, `v2`, `v3`)
+VALUES ('g', 'user:admin', 'role:admin', '2', FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `v2` = VALUES(`v2`), `v3` = VALUES(`v3`);
+
 -- 初始化超级管理员的默认治理空间 (物理 ID 1)
 INSERT INTO `tenant` (`id`, `name`, `code`, `domain`, `status`, `ctime`, `utime`)
 VALUES (1, '系统根管理空间', 'system-root', 'localhost', 1,
+        FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000)),
+       (2, '默认租户空间', 'default-tenant', 'localhost', 1,
         FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `code` = VALUES(`code`), `utime` = VALUES(`utime`);
 
 
 -- 将超级管理员 admin 入驻到该空间中
--- 使得 admin 登录后能默认拥有 ID 为 1 的上下文
+-- 使得 admin 登录后能默认拥有 ID 为 1 的上下文，且可以访问租户 2
 INSERT INTO `membership` (`tenant_id`, `user_id`, `ctime`)
-VALUES (1, 1, FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
-ON DUPLICATE KEY UPDATE `tenant_id` = VALUES(`tenant_id`);
+VALUES (1, 1, FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000)),
+       (2, 1, FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `ctime` = VALUES(`ctime`);
 
 -- 初始化 admin 用户的个人名片（UserProfile）
 INSERT INTO `user_profile` (`id`, `user_id`, `nickname`, `avatar`, `job_title`, `phone`)
@@ -62,9 +70,10 @@ DELETE FROM `role` WHERE `tenant_id` = 1 AND `code` IN ('super_admin', 'admin');
 DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'role:admin' AND `v1` = 'role:super_admin' AND `v2` = '1';
 DELETE FROM `user` WHERE `username` = 'admin';
 DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'user:admin' AND `v1` = 'role:super_admin' AND `v2` = '1';
-DELETE FROM `tenant` WHERE `id` = 1;
+DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'user:admin' AND `v1` = 'role:admin' AND `v2` = '2';
+DELETE FROM `tenant` WHERE `id` IN (1, 2);
 
-DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` = 1;
+DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` IN (1, 2);
 DELETE FROM `user_profile` WHERE `user_id` = 1;
 DELETE FROM `identity_source` WHERE `id` = 1;
 

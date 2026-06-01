@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package eiam.user.v1;
+import "google/protobuf/timestamp.proto";
+
+option go_package = "eiam/user/v1;user";
+
+message User {
+  // 用户ID
+  int64 id = 1;
+  // 用户名
+  string username  = 2;
+  // 显示名称
+  string display_name  = 3;
+  // 飞书用户ID
+  string lark_user_id = 4;
+  // 企业微信用户ID
+  string wechat_user_id = 5;
+  // 用户邮箱
+  string email = 6;
+  // 用户手机号
+  string phone = 7;
+  // 部门ID
+  int64 department_id = 8;
+}
+
+// 错误代码枚举定义
+enum ErrorCode {
+  // 未指定错误码
+  ERROR_CODE_UNSPECIFIED = 0;
+  // 未找到指定用户
+  USER_NOT_FOUND = 1;
+  // 请求参数无效
+  INVALID_PARAMETER = 2;
+}
+
+// 通过用户ID查询单个用户请求
+message QueryByIdReq {
+  int64 id = 1;
+}
+
+// 通过用户名批量查询用户请求
+message QueryByUsernamesReq {
+  repeated string usernames = 1;
+}
+
+// 通过用户ID批量查询用户请求
+message QueryByIdsReq {
+  repeated int64 ids = 1;
+}
+
+// 通过用户ID查询单个用户响应
+message QueryUserResp {
+  User user = 1;
+  ErrorCode error_code = 2;
+  string error_message = 3;
+}
+
+// 查询批量用户响应
+message QueryUsersResp {
+  repeated User users = 1;
+  ErrorCode error_code = 2;
+  string error_message = 3;
+}
+
+// 用户服务定义
+service UserService {
+  // 通过用户ID查询单个用户信息
+  rpc QueryById (QueryByIdReq) returns (QueryUserResp);
+
+  // 通过用户名批量查询用户信息
+  rpc QueryByUsernames (QueryByUsernamesReq) returns (QueryUsersResp);
+
+  // 通过用户ID批量查询用户信息
+  rpc QueryByIds (QueryByIdsReq) returns (QueryUsersResp);
+}
