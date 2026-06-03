@@ -92,7 +92,9 @@ type User struct {
 	// 用户手机号
 	Phone string `protobuf:"bytes,7,opt,name=phone,proto3" json:"phone,omitempty"`
 	// 部门ID
-	DepartmentId  int64 `protobuf:"varint,8,opt,name=department_id,json=departmentId,proto3" json:"department_id,omitempty"`
+	DepartmentId int64 `protobuf:"varint,8,opt,name=department_id,json=departmentId,proto3" json:"department_id,omitempty"`
+	// 是否为 admin 角色绑定
+	IsAdmin       bool `protobuf:"varint,9,opt,name=is_admin,json=isAdmin,proto3" json:"is_admin,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -181,6 +183,13 @@ func (x *User) GetDepartmentId() int64 {
 		return x.DepartmentId
 	}
 	return 0
+}
+
+func (x *User) GetIsAdmin() bool {
+	if x != nil {
+		return x.IsAdmin
+	}
+	return false
 }
 
 // 通过用户ID查询单个用户请求
@@ -444,7 +453,7 @@ var File_eiam_user_v1_user_proto protoreflect.FileDescriptor
 
 const file_eiam_user_v1_user_proto_rawDesc = "" +
 	"\n" +
-	"\x17eiam/user/v1/user.proto\x12\feiam.user.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xee\x01\n" +
+	"\x17eiam/user/v1/user.proto\x12\feiam.user.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x89\x02\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12!\n" +
@@ -454,7 +463,8 @@ const file_eiam_user_v1_user_proto_rawDesc = "" +
 	"\x0ewechat_user_id\x18\x05 \x01(\tR\fwechatUserId\x12\x14\n" +
 	"\x05email\x18\x06 \x01(\tR\x05email\x12\x14\n" +
 	"\x05phone\x18\a \x01(\tR\x05phone\x12#\n" +
-	"\rdepartment_id\x18\b \x01(\x03R\fdepartmentId\"\x1e\n" +
+	"\rdepartment_id\x18\b \x01(\x03R\fdepartmentId\x12\x19\n" +
+	"\bis_admin\x18\t \x01(\bR\aisAdmin\"\x1e\n" +
 	"\fQueryByIdReq\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"3\n" +
 	"\x13QueryByUsernamesReq\x12\x1c\n" +

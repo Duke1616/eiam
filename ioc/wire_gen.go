@@ -99,7 +99,7 @@ func InitApp() (*App, error) {
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, identity_sourceHandler, invitationHandler, discoveryHandler, tenancyBuilder, iPermissionService)
 	registryRegistry := InitRegistry(clientv3Client)
-	userServiceServer := grpc.NewUserServer(iUserService)
+	userServiceServer := grpc.NewUserServer(iUserService, iPermissionService)
 	server := InitGrpcServer(registryRegistry, userServiceServer)
 	engine := ingestion.NewEngine(iPermissionRepository, iResourceRepository, iServiceRepository)
 	iInitializer := resource.NewResourceInitializer(engine, registry)

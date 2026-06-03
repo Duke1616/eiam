@@ -105,9 +105,9 @@ func (s *MultiTenancySuite) TestCheckAPI_TenancyMatrix() {
 	}
 
 	testcases := []struct {
-		name     string
-		setup    func(ctx context.Context) context.Context // 返回测试执行时的 Context
-		request  request
+		name        string
+		setup       func(ctx context.Context) context.Context // 返回测试执行时的 Context
+		request     request
 		wantAllowed bool
 	}{
 		{
@@ -129,7 +129,7 @@ func (s *MultiTenancySuite) TestCheckAPI_TenancyMatrix() {
 				_, _ = s.permSvc.AssignRoleToUser(tCtx, "admin_a", "admin")
 				return tCtx
 			},
-			request: request{"admin_a", "svc", "GET", "/private"},
+			request:     request{"admin_a", "svc", "GET", "/private"},
 			wantAllowed: true,
 		},
 		{
@@ -152,7 +152,7 @@ func (s *MultiTenancySuite) TestCheckAPI_TenancyMatrix() {
 
 				return ctxB // 返回租户 B 的上下文进行测试
 			},
-			request: request{"user_b", "svc", "POST", "/secret"},
+			request:     request{"user_b_normal", "svc", "POST", "/secret"},
 			wantAllowed: false,
 		},
 		{
@@ -175,7 +175,7 @@ func (s *MultiTenancySuite) TestCheckAPI_TenancyMatrix() {
 
 				return tCtx
 			},
-			request: request{"u_a", "svc", "GET", "/global"},
+			request:     request{"u_a", "svc", "GET", "/global"},
 			wantAllowed: true,
 		},
 	}

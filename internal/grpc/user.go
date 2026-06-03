@@ -7,9 +7,11 @@ import (
 	userv1 "github.com/Duke1616/eiam/api/proto/gen/eiam/user/v1"
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
+	"github.com/Duke1616/eiam/internal/service/permission"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
@@ -19,10 +21,14 @@ type UserServer struct {
 	userv1.UnimplementedUserServiceServer
 
 	userSvc usersvc.IUserService
+	permSvc permission.IPermissionService
 }
 
-func NewUserServer(userSvc usersvc.IUserService) userv1.UserServiceServer {
-	return &UserServer{userSvc: userSvc}
+func NewUserServer(userSvc usersvc.IUserService, permSvc permission.IPermissionService) userv1.UserServiceServer {
+	return &UserServer{
+		userSvc: userSvc,
+		permSvc: permSvc,
+	}
 }
 
 func (u *UserServer) QueryById(ctx context.Context, req *userv1.QueryByIdReq) (*userv1.QueryUserResp, error) {
@@ -37,7 +43,7 @@ func (u *UserServer) QueryById(ctx context.Context, req *userv1.QueryByIdReq) (*
 		}, nil
 	}
 	return &userv1.QueryUserResp{
-		User: u.ToRetrieveUsers(userInfo),
+		User: u.ToRetrieveUsers(ctx, userInfo),
 	}, nil
 }
 
@@ -54,7 +60,7 @@ func (u *UserServer) QueryByUsernames(ctx context.Context, req *userv1.QueryByUs
 	}
 	return &userv1.QueryUsersResp{
 		Users: slice.Map(userInfos, func(idx int, src domain.User) *userv1.User {
-			return u.ToRetrieveUsers(src)
+			return u.ToRetrieveUsers(ctx, src)
 		}),
 	}, nil
 }
@@ -72,18 +78,20 @@ func (u *UserServer) QueryByIds(ctx context.Context, req *userv1.QueryByIdsReq) 
 	}
 	return &userv1.QueryUsersResp{
 		Users: slice.Map(userInfos, func(idx int, src domain.User) *userv1.User {
-			return u.ToRetrieveUsers(src)
+			return u.ToRetrieveUsers(ctx, src)
 		}),
 	}, nil
 }
 
-func (u *UserServer) ToRetrieveUsers(src domain.User) *userv1.User {
+func (u *UserServer) ToRetrieveUsers(ctx context.Context, src domain.User) *userv1.User {
+	roles, _ := u.permSvc.GetRolesForUser(ctx, src.Username)
 	user := &userv1.User{
 		Id:          src.ID,
 		Username:    src.Username,
 		DisplayName: src.Profile.Nickname,
 		Email:       src.Email,
 		Phone:       src.Profile.Phone,
+		IsAdmin:     lo.Contains(roles, domain.RoleAdmin),
 	}
 
 	if lark, ok := src.GetPrimaryIdentity("feishu"); ok {
