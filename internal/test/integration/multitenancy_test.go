@@ -57,12 +57,15 @@ func (s *MultiTenancySuite) TearDownTest() {
 
 func (s *MultiTenancySuite) clearAll() {
 	s.db.Exec("DELETE FROM `tenant`")
+	s.db.Exec("DELETE FROM `membership`")
 	s.db.Exec("DELETE FROM `role`")
 	s.db.Exec("DELETE FROM `policy`")
 	s.db.Exec("DELETE FROM `policy_assignment`")
 	s.db.Exec("DELETE FROM `api`")
 	s.db.Exec("DELETE FROM `permission`")
+	s.db.Exec("DELETE FROM `permission_binding`")
 	s.db.Exec("DELETE FROM `casbin_rule`")
+	s.db.Exec("DELETE FROM `menu`")
 }
 
 // prepareSystemRoles 初始化系统预设环境 (TID=1)

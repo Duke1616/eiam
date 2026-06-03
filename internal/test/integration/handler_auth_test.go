@@ -130,6 +130,7 @@ func (s *HandlerAuthTestSuite) clearAll() {
 	s.db.Exec("DELETE FROM `permission`")
 	s.db.Exec("DELETE FROM `permission_binding`")
 	s.db.Exec("DELETE FROM `casbin_rule`")
+	s.db.Exec("DELETE FROM `menu`")
 }
 
 func (s *HandlerAuthTestSuite) TestAPIAuthorization() {

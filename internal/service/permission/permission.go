@@ -531,7 +531,8 @@ func (s *permissionService) sortActions(actions []string) {
 }
 
 func (s *permissionService) BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error {
-	return s.permRepo.BindResources(ctx, permId, permCode, resURNs)
+	sysCtx := ctxutil.WithTenantID(ctx, ctxutil.SystemTenantID)
+	return s.permRepo.BindResources(sysCtx, permId, permCode, resURNs)
 }
 
 func (s *permissionService) AssignRoleToUser(ctx context.Context, username string, roleCode string) (bool, error) {

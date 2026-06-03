@@ -59,10 +59,15 @@ func (s *PolicyTestSuite) TearDownTest() {
 
 func (s *PolicyTestSuite) clearAll() {
 	s.db.Exec("DELETE FROM `tenant`")
+	s.db.Exec("DELETE FROM `membership`")
 	s.db.Exec("DELETE FROM `role`")
 	s.db.Exec("DELETE FROM `policy`")
 	s.db.Exec("DELETE FROM `policy_assignment`")
+	s.db.Exec("DELETE FROM `api`")
+	s.db.Exec("DELETE FROM `permission`")
+	s.db.Exec("DELETE FROM `permission_binding`")
 	s.db.Exec("DELETE FROM `casbin_rule`")
+	s.db.Exec("DELETE FROM `menu`")
 }
 
 // ensureAdminRole 确保系统中存在基础角色，支持租户创建等后续业务

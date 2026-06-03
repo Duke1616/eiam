@@ -74,6 +74,7 @@ func (s *PermissionSuite) clearAll() {
 	s.db.Exec("DELETE FROM `permission`")
 	s.db.Exec("DELETE FROM `permission_binding`")
 	s.db.Exec("DELETE FROM `casbin_rule`")
+	s.db.Exec("DELETE FROM `menu`")
 }
 
 // ensureAdminRole 确保环境中存在基础的 admin 角色记录，以支持 CreateTenant 等业务链条
@@ -158,6 +159,8 @@ func (s *PermissionSuite) TestCheckAPI() {
 			before: func(ctx context.Context, tid int64) {
 				api := domain.API{Service: serviceName, Method: "GET", Path: "/api/v1/users"}
 				_, _ = s.resourceSvc.CreateAPI(ctx, api)
+				pid, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "iam:user:view"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, pid, "iam:user:view", []string{api.URN()})
 
 				otherTid, _ := s.tenantSvc.CreateTenant(context.Background(), "黑客空间", "hacker", "hacker_user", 999)
 				otherCtx := ctxutil.WithTenantID(context.Background(), otherTid)

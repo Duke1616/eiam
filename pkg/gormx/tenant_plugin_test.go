@@ -221,14 +221,15 @@ func TestTenantPlugin_Query(t *testing.T) {
 			},
 		},
 		{
-			name:     "普通私有实体_超级系统管理员查询_上帝视角豁免隔离限制",
+			name:     "普通私有实体_超级系统管理员查询_同样执行隔离限制",
 			tenantID: ctxutil.SystemTenantID,
 			before:   seedData,
 			run: func(t *testing.T, db *gorm.DB) {
 				var list []TestUser
 				err := db.Find(&list).Error
 				require.NoError(t, err)
-				assert.Len(t, list, 3)
+				assert.Len(t, list, 1)
+				assert.Equal(t, "SysUser", list[0].Name)
 			},
 		},
 		{
@@ -366,19 +367,19 @@ func TestTenantPlugin_WriteStrict(t *testing.T) {
 			},
 		},
 		{
-			name:     "超级系统管理员免除写操作硬限制",
+			name:     "超级系统管理员同样执行写操作限制",
 			tenantID: ctxutil.SystemTenantID,
 			before:   seedData,
 			run: func(t *testing.T, db *gorm.DB) {
 				res := db.Model(&TestUser{}).Where("id = ?", 2).Update("name", "SysUpdatedB")
 				require.NoError(t, res.Error)
-				assert.Equal(t, int64(1), res.RowsAffected)
+				assert.Zero(t, res.RowsAffected)
 			},
 			after: func(t *testing.T, db *gorm.DB) {
 				var dbUser TestUser
 				err := db.Session(&gorm.Session{}).First(&dbUser, 2).Error
 				require.NoError(t, err)
-				assert.Equal(t, "SysUpdatedB", dbUser.Name)
+				assert.Equal(t, "UserB", dbUser.Name)
 			},
 		},
 	}
@@ -415,20 +416,15 @@ func TestTenantPlugin_CustomOptions(t *testing.T) {
 			},
 		},
 		{
-			name:     "自定义系统租户上帝视角免隔离验证",
+			name:     "自定义系统租户同样执行隔离验证",
 			tenantID: 999,
 			before:   seedData,
 			run: func(t *testing.T, db *gorm.DB) {
 				var list []CustomEntity
 				err := db.Find(&list).Error
 				require.NoError(t, err)
-				assert.Len(t, list, 2)
-				var names []string
-				for _, e := range list {
-					names = append(names, e.Name)
-				}
-				assert.Contains(t, names, "SysData")
-				assert.Contains(t, names, "TenantAData")
+				assert.Len(t, list, 1)
+				assert.Equal(t, "SysData", list[0].Name)
 			},
 		},
 		{

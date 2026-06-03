@@ -178,10 +178,7 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 	}
 
 	// 3. 常规普通资源模式（未声明任何标签）。
-	// 超级管理员默认豁免隔离限制，全局放行上帝视角；普通业务租户执行严格单租户硬隔离。
-	if tid.Int64() == p.systemTenantID {
-		return
-	}
+	// 所有租户（包括系统租户）都强制隔离。
 	db.Where(p.strictSQL, tid.Int64())
 }
 
@@ -204,8 +201,8 @@ func (p *TenantPlugin) handleStrict(db *gorm.DB) {
 	}
 
 	tid := ctxutil.GetTenantID(db.Statement.Context)
-	// 系统租户或无租户上下文豁免严格写校验，以支持后台全局事务或超管跨租户修改
-	if tid == 0 || tid.Int64() == p.systemTenantID {
+	// 无租户上下文豁免严格写校验，以支持后台全局事务或脚本操作
+	if tid == 0 {
 		return
 	}
 

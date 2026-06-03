@@ -127,10 +127,10 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 				require.NoError(s.T(), err)
 
 				p1, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "p1", Name: "权限1"})
-				_ = s.permSvc.BindResourcesToPermission(ctx, p1, "p1", []string{"eiam:iam:menu:/asset/server"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, p1, "p1", []string{"eiam:menu:服务器"})
 
 				p2, _ := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "p2", Name: "权限2"})
-				_ = s.permSvc.BindResourcesToPermission(ctx, p2, "p2", []string{"eiam:iam:menu:/asset/db"})
+				_ = s.permSvc.BindResourcesToPermission(ctx, p2, "p2", []string{"eiam:menu:数据库"})
 
 				_, err = s.roleSvc.Create(ctx, domain.Role{
 					Code: "server_viewer",
@@ -186,6 +186,7 @@ func (s *MenuTreeSuite) clearAll() {
 	s.db.Exec("DELETE FROM `permission`")
 	s.db.Exec("DELETE FROM `permission_binding`")
 	s.db.Exec("DELETE FROM `casbin_rule`")
+	s.db.Exec("DELETE FROM `menu`")
 }
 
 func TestMenuTreeSuite(t *testing.T) {
