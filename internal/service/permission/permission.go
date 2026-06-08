@@ -473,25 +473,66 @@ func (s *permissionService) toServiceNodes(perms []domain.Permission, svcMap map
 	return nodes
 }
 
-// buildGroupNodes 分组聚合逻辑
+// buildGroupNodes 分组树形组装逻辑
 func (s *permissionService) buildGroupNodes(perms []domain.Permission) []domain.GroupNode {
-	gGroups := lo.GroupBy(perms, func(p domain.Permission) string { return p.Group })
+	root := newGroupTrie("")
 
-	groups := lo.MapToSlice(gGroups, func(gName string, gPerms []domain.Permission) domain.GroupNode {
-		actions := lo.Map(gPerms, func(p domain.Permission, _ int) string { return p.Code })
-		s.sortActions(actions)
+	for _, p := range perms {
+		parts := strings.Split(p.Group, "/")
+		root.insert(parts, p.Code)
+	}
 
-		return domain.GroupNode{
-			Name:    gName,
-			Actions: actions,
+	return root.toGroupNodes(s.sortActions)
+}
+
+// groupTrie 权限分组辅助字典树
+type groupTrie struct {
+	name     string
+	actions  []string
+	children map[string]*groupTrie
+}
+
+func newGroupTrie(name string) *groupTrie {
+	return &groupTrie{
+		name:     name,
+		children: make(map[string]*groupTrie),
+	}
+}
+
+func (t *groupTrie) insert(path []string, action string) {
+	curr := t
+	for _, part := range path {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
 		}
-	})
+		if _, exists := curr.children[part]; !exists {
+			curr.children[part] = newGroupTrie(part)
+		}
+		curr = curr.children[part]
+	}
+	curr.actions = append(curr.actions, action)
+}
 
-	// 分组层级排序
-	slices.SortFunc(groups, func(a, b domain.GroupNode) int {
+func (t *groupTrie) toGroupNodes(sortActions func([]string)) []domain.GroupNode {
+	if len(t.children) == 0 {
+		return nil
+	}
+
+	nodes := make([]domain.GroupNode, 0, len(t.children))
+	for _, child := range t.children {
+		sortActions(child.actions)
+		nodes = append(nodes, domain.GroupNode{
+			Name:     child.name,
+			Actions:  child.actions,
+			Children: child.toGroupNodes(sortActions),
+		})
+	}
+
+	slices.SortFunc(nodes, func(a, b domain.GroupNode) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	return groups
+	return nodes
 }
 
 // sortActions 动作权重排序算法 (支持正则匹配)

@@ -75,18 +75,26 @@ func (h *Handler) GetPermissionManifest(ctx *ginx.Context) (ginx.Result, error) 
 			Actions: h.toActionVOs(reg.Permissions),
 			Services: slice.Map(reg.Services, func(idx int, src domain.ServiceNode) ServicePermissionEntry {
 				return ServicePermissionEntry{
-					Code: src.Code,
-					Name: src.Name,
-					Entries: slice.Map(src.Groups, func(idx int, g domain.GroupNode) Entry {
-						return Entry{
-							Name:    g.Name,
-							Actions: g.Actions,
-						}
-					}),
+					Code:    src.Code,
+					Name:    src.Name,
+					Entries: h.toEntryVOs(src.Groups),
 				}
 			}),
 		},
 	}, nil
+}
+
+func (h *Handler) toEntryVOs(nodes []domain.GroupNode) []Entry {
+	if len(nodes) == 0 {
+		return nil
+	}
+	return slice.Map(nodes, func(idx int, g domain.GroupNode) Entry {
+		return Entry{
+			Name:     g.Name,
+			Actions:  g.Actions,
+			Children: h.toEntryVOs(g.Children),
+		}
+	})
 }
 
 func (h *Handler) toActionVOs(perms []domain.Permission) []Permission {

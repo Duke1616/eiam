@@ -145,6 +145,8 @@ type BaseListRequest struct {
 }
 
 type ListUserRequest struct {
+	Usernames []string `json:"usernames"`
+	Ids       []int64  `json:"ids"`
 	BaseListRequest
 }
 

@@ -13,6 +13,8 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
+	"github.com/Duke1616/eiam/internal/web/department"
+	"github.com/Duke1616/eiam/internal/web/group"
 	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -23,6 +25,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	userHdl *user.Handler, policyHdl *policy.Handler,
 	tenantHdl *tenanthdl.Handler, permissionHdl *permissionhdl.Handler,
 	roleHdl *rolehdl.Handler,
+	deptHdl *department.Handler, groupHdl *group.Handler,
 	identitySourceHdl *idhdl.Handler, invitationHdl *invitationhdl.Handler,
 	discoveryHdl *discovery.Handler, tenancyBuilder *pkgmiddleware.TenancyBuilder,
 	permSvc permission.IPermissionService) *egin.Component {
@@ -62,6 +65,8 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	policyHdl.PrivateRoutes(server.Engine)
 	tenantHdl.PrivateRoutes(server.Engine)
 	roleHdl.PrivateRoutes(server.Engine)
+	deptHdl.PrivateRoutes(server.Engine)
+	groupHdl.PrivateRoutes(server.Engine)
 	permissionHdl.PrivateRoutes(server.Engine)
 	identitySourceHdl.PrivateRoutes(server.Engine)
 	invitationHdl.PrivateRoutes(server.Engine)

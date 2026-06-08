@@ -24,5 +24,9 @@ func InitTables(db *gorm.DB) error {
 		&Invitation{},
 		&JoinRequest{},
 		&gormAdapter.CasbinRule{},
+		&Department{},
+		&UserDepartment{},
+		&Group{},
+		&UserGroup{},
 	)
 }

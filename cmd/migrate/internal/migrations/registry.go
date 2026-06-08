@@ -5,10 +5,12 @@ import "github.com/Duke1616/eiam/cmd/migrate/internal/migration"
 // All 按外键和业务依赖顺序返回所有迁移任务。
 func All(encryptionKey, encryptionVersion string) []migration.Migrator {
 	migrators := []migration.Migrator{
+		NewDepartmentMigrator(),
 		NewUserMigrator(encryptionKey, encryptionVersion),
 		NewUserProfileMigrator(),
 		NewUserIdentityMigrator(),
 		NewUserMembershipMigrator(),
+		NewUserDepartmentMigrator(),
 	}
 	return migrators
 }

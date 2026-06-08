@@ -174,6 +174,29 @@ func (userMembershipMigrator) Convert(src mongoUser) dao.Membership {
 	}
 }
 
+// ==================== UserDepartment 部门成员 (1:N) ====================
+
+type userDepartmentMigrator struct{}
+
+func NewUserDepartmentMigrator() migration.Migrator {
+	return migration.NewMongoMigratorMany[mongoUser, dao.UserDepartment](userDepartmentMigrator{})
+}
+
+func (userDepartmentMigrator) Name() string           { return "user_department" }
+func (userDepartmentMigrator) CollectionName() string { return collectionName }
+func (userDepartmentMigrator) ConvertMany(src mongoUser) []dao.UserDepartment {
+	var out []dao.UserDepartment
+	if src.DepartmentId != 0 {
+		out = append(out, dao.UserDepartment{
+			TenantId:     defaultTenantID,
+			UserId:       src.Id,
+			DepartmentId: src.DepartmentId,
+			Ctime:        src.Ctime,
+		})
+	}
+	return out
+}
+
 // ==================== Pre/Post Hooks: admin 冲突处理 ====================
 
 // NewUserPreMigrateHook 迁移前钩子：检测 MySQL ID=1 是否被 seed admin 占据，

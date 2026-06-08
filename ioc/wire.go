@@ -27,6 +27,10 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
+	deptsvc "github.com/Duke1616/eiam/internal/service/department"
+	groupsvc "github.com/Duke1616/eiam/internal/service/group"
+	depthdl "github.com/Duke1616/eiam/internal/web/department"
+	grouphdl "github.com/Duke1616/eiam/internal/web/group"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
@@ -76,6 +80,8 @@ func InitApp() (*App, error) {
 		dao.NewPolicyDAO,
 		dao.NewIdentitySourceDAO,
 		dao.NewInvitationDAO,
+		dao.NewDepartmentDAO,
+		dao.NewGroupDAO,
 
 		// Repositories
 		repository.NewUserRepository,
@@ -87,6 +93,8 @@ func InitApp() (*App, error) {
 		repository.NewPolicyRepository,
 		repository.NewIdentitySourceRepository,
 		repository.NewInvitationRepository,
+		repository.NewDepartmentRepository,
+		repository.NewGroupRepository,
 
 		// Services
 		usersvc.NewUserService,
@@ -103,6 +111,8 @@ func InitApp() (*App, error) {
 		policysvc.NewPolicyService,
 		invitationsvc.NewInvitationService,
 		InitIdentitySourceService,
+		deptsvc.NewDepartmentService,
+		groupsvc.NewGroupService,
 
 		// Handlers
 		userhdl.NewUserHandler,
@@ -114,6 +124,8 @@ func InitApp() (*App, error) {
 		// Handlers (Capabilities)
 		permissionhdl.NewHandler,
 		rolehdl.NewHandler,
+		depthdl.NewHandler,
+		grouphdl.NewHandler,
 
 		// Providers Registry
 		InitProviders,

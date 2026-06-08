@@ -20,8 +20,9 @@ const (
 )
 
 const (
-	PrefixUser = "user:"
-	PrefixRole = "role:"
+	PrefixUser  = "user:"
+	PrefixRole  = "role:"
+	PrefixGroup = "group:"
 )
 
 const (
@@ -33,6 +34,7 @@ const (
 	SubjectTypeUser   = "user"
 	SubjectTypeRole   = "role"
 	SubjectTypePolicy = "policy"
+	SubjectTypeGroup  = "group"
 )
 
 func UserSubject(username string) string {
@@ -43,6 +45,10 @@ func RoleSubject(code string) string {
 	return PrefixRole + code
 }
 
+func GroupSubject(code string) string {
+	return PrefixGroup + code
+}
+
 func ExtractRoleCode(s string) string {
 	return strings.TrimPrefix(s, PrefixRole)
 }
@@ -51,9 +57,13 @@ func ExtractUserCode(s string) string {
 	return strings.TrimPrefix(s, PrefixUser)
 }
 
+func ExtractGroupCode(s string) string {
+	return strings.TrimPrefix(s, PrefixGroup)
+}
+
 // Subject 权限主体解析结果
 type Subject struct {
-	Type string // user, role, policy
+	Type string // user, role, policy, group
 	ID   string
 	Name string // 展示名称
 	Desc string // 描述
@@ -66,6 +76,9 @@ func ParseSubject(s string) Subject {
 	}
 	if strings.HasPrefix(s, PrefixRole) {
 		return Subject{Type: SubjectTypeRole, ID: strings.TrimPrefix(s, PrefixRole)}
+	}
+	if strings.HasPrefix(s, PrefixGroup) {
+		return Subject{Type: SubjectTypeGroup, ID: strings.TrimPrefix(s, PrefixGroup)}
 	}
 	return Subject{Type: "unknown", ID: s}
 }
@@ -120,8 +133,9 @@ type ServiceNode struct {
 }
 
 type GroupNode struct {
-	Name    string
-	Actions []string // 存储动作 Code
+	Name     string      `json:"name"`
+	Actions  []string    `json:"actions"` // 存储动作 Code
+	Children []GroupNode `json:"children,omitempty"`
 }
 
 // ResourceBinding 物理资源绑定关系 (抽取租户 ID 为独立字段)
@@ -196,8 +210,9 @@ type AuthorizationSubType string
 type AuthorizationObjType string
 
 const (
-	AuthSubUser AuthorizationSubType = "user"
-	AuthSubRole AuthorizationSubType = "role"
+	AuthSubUser  AuthorizationSubType = "user"
+	AuthSubRole  AuthorizationSubType = "role"
+	AuthSubGroup AuthorizationSubType = "group"
 
 	AuthObjRole         AuthorizationObjType = "role"
 	AuthObjSystemPolicy AuthorizationObjType = "system_policy"
@@ -216,6 +231,8 @@ func (t AuthorizationSubType) SubjectType() string {
 		return SubjectTypeUser
 	case AuthSubRole:
 		return SubjectTypeRole
+	case AuthSubGroup:
+		return SubjectTypeGroup
 	default:
 		return ""
 	}
@@ -228,6 +245,8 @@ func (t AuthorizationSubType) Prefix() string {
 		return PrefixUser
 	case AuthSubRole:
 		return PrefixRole
+	case AuthSubGroup:
+		return PrefixGroup
 	default:
 		return ""
 	}

@@ -21,8 +21,9 @@ type ServicePermissionEntry struct {
 }
 
 type Entry struct {
-	Name    string   `json:"name"`
-	Actions []string `json:"actions"`
+	Name     string   `json:"name"`
+	Actions  []string `json:"actions,omitempty"`
+	Children []Entry  `json:"children,omitempty"`
 }
 
 type BindResourcesRequest struct {

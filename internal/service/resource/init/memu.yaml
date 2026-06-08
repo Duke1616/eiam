@@ -266,7 +266,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertWorkspaceDetail
-    permission_code: "alert:workspace:view"
+    permission_code: "alert:workspace:get"
     path: /alert/workspace/:id
     component: /pages/alert/workspace/detail.vue
     meta:
@@ -516,7 +516,7 @@
     component: /views/rota/detail.vue
     meta:
       title: 排班详情
-      icon: 
+      icon:
       is_hidden: true
       is_keepalive: false
       platforms: ["system"]
@@ -601,6 +601,37 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
+- name: OrganizationGovernance
+  path: /iam/organization
+  component: Layouts
+  redirect: /iam/organization/department
+  meta:
+    title: 组织管理
+    icon: organization
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["system"]
+  children:
+    - name: DepartmentManager
+      permission_code: "org:department:view"
+      path: /iam/organization/department
+      component: /pages/iam/department/index.vue
+      meta:
+        title: 部门管理
+        icon: department
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["system"]
+    - name: TeamGovernance
+      permission_code: "iam:team:view"
+      path: /alert/system/team
+      component: /pages/alert/team/index.vue
+      meta:
+        title: 团队管理
+        icon: team
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["system", "alert"]
 - name: IAMPermissionGovernance
   path: /iam/permission
   component: Layouts
@@ -660,66 +691,5 @@
       title: 创建策略
       icon: 
       is_hidden: true
-      is_keepalive: false
-      platforms: ["system"]
-- name: SystemGovernance
-  path: /cmdb/system
-  component: Layouts
-  redirect: /cmdb/system/menu
-  meta:
-    title: 系统管理
-    icon: process-control
-    is_hidden: false
-    is_keepalive: false
-    platforms: ["system"]
-  children:
-  - name: MenuGovernance
-    permission_code: "iam:menu:view"
-    path: menu
-    component: /views/system/menu/index.vue
-    meta:
-      title: 菜单管理
-      icon: menu
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["system"]
-  - name: RolePermissionMatrix
-    permission_code: "iam:role:view"
-    path: /system/role/permission-matrix/:roleCode
-    component: /views/system/role/matrix.vue
-    meta:
-      title: 权限配置
-      icon: 
-      is_hidden: true
-      is_keepalive: false
-      platforms: ["system"]
-  - name: TeamGovernance
-    permission_code: "iam:team:view"
-    path: /alert/system/team
-    component: /pages/alert/team/index.vue
-    meta:
-      title: 团队管理
-      icon: team
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["system", "alert"]
-  - name: DepartmentGovernance
-    permission_code: "iam:department:view"
-    path: department
-    component: /views/system/department/index.vue
-    meta:
-      title: 部门管理
-      icon: role
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["system"]
-  - name: APIInventory
-    permission_code: "iam:api:view"
-    path: api
-    component: /views/system/api/index.vue
-    meta:
-      title: 接口管理
-      icon: bug
-      is_hidden: false
       is_keepalive: false
       platforms: ["system"]

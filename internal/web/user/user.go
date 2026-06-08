@@ -436,46 +436,64 @@ func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (
 }
 
 func (h *Handler) List(ctx *ginx.Context, req ListUserRequest) (ginx.Result, error) {
-	// 1. 获取基础用户列表
-	users, total, err := h.userSvc.List(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword)
+	// 获取基础用户列表
+	users, total, err := h.fetchUsers(ctx, req)
 	if err != nil {
 		return ginx.Result{}, err
 	}
 
 	currentTid := ctxutil.GetTenantID(ctx).Int64()
 
-	// 2. 如果不是系统管理员，直接返回扁平的基础用户信息
+	// 非系统管理员直接返回基础用户信息
 	if currentTid != ctxutil.SystemTenantID {
 		return ginx.Result{
 			Data: RetrieveUsers[User]{
 				Total: total,
-				Users: slice.Map(users, func(idx int, src domain.User) User {
-					return ToUserVO(src)
-				}),
+				Users: toUserVOs(users),
 			},
 		}, nil
 	}
 
-	// 3. 系统管理员特权：进行成员资格装饰
-	userIDs := slice.Map(users, func(idx int, src domain.User) int64 {
-		return src.ID
-	})
-
-	// 使用穿透化调用，不再需要显式传递 currentTid
+	// 系统管理员：装饰成员信息
+	userIDs := slice.Map(users, func(idx int, u domain.User) int64 { return u.ID })
 	memberMap, _ := h.tenantSvc.CheckUsersInTenant(ctx.Request.Context(), userIDs)
 
 	return ginx.Result{
 		Data: RetrieveUsers[UserMemberVO]{
 			Total: total,
-			Users: slice.Map(users, func(idx int, src domain.User) UserMemberVO {
-				isMember := memberMap[src.ID]
-				return UserMemberVO{
-					User:     ToUserVO(src),
-					IsMember: &isMember,
-				}
-			}),
+			Users: toUserMemberVOs(users, memberMap),
 		},
 	}, nil
+}
+
+// ----------- 辅助函数 --------------
+
+func (h *Handler) fetchUsers(ctx *ginx.Context, req ListUserRequest) ([]domain.User, int64, error) {
+	if req.Usernames != nil {
+		users, err := h.userSvc.GetByUsernames(ctx, req.Usernames)
+		if err != nil {
+			return nil, 0, err
+		}
+		return users, int64(len(users)), nil
+	}
+
+	return h.userSvc.List(ctx.Request.Context(), req.Offset, req.Limit, req.Keyword)
+}
+
+func toUserVOs(users []domain.User) []User {
+	return slice.Map(users, func(idx int, u domain.User) User {
+		return ToUserVO(u)
+	})
+}
+
+func toUserMemberVOs(users []domain.User, memberMap map[int64]bool) []UserMemberVO {
+	return slice.Map(users, func(idx int, u domain.User) UserMemberVO {
+		isMember := memberMap[u.ID]
+		return UserMemberVO{
+			User:     ToUserVO(u),
+			IsMember: &isMember,
+		}
+	})
 }
 
 func (h *Handler) Update(ctx *ginx.Context, req UpdateUserReq) (ginx.Result, error) {
