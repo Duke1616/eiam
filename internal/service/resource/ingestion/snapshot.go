@@ -30,6 +30,7 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 			Group:   p.Group,
 			Needs:   p.Needs,
 			Scope:   p.Scope,
+			Sort:    p.Sort,
 		}
 	}
 

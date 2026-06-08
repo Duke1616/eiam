@@ -3,6 +3,7 @@ package capability
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 
@@ -25,6 +26,7 @@ type Permission struct {
 	Needs   []string `json:"needs"`
 	NoSync  bool     `json:"no_sync"`
 	Scope   string   `json:"scope"`
+	Sort    int      `json:"sort"`
 }
 
 type ResourceInfo struct {
@@ -98,6 +100,18 @@ type internalRegistry interface {
 	updatePermissionModule(code string, module string) string
 }
 
+var (
+	globalSortMu sync.Mutex
+	globalSort   int
+)
+
+func nextGlobalSort() int {
+	globalSortMu.Lock()
+	defer globalSortMu.Unlock()
+	globalSort++
+	return globalSort
+}
+
 func NewRegistry(service, module, group string) IRegistry {
 	r := &registry{
 		service:      service,
@@ -117,6 +131,7 @@ type registry struct {
 	group        string
 	defaultScope string
 	permissions  map[string]Permission
+	sort         int
 }
 
 func (r *registry) ProvidePermissions() []Permission {
@@ -140,12 +155,18 @@ func (r *registry) DefaultScope(scope string) IRegistry {
 func (r *registry) Capability(name, code string) *Builder {
 	fullCode := r.normalizeCode(code)
 	r.mu.Lock()
+
+	if r.sort == 0 {
+		r.sort = nextGlobalSort()
+	}
+
 	r.permissions[fullCode] = Permission{
 		Service: r.service,
 		Code:    fullCode,
 		Name:    name,
 		Group:   r.group,
 		Scope:   r.defaultScope,
+		Sort:    r.sort,
 	}
 	r.mu.Unlock()
 
@@ -360,13 +381,17 @@ func (c *Collector) Collect(opts ...SyncOption) SyncRequest {
 }
 
 func (c *Collector) collectPermissions() []Permission {
-	unique := make(map[string]Permission)
+	seen := make(map[string]struct{})
+	var perms []Permission
 
 	// 1. 收集显式提供的权限
 	for _, provider := range c.providers {
 		for _, p := range provider.ProvidePermissions() {
 			if !p.NoSync {
-				unique[p.Code] = p
+				if _, ok := seen[p.Code]; !ok {
+					seen[p.Code] = struct{}{}
+					perms = append(perms, p)
+				}
 			}
 		}
 	}
@@ -375,12 +400,20 @@ func (c *Collector) collectPermissions() []Permission {
 	for _, reg := range globalRegistries {
 		for _, p := range reg.ProvidePermissions() {
 			if !p.NoSync {
-				unique[p.Code] = p
+				if _, ok := seen[p.Code]; !ok {
+					seen[p.Code] = struct{}{}
+					perms = append(perms, p)
+				}
 			}
 		}
 	}
 
-	return lo.Values(unique)
+	// 3. 对收集到的所有权限点进行物理注册时序（Sort）的升序排序
+	slices.SortFunc(perms, func(a, b Permission) int {
+		return a.Sort - b.Sort
+	})
+
+	return perms
 }
 
 func (c *Collector) collectAPIs() []ResourceInfo {

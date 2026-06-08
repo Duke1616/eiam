@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"slices"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
@@ -67,6 +68,7 @@ func (r *PermissionRepository) CreatePermission(ctx context.Context, p domain.Pe
 		Group:   p.Group,
 		Needs:   p.Needs,
 		Scope:   p.Scope,
+		Sort:    p.Sort,
 	})
 }
 
@@ -80,6 +82,7 @@ func (r *PermissionRepository) BatchCreatePermission(ctx context.Context, perms 
 			Group:   p.Group,
 			Needs:   p.Needs,
 			Scope:   p.Scope,
+			Sort:    p.Sort,
 		})
 	}
 
@@ -118,6 +121,7 @@ func (r *PermissionRepository) toDomain(p dao.Permission) domain.Permission {
 		Group:   p.Group,
 		Needs:   p.Needs,
 		Scope:   p.Scope,
+		Sort:    p.Sort,
 	}
 }
 
@@ -258,6 +262,15 @@ func (r *PermissionRepository) CountByService(ctx context.Context) (map[string]i
 }
 
 func (r *PermissionRepository) SyncPermissions(ctx context.Context, service string, perms []domain.Permission) error {
+	// 先根据传入权限点原生的 Sort 进行升序排序，确保保序
+	slices.SortFunc(perms, func(a, b domain.Permission) int {
+		return a.Sort - b.Sort
+	})
+
+	for i := range perms {
+		perms[i].Sort = i
+	}
+
 	codes := slice.Map(perms, func(_ int, p domain.Permission) string { return p.Code })
 
 	return r.dao.Transaction(ctx, func(txCtx context.Context) error {

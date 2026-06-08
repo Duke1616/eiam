@@ -19,6 +19,7 @@ type Permission struct {
 	Group   string   `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
 	Needs   []string `gorm:"serializer:json;type:text;comment:'依赖能力项'"`
 	Scope   string   `gorm:"type:varchar(32);not null;default:'tenant';comment:'权限作用域'"`
+	Sort    int      `gorm:"type:int;not null;default:0;comment:'注册顺序权重'"`
 	Ctime   int64    `gorm:"type:bigint;not null;comment:'创建时间'"`
 	Utime   int64    `gorm:"type:bigint;not null;comment:'更新时间'"`
 	Status  uint8    `gorm:"type:tinyint;not null;default:1;comment:'状态 1-正常 2-孤儿'"`
@@ -135,7 +136,7 @@ func (d *PermissionDAO) BatchInsert(ctx context.Context, perms []Permission) err
 	// 升级为 CreateInBatches 分批抗压
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "code"}},
-		DoUpdates: clause.AssignmentColumns([]string{"name", "group", "needs", "scope", "utime", "status"}),
+		DoUpdates: clause.AssignmentColumns([]string{"name", "group", "needs", "scope", "utime", "status", "sort"}),
 	}).CreateInBatches(perms, 100).Error
 }
 

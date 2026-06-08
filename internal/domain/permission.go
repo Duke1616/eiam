@@ -94,6 +94,7 @@ type Permission struct {
 	Desc    string   `json:"desc"`    // 业务描述信息
 	Needs   []string `json:"needs"`   // 依赖能力项
 	Scope   string   `json:"scope"`   // 作用域 (system/tenant)
+	Sort    int      `json:"sort"`    // 注册顺序权重
 
 	// Bindings 权限项包含的物理资源映射 (全局通用，不分租户)
 	Bindings []ResourceBinding `json:"bindings"`

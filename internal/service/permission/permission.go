@@ -477,12 +477,19 @@ func (s *permissionService) toServiceNodes(perms []domain.Permission, svcMap map
 func (s *permissionService) buildGroupNodes(perms []domain.Permission) []domain.GroupNode {
 	root := newGroupTrie("")
 
+	// 1. 构建 Code 到 Sort 的映射映射关系，用来作为 Group 的物理注入先后顺序权重
+	codeToSortMap := make(map[string]int, len(perms))
+	for _, p := range perms {
+		codeToSortMap[p.Code] = p.Sort
+	}
+
+	// 2. 将数据插入字典树
 	for _, p := range perms {
 		parts := strings.Split(p.Group, "/")
 		root.insert(parts, p.Code)
 	}
 
-	return root.toGroupNodes(s.sortActions)
+	return root.toGroupNodes(s.sortActions, codeToSortMap)
 }
 
 // groupTrie 权限分组辅助字典树
@@ -514,24 +521,65 @@ func (t *groupTrie) insert(path []string, action string) {
 	curr.actions = append(curr.actions, action)
 }
 
-func (t *groupTrie) toGroupNodes(sortActions func([]string)) []domain.GroupNode {
+// getMinSort 递归获取该分支下所有 Action 权限点的最小 Sort
+func (t *groupTrie) getMinSort(codeToSortMap map[string]int) int {
+	minSort := 999999 // 默认一个极大值
+
+	for _, act := range t.actions {
+		if sortVal, ok := codeToSortMap[act]; ok && sortVal < minSort {
+			minSort = sortVal
+		}
+	}
+
+	for _, child := range t.children {
+		childMinSort := child.getMinSort(codeToSortMap)
+		if childMinSort < minSort {
+			minSort = childMinSort
+		}
+	}
+
+	return minSort
+}
+
+func (t *groupTrie) toGroupNodes(sortActions func([]string), codeToSortMap map[string]int) []domain.GroupNode {
 	if len(t.children) == 0 {
 		return nil
 	}
 
-	nodes := make([]domain.GroupNode, 0, len(t.children))
+	// 引入包含物理权重的节点结构
+	type nodeWeight struct {
+		node    domain.GroupNode
+		minSort int
+	}
+
+	weights := make([]nodeWeight, 0, len(t.children))
 	for _, child := range t.children {
 		sortActions(child.actions)
-		nodes = append(nodes, domain.GroupNode{
-			Name:     child.name,
-			Actions:  child.actions,
-			Children: child.toGroupNodes(sortActions),
+
+		weights = append(weights, nodeWeight{
+			node: domain.GroupNode{
+				Name:     child.name,
+				Actions:  child.actions,
+				Children: child.toGroupNodes(sortActions, codeToSortMap),
+			},
+			minSort: child.getMinSort(codeToSortMap),
 		})
 	}
 
-	slices.SortFunc(nodes, func(a, b domain.GroupNode) int {
-		return strings.Compare(a.Name, b.Name)
+	// 优先按物理注册顺序的最小 Sort 排序，相同退化为字母序
+	slices.SortFunc(weights, func(a, b nodeWeight) int {
+		if a.minSort != b.minSort {
+			return a.minSort - b.minSort
+		}
+		return strings.Compare(a.node.Name, b.node.Name)
 	})
+
+	// 还原转换结果
+	nodes := make([]domain.GroupNode, len(weights))
+	for i, w := range weights {
+		nodes[i] = w.node
+	}
+
 	return nodes
 }
 
