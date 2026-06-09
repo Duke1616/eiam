@@ -287,7 +287,7 @@
     platforms: ["alert"]
   children:
   - name: TimeSeriesInstantQuery
-    permission_code: "alert:metric:view"
+    permission_code: "alert:explore:metrics"
     path: /alert/time_series/query
     component: /pages/alert/query/index.vue
     meta:
@@ -348,7 +348,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: ActiveAlertMonitor
-    permission_code: "alert:current:view"
+    permission_code: "alert:manager:view_current"
     path: /alert/manager/current
     component: /pages/alert/current/index.vue
     meta:
@@ -358,7 +358,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertHistoryArchive
-    permission_code: "alert:history:view"
+    permission_code: "alert:manager:view_history"
     path: /alert/manager/history
     component: /pages/alert/history/index.vue
     meta:
@@ -368,7 +368,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: AlertRoutingLogic
-    permission_code: "alert:routing:view"
+    permission_code: "alert:routing_rule:view"
     path: /alert/manager/routing
     component: /pages/alert/routing/index.vue
     meta:
@@ -389,7 +389,7 @@
     platforms: ["alert", "order"]
   children:
   - name: NotifyTemplateManager
-    permission_code: "alert:notify:view"
+    permission_code: "alert:template:view"
     path: /alert/notify/template
     component: /pages/alert/template/index.vue
     meta:
@@ -399,7 +399,7 @@
       is_keepalive: false
       platforms: ["alert", "order"]
   - name: AlertNotifyTemplateCreate
-    permission_code: "order:notify:view"
+    permission_code: "alert:template:add"
     path: /alert/notify/template/create
     component: /pages/alert/template/detail.vue
     meta:
@@ -409,7 +409,7 @@
       is_keepalive: false
       platforms: ["order", "alert"]
   - name: AlertNotifyTemplateEditId
-    permission_code: "order:notify:view"
+    permission_code: "alert:template:edit"
     path: /alert/notify/template/edit/:id
     component: /pages/alert/template/detail.vue
     meta:
@@ -419,7 +419,7 @@
       is_keepalive: false
       platforms: ["order", "alert"]
   - name: NotificationTemplateGroup
-    permission_code: "alert:notify:view"
+    permission_code: "alert:template_set:view"
     path: /alert/notify/template-set
     component: /pages/alert/template_set/index.vue
     meta:
@@ -429,7 +429,7 @@
       is_keepalive: false
       platforms: ["alert"]
   - name: NotificationTemplateItem
-    permission_code: "alert:notify:view"
+    permission_code: "alert:template_set:item_view"
     path: /alert/notify/template-set/items/:id
     component: /pages/alert/template_set/items.vue
     meta:
@@ -440,7 +440,6 @@
       platforms: ["alert"]
   - name: AlertEscalationPipeline
     path: /alert/notify/escalation
-    component: 1
     redirect: /pages/alert/escalation/index.vue
     meta:
       title: 通知升级
@@ -450,7 +449,7 @@
       platforms: ["order", "alert"]
     children:
     - name: EscalationPolicy
-      permission_code: "alert:notify:view"
+      permission_code: "alert:escalation:config_view"
       path: /alert/notify/escalation/config
       component: /pages/alert/escalation/index.vue
       meta:
@@ -460,7 +459,7 @@
         is_keepalive: false
         platforms: ["alert", "order"]
     - name: EscalationStepTemplate
-      permission_code: "order:notify:view"
+      permission_code: "alert:escalation:step_tmpl_view"
       path: /alert/notify/escalation/templates
       component: /pages/alert/escalation/templates.vue
       meta:
@@ -470,7 +469,7 @@
         is_keepalive: false
         platforms: ["order", "alert"]
     - name: EscalationPolicyCreation
-      permission_code: "order:notify:view"
+      permission_code: "alert:escalation:config_add"
       path: /alert/notify/escalation/config/create
       component: /pages/alert/escalation/create.vue
       meta:
@@ -480,7 +479,7 @@
         is_keepalive: false
         platforms: ["order", "alert"]
     - name: EscalationStepGovernance
-      permission_code: "order:notify:view"
+      permission_code: "alert:escalation:step_view"
       path: /alert/notify/escalation/steps/:id
       component: /pages/alert/escalation/steps.vue
       meta:
