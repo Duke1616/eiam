@@ -133,7 +133,7 @@
     platforms: ["order"]
   children:
   - name: OrderSubmission
-    permission_code: "order:order_submission:view"
+    permission_code: "ticket:center:pipeline"
     path: start
     component: /views/order/start/index.vue
     meta:
@@ -143,7 +143,7 @@
       is_keepalive: false
       platforms: ["order"]
   - name: OrderList
-    permission_code: "order:list:view"
+    permission_code: "ticket:center:my_start"
     path: list
     component: /views/order/index.vue
     meta:
@@ -153,7 +153,7 @@
       is_keepalive: false
       platforms: ["order"]
   - name: History
-    permission_code: "order:history:view"
+    permission_code: "ticket:task:view"
     path: history
     component: /views/task/history/index.vue
     meta:
@@ -174,7 +174,7 @@
     platforms: ["order"]
   children:
   - name: ProcessTemplateManager
-    permission_code: "order:template:view"
+    permission_code: "ticket:template:view"
     path: template
     component: /views/process/template/index.vue
     meta:
@@ -183,8 +183,18 @@
       is_hidden: false
       is_keepalive: true
       platforms: ["order"]
+  - name: ProcessTemplateDispatch
+    permission_code: "ticket:dispatch:view"
+    path: template/dispatch
+    component: /views/process/dispatch/index.vue
+    meta:
+      title: 自动派发
+      icon: search
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["order"]
   - name: WorkflowGovernance
-    permission_code: "order:workflow:view"
+    permission_code: "ticket:workflow:view"
     path: workflow
     component: /views/process/manager/index.vue
     meta:
@@ -215,17 +225,17 @@
       is_keepalive: false
       platforms: ["automation"]
   - name: JobTemplateRegistry
-    permission_code: "order:codebook:view"
+    permission_code: "ticket:codebook:view"
     path: codebook
     component: /views/task/codebook/index.vue
     meta:
-      title: 任务模版
-      icon: template
+      title: 脚本引擎
+      icon: codebook
       is_hidden: false
       is_keepalive: false
       platforms: ["order", "automation"]
   - name: JobExecutorPool
-    permission_code: "automation:executor:view"
+    permission_code: "task:executor:view"
     path: /task/executor
     component: /views/task/worker/index.vue
     meta:
@@ -235,7 +245,7 @@
       is_keepalive: false
       platforms: ["automation", "order"]
   - name: JobRunnerInsight
-    permission_code: "automation:job_runner_insight:view"
+    permission_code: "ticket:runner:view"
     path: runner
     component: /views/task/runner/index.vue
     meta:
