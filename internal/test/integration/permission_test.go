@@ -314,6 +314,80 @@ func (s *PermissionSuite) TestIngestPhysicalClearAndReload() {
 	assert.Equal(s.T(), int64(1), countBindings) // p2 绑定应该为 1
 }
 
+func (s *PermissionSuite) TestIngestMenusAndPhysicalClearProtection() {
+	s.clearAll()
+
+	permDAO := dao.NewPermissionDAO(s.db)
+	resDAO := dao.NewResourceDAO(s.db)
+	svcDAO := dao.NewServiceDAO(s.db)
+	engine := ingestion.NewEngine(
+		repository.NewPermissionRepository(permDAO),
+		repository.NewResourceRepository(resDAO),
+		repository.NewServiceRepository(svcDAO),
+	)
+
+	ctx := context.Background()
+
+	// 1. 模拟全量对齐菜单绑定。此时数据库中并没有 "test:perm:p1" 的 Permission 记录
+	menus := domain.MenuTree{
+		{
+			Name:           "TestMenu",
+			Path:           "/test",
+			PermissionCode: "test:perm:p1",
+		},
+	}
+	err := engine.IngestMenus(ctx, menus)
+	require.NoError(s.T(), err)
+
+	// 验证菜单已同步，且其绑定的 perm_id 此时是 0
+	var pb dao.PermissionBinding
+	err = s.db.Where("resource_urn = ?", "eiam:menu:TestMenu").First(&pb).Error
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), "test:perm:p1", pb.PermCode)
+	assert.Equal(s.T(), int64(0), pb.PermId)
+
+	// 2. 模拟服务 A 上报权限和 API
+	service := "test_svc"
+	snap := ingestion.Snapshot{
+		Service: service,
+		Permissions: []domain.Permission{
+			{Code: "test:perm:p1", Name: "权限1", Group: "组1", Service: service},
+		},
+		APIs: []domain.API{
+			{Service: service, Method: "GET", Path: "/api/v1/p1", Name: "接口1"},
+		},
+		Bindings: map[string][]string{
+			"test:perm:p1": {"get:/api/v1/p1"},
+		},
+	}
+
+	// 执行 Ingest。此时会经历 PhysicalClearService，它不能删掉刚才的 menu 绑定
+	err = engine.Ingest(ctx, snap)
+	require.NoError(s.T(), err)
+
+	// 3. 验证效果
+	// A. 菜单绑定还在，并没有被 PhysicalClearService 误删
+	var pbAfter dao.PermissionBinding
+	err = s.db.Where("resource_urn = ?", "eiam:menu:TestMenu").First(&pbAfter).Error
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), "test:perm:p1", pbAfter.PermCode)
+
+	// B. 对应的权限已被写入
+	var perm dao.Permission
+	err = s.db.Where("code = ?", "test:perm:p1").First(&perm).Error
+	require.NoError(s.T(), err)
+
+	// 4. 重启服务/重新 Ingest，验证依然稳定且不会丢失绑定
+	err = engine.Ingest(ctx, snap)
+	require.NoError(s.T(), err)
+
+	// 再次验证菜单绑定依然正常存在
+	var pbReload dao.PermissionBinding
+	err = s.db.Where("resource_urn = ?", "eiam:menu:TestMenu").First(&pbReload).Error
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), "test:perm:p1", pbReload.PermCode)
+}
+
 func TestPermissionSuite(t *testing.T) {
 	suite.Run(t, new(PermissionSuite))
 }

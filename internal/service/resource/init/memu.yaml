@@ -498,10 +498,10 @@
         is_hidden: true
         is_keepalive: false
         platforms: ["order", "alert"]
-- name: ShiftRotaLifecycle
-  path: /cmdb/rota
+- name: OnCallLifecycle
+  path: /alert/oncall
   component: Layouts
-  redirect: /cmdb/rota
+  redirect: /alert/oncall
   meta:
     title: 排班管理
     icon: schedule
@@ -509,26 +509,26 @@
     is_keepalive: false
     platforms: ["system"]
   children:
-  - name: ShiftRotaManager
-    permission_code: "iam:rota:view"
-    path: /cmdb/rota
-    component: /views/rota/index.vue
-    meta:
-      title: 排班管理
-      icon: schedule
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["system"]
-  - name: ShiftRotaDetail
-    permission_code: "iam:rota:view"
-    path: /cmdb/rota/detail
-    component: /views/rota/detail.vue
-    meta:
-      title: 排班详情
-      icon:
-      is_hidden: true
-      is_keepalive: false
-      platforms: ["system"]
+    - name: OnCallManager
+      permission_code: "alert:oncall:view"
+      path: /alert/oncall
+      component: /pages/alert/oncall/index.vue
+      meta:
+        title: 排班管理
+        icon: schedule
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["system"]
+    - name: OnCallDetail
+      permission_code: "alert:oncall:get"
+      path: /alert/oncall/detail
+      component: /pages/alert/oncall/detail.vue
+      meta:
+        title: 排班详情
+        icon:
+        is_hidden: true
+        is_keepalive: false
+        platforms: ["system"]
 - name: IAMIdentityGovernance
   path: /iam/identity
   component: Layouts

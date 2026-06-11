@@ -135,7 +135,7 @@ func (d *PermissionDAO) BatchInsert(ctx context.Context, perms []Permission) err
 		perms[i].Status = PermissionStatusActive
 	}
 
-	// 升级为 CreateInBatches 分批抗压
+	// 1. 批量插入/更新权限数据
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "code"}},
 		DoUpdates: clause.AssignmentColumns([]string{"name", "group", "needs", "scope", "utime", "status", "sort"}),
@@ -324,7 +324,13 @@ func (d *PermissionDAO) DeleteBindingsByPermCodes(ctx context.Context, codes []s
 	if len(codes) == 0 {
 		return nil
 	}
-	return d.getDB(ctx).Where("perm_code IN ?", codes).Delete(&PermissionBinding{}).Error
+	// NOTE: 在清空或重新录入某微服务权限对应的物理资产关联时，必须排除菜单类型的绑定关系。
+	// 菜单与功能权限的染色关系（resource_urn 以前缀 eiam:menu: 区分）是由 eiam 仓库的 YAML 独立
+	// 全量对齐维护的，在此处清除会导致微服务重启时菜单权限莫名丢失。
+	return d.getDB(ctx).
+		Where("perm_code IN ?", codes).
+		Where("resource_urn NOT LIKE ?", "eiam:menu:%").
+		Delete(&PermissionBinding{}).Error
 }
 
 func (d *PermissionDAO) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {

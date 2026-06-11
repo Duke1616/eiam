@@ -50,19 +50,14 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 		}
 	}
 
-	// 3. 转换菜单并预解析菜单绑定关系
-	menus := mapMenus(req.Menus)
-	for _, m := range menus.Flatten() {
-		if m.PermissionCode != "" {
-			bindings[m.PermissionCode] = append(bindings[m.PermissionCode], m.URN())
-		}
-	}
-
+	// NOTE: 根据架构设计改造，菜单资产仅在 eiam 仓库中维护，其他微服务通过 SDK 上报的
+	// SyncRequest 中的 Menus 字段全部被忽略，不做转换与 URN 绑定，从而杜绝由于外部上报菜单
+	// 带来的菜单冲突及绑定关系错乱。
 	return Snapshot{
 		Service:     req.Service,
 		Permissions: perms,
 		APIs:        apis,
-		Menus:       menus,
+		Menus:       nil,
 		Bindings:    bindings,
 	}
 }
