@@ -48,39 +48,51 @@ func NewEngine(
 // Ingest 执行全量资产同步（增量绑定模式）。
 // 流程：权限对齐 → API 对齐 → 菜单对齐 → 资源绑定染色。
 func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
-	// 1. 同步逻辑权限点
-	if err := e.permRepo.SyncPermissions(ctx, snap.Service, snap.Permissions); err != nil {
-		return fmt.Errorf("同步权限点失败: %w", err)
-	}
-
-	// 2. 同步物理接口资产
-	if err := e.resRepo.SyncAPIs(ctx, snap.Service, snap.APIs); err != nil {
-		return fmt.Errorf("同步 API 资产失败: %w", err)
-	}
-
-	// 3. 同步菜单资产
-	menus := snap.Menus.Flatten()
-	if len(menus) > 0 {
-		if err := e.resRepo.SyncMenus(ctx, menus); err != nil {
-			return fmt.Errorf("同步菜单资产失败: %w", err)
+	return e.permRepo.Transaction(ctx, func(txCtx context.Context) error {
+		// 1. 物理清空该服务的所有旧逻辑权限和资源映射关系
+		if err := e.permRepo.PhysicalClearService(txCtx, snap.Service); err != nil {
+			return fmt.Errorf("清空旧权限与映射失败: %w", err)
 		}
-	}
 
-	// 4. 批量增量绑定资源（Upsert 模式，不清理旧绑定）
-	if len(snap.Bindings) > 0 {
-		if err := e.permRepo.BatchBindResources(ctx, snap.Bindings); err != nil {
-			return fmt.Errorf("资源绑定染色失败: %w", err)
+		// 2. 物理清空该服务的所有 API 物理资产
+		if err := e.resRepo.DeleteAPIsByServiceAndURNs(txCtx, snap.Service, nil); err != nil {
+			return fmt.Errorf("清空旧 API 资产失败: %w", err)
 		}
-	}
 
-	e.logger.Info("资产全量同步完成",
-		elog.String("service", snap.Service),
-		elog.Int("permissions", len(snap.Permissions)),
-		elog.Int("apis", len(snap.APIs)),
-		elog.Int("menus", len(menus)),
-		elog.Int("bindings", len(snap.Bindings)),
-	)
-	return nil
+		// 3. 同步写入最新的逻辑权限点
+		if err := e.permRepo.SyncPermissions(txCtx, snap.Service, snap.Permissions); err != nil {
+			return fmt.Errorf("同步权限点失败: %w", err)
+		}
+
+		// 4. 同步写入最新的物理接口资产
+		if err := e.resRepo.SyncAPIs(txCtx, snap.Service, snap.APIs); err != nil {
+			return fmt.Errorf("同步 API 资产失败: %w", err)
+		}
+
+		// 5. 同步菜单资产
+		menus := snap.Menus.Flatten()
+		if len(menus) > 0 {
+			if err := e.resRepo.SyncMenus(txCtx, menus); err != nil {
+				return fmt.Errorf("同步菜单资产失败: %w", err)
+			}
+		}
+
+		// 6. 重新建立最新的资源与权限关联
+		if len(snap.Bindings) > 0 {
+			if err := e.permRepo.BatchBindResources(txCtx, snap.Bindings); err != nil {
+				return fmt.Errorf("资源绑定染色失败: %w", err)
+			}
+		}
+
+		e.logger.Info("资产全量同步完成",
+			elog.String("service", snap.Service),
+			elog.Int("permissions", len(snap.Permissions)),
+			elog.Int("apis", len(snap.APIs)),
+			elog.Int("menus", len(menus)),
+			elog.Int("bindings", len(snap.Bindings)),
+		)
+		return nil
+	})
 }
 
 // IngestMenus 执行本地菜单资产的全量同步（Full-Sync 模式）。

@@ -88,6 +88,8 @@ type IPermissionDAO interface {
 	DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error
 	// MarkPermissionsAsOrphan 将不在 codes 列表中的权限标记为孤儿状态
 	MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error
+	// DeleteBindingsByPermCodes 根据逻辑权限码列表物理删除所有的资源绑定关系
+	DeleteBindingsByPermCodes(ctx context.Context, codes []string) error
 	// Transaction 开启事务支持
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
@@ -318,6 +320,13 @@ func (d *PermissionDAO) MarkPermissionsAsOrphan(ctx context.Context, service str
 		return d.getDB(ctx).Model(&Permission{}).Where("service = ?", service).Update("status", PermissionStatusOrphan).Error
 	}
 	return d.getDB(ctx).Model(&Permission{}).Where("service = ? AND code NOT IN ?", service, codes).Update("status", PermissionStatusOrphan).Error
+}
+
+func (d *PermissionDAO) DeleteBindingsByPermCodes(ctx context.Context, codes []string) error {
+	if len(codes) == 0 {
+		return nil
+	}
+	return d.getDB(ctx).Where("perm_code IN ?", codes).Delete(&PermissionBinding{}).Error
 }
 
 func (d *PermissionDAO) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {

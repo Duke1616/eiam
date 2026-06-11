@@ -8,8 +8,11 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
+	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/resource"
+	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	testioc "github.com/Duke1616/eiam/internal/test/ioc"
@@ -222,6 +225,93 @@ func (s *PermissionSuite) TestRoleCycleDetection() {
 
 	assert.ErrorIs(s.T(), err, errs.ErrRoleCycleInheritance)
 	assert.False(s.T(), ok)
+}
+
+func (s *PermissionSuite) TestIngestPhysicalClearAndReload() {
+	s.clearAll()
+
+	// 1. 初始化 ingestion Engine
+	permDAO := dao.NewPermissionDAO(s.db)
+	resDAO := dao.NewResourceDAO(s.db)
+	svcDAO := dao.NewServiceDAO(s.db)
+	engine := ingestion.NewEngine(
+		repository.NewPermissionRepository(permDAO),
+		repository.NewResourceRepository(resDAO),
+		repository.NewServiceRepository(svcDAO),
+	)
+
+	ctx := context.Background()
+	service := "test_clean_svc"
+
+	// 2. 构造第一次 Ingest Snap1
+	snap1 := ingestion.Snapshot{
+		Service: service,
+		Permissions: []domain.Permission{
+			{Code: "test:perm:p1", Name: "权限1", Group: "组1", Service: service},
+		},
+		APIs: []domain.API{
+			{Service: service, Method: "GET", Path: "/api/v1/p1", Name: "接口1"},
+		},
+		Bindings: map[string][]string{
+			"test:perm:p1": {"get:/api/v1/p1"},
+		},
+	}
+
+	err := engine.Ingest(ctx, snap1)
+	require.NoError(s.T(), err)
+
+	// 验证第一次 Ingest 成功
+	var countPerms int64
+	s.db.Model(&dao.Permission{}).Where("service = ?", service).Count(&countPerms)
+	assert.Equal(s.T(), int64(1), countPerms)
+
+	var countAPIs int64
+	s.db.Model(&dao.API{}).Where("service = ?", service).Count(&countAPIs)
+	assert.Equal(s.T(), int64(1), countAPIs)
+
+	var countBindings int64
+	s.db.Model(&dao.PermissionBinding{}).Where("perm_code = ?", "test:perm:p1").Count(&countBindings)
+	assert.Equal(s.T(), int64(1), countBindings)
+
+	// 3. 构造第二次 Ingest Snap2 (资产发生了颠覆性修改，原来 p1, api1 被彻底拿掉，换成了 p2, api2)
+	snap2 := ingestion.Snapshot{
+		Service: service,
+		Permissions: []domain.Permission{
+			{Code: "test:perm:p2", Name: "权限2", Group: "组2", Service: service},
+		},
+		APIs: []domain.API{
+			{Service: service, Method: "POST", Path: "/api/v1/p2", Name: "接口2"},
+		},
+		Bindings: map[string][]string{
+			"test:perm:p2": {"post:/api/v1/p2"},
+		},
+	}
+
+	err = engine.Ingest(ctx, snap2)
+	require.NoError(s.T(), err)
+
+	// 验证强一致对齐效果：
+	// A. 旧权限和旧 API 已经被物理删除，新权限和新 API 成功录入
+	s.db.Model(&dao.Permission{}).Where("service = ?", service).Count(&countPerms)
+	assert.Equal(s.T(), int64(1), countPerms) // 总共依然是 1 个
+	var p dao.Permission
+	err = s.db.Where("service = ?", service).First(&p).Error
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "test:perm:p2", p.Code) // 应该是 p2
+
+	s.db.Model(&dao.API{}).Where("service = ?", service).Count(&countAPIs)
+	assert.Equal(s.T(), int64(1), countAPIs) // 总共依然是 1 个
+	var a dao.API
+	err = s.db.Where("service = ?", service).First(&a).Error
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "/api/v1/p2", a.Path) // 应该是 p2
+
+	// B. 旧的绑定关系已经被完全删除，新的绑定关系成功录入
+	s.db.Model(&dao.PermissionBinding{}).Where("perm_code = ?", "test:perm:p1").Count(&countBindings)
+	assert.Equal(s.T(), int64(0), countBindings) // p1 绑定应该为 0
+
+	s.db.Model(&dao.PermissionBinding{}).Where("perm_code = ?", "test:perm:p2").Count(&countBindings)
+	assert.Equal(s.T(), int64(1), countBindings) // p2 绑定应该为 1
 }
 
 func TestPermissionSuite(t *testing.T) {

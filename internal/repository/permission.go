@@ -52,6 +52,10 @@ type IPermissionRepository interface {
 	MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error
 	// DeletePermissionsByServiceAndCodes 删除指定服务下不在给定 codes 列表中的所有权限
 	DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error
+	// PhysicalClearService 物理清除该服务下的所有权限元数据及资源映射关系 (用于强一致同步)
+	PhysicalClearService(ctx context.Context, service string) error
+	// Transaction 开启事务支持
+	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 type PermissionRepository struct {
@@ -305,4 +309,31 @@ func (r *PermissionRepository) MarkPermissionsAsOrphan(ctx context.Context, serv
 
 func (r *PermissionRepository) DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error {
 	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, codes)
+}
+
+func (r *PermissionRepository) PhysicalClearService(ctx context.Context, service string) error {
+	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
+		all, err := r.dao.ListAll(txCtx)
+		if err != nil {
+			return err
+		}
+
+		var codes []string
+		for _, p := range all {
+			if p.Service == service {
+				codes = append(codes, p.Code)
+			}
+		}
+
+		if len(codes) > 0 {
+			if err := r.dao.DeleteBindingsByPermCodes(txCtx, codes); err != nil {
+				return err
+			}
+		}
+		return r.dao.DeletePermissionsByServiceAndCodes(txCtx, service, nil)
+	})
+}
+
+func (r *PermissionRepository) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return r.dao.Transaction(ctx, fn)
 }

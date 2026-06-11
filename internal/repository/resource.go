@@ -28,6 +28,8 @@ type IResourceRepository interface {
 	SyncAPIs(ctx context.Context, service string, apis []domain.API) error
 	// MarkAPIsAsOrphan 将不在给定列表中的 API 标记为孤儿
 	MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error
+	// DeleteAPIsByServiceAndURNs 物理删除指定服务下不在给定 URN 列表中的接口
+	DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error
 
 	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
 	UpsertMenu(ctx context.Context, m *domain.Menu) error
@@ -194,6 +196,10 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis 
 
 func (r *ResourceRepository) MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error {
 	return r.dao.MarkAPIsAsOrphan(ctx, service, urns)
+}
+
+func (r *ResourceRepository) DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error {
+	return r.dao.DeleteAPIsByServiceAndURNs(ctx, service, urns)
 }
 
 func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) error {
