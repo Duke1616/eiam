@@ -3,12 +3,14 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/samber/lo"
 )
+
 
 // Engine 统一资源录入引擎，负责将各类来源的资产归一化后落盘并维护绑定关系。
 type Engine interface {
@@ -46,7 +48,10 @@ func NewEngine(
 }
 
 // Ingest 执行全量资产同步（增量绑定模式）。
-// 流程：权限对齐 → API 对齐 → 菜单对齐 → 资源绑定染色。
+// 流程：权限对齐 → API 对齐 → 菜单元数据对齐 → API 资源绑定染色。
+//
+// NOTE: menu 类型的绑定关系由 IngestMenus 统一全量管理，Ingest 只负责绑定
+// API 类型的物理资源，两者职责严格隔离，避免并发时相互覆盖导致菜单绑定丢失。
 func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
 	return e.permRepo.Transaction(ctx, func(txCtx context.Context) error {
 		// 1. 物理清空该服务的所有旧逻辑权限和资源映射关系
@@ -69,7 +74,7 @@ func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
 			return fmt.Errorf("同步 API 资产失败: %w", err)
 		}
 
-		// 5. 同步菜单资产
+		// 5. 同步菜单元数据（仅写菜单表，不触碰绑定关系）
 		menus := snap.Menus.Flatten()
 		if len(menus) > 0 {
 			if err := e.resRepo.SyncMenus(txCtx, menus); err != nil {
@@ -77,9 +82,10 @@ func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
 			}
 		}
 
-		// 6. 重新建立最新的资源与权限关联
-		if len(snap.Bindings) > 0 {
-			if err := e.permRepo.BatchBindResources(txCtx, snap.Bindings); err != nil {
+		// 6. 仅绑定 API 类型的物理资源（过滤掉 menu URN，防止破坏 IngestMenus 管理的菜单绑定）
+		apiBindings := filterAPIBindings(snap.Bindings)
+		if len(apiBindings) > 0 {
+			if err := e.permRepo.BatchBindResources(txCtx, apiBindings); err != nil {
 				return fmt.Errorf("资源绑定染色失败: %w", err)
 			}
 		}
@@ -89,11 +95,28 @@ func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
 			elog.Int("permissions", len(snap.Permissions)),
 			elog.Int("apis", len(snap.APIs)),
 			elog.Int("menus", len(menus)),
-			elog.Int("bindings", len(snap.Bindings)),
+			elog.Int("api_bindings", len(apiBindings)),
 		)
 		return nil
 	})
 }
+
+// filterAPIBindings 从绑定映射中过滤掉 menu 类型的 URN 条目。
+// NOTE: menu URN 格式为 eiam:menu:{name}，menu 绑定由 IngestMenus 统一管理，
+// Ingest 路径不介入，防止并发时相互覆盖导致菜单绑定丢失。
+func filterAPIBindings(bindings map[string][]string) map[string][]string {
+	result := make(map[string][]string, len(bindings))
+	for code, urns := range bindings {
+		apiURNs := lo.Filter(urns, func(urn string, _ int) bool {
+			return !strings.HasPrefix(urn, "eiam:menu:")
+		})
+		if len(apiURNs) > 0 {
+			result[code] = apiURNs
+		}
+	}
+	return result
+}
+
 
 // IngestMenus 执行本地菜单资产的全量同步（Full-Sync 模式）。
 // 同步菜单元数据的同时，对绑定关系执行先删后插的强一致性对齐。
@@ -114,7 +137,7 @@ func (e *engine) IngestMenus(ctx context.Context, menus domain.MenuTree) error {
 	}
 
 	// 3. 全量对齐绑定关系（先删后插）
-	allURNs := slice.Map(flatList, func(_ int, m domain.Menu) string { return m.URN() })
+	allURNs := lo.Map(flatList, func(m domain.Menu, _ int) string { return m.URN() })
 	if err := e.permRepo.SyncResourceBindings(ctx, allURNs, bindings); err != nil {
 		return fmt.Errorf("同步菜单资源绑定失败: %w", err)
 	}

@@ -292,15 +292,15 @@ func (r *PermissionRepository) SyncPermissions(ctx context.Context, service stri
 
 	codes := slice.Map(perms, func(_ int, p domain.Permission) string { return p.Code })
 
-	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
-		// 1. 批量更新元数据 (强制设为 Active)
-		if err := r.BatchCreatePermission(txCtx, perms); err != nil {
-			return err
-		}
+	// 不在此处开启新事务。如果调用方（如 engine.Ingest）已开启外层事务，
+	// 则直接复用外层事务上下文以确保原子性；如果未开启，则各操作独立执行。
+	// 1. 批量更新元数据 (强制设为 Active)
+	if err := r.BatchCreatePermission(ctx, perms); err != nil {
+		return err
+	}
 
-		// 2. 将废弃的资产标记为孤儿 (而非直接删除)
-		return r.dao.MarkPermissionsAsOrphan(txCtx, service, codes)
-	})
+	// 2. 将废弃的资产标记为孤儿 (而非直接删除)
+	return r.dao.MarkPermissionsAsOrphan(ctx, service, codes)
 }
 
 func (r *PermissionRepository) MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error {
@@ -312,26 +312,25 @@ func (r *PermissionRepository) DeletePermissionsByServiceAndCodes(ctx context.Co
 }
 
 func (r *PermissionRepository) PhysicalClearService(ctx context.Context, service string) error {
-	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
-		all, err := r.dao.ListAll(txCtx)
-		if err != nil {
+	// 不在此处开启新事务，调用方（engine.Ingest）负责管理外层事务边界。
+	all, err := r.dao.ListAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	var codes []string
+	for _, p := range all {
+		if p.Service == service {
+			codes = append(codes, p.Code)
+		}
+	}
+
+	if len(codes) > 0 {
+		if err := r.dao.DeleteBindingsByPermCodes(ctx, codes); err != nil {
 			return err
 		}
-
-		var codes []string
-		for _, p := range all {
-			if p.Service == service {
-				codes = append(codes, p.Code)
-			}
-		}
-
-		if len(codes) > 0 {
-			if err := r.dao.DeleteBindingsByPermCodes(txCtx, codes); err != nil {
-				return err
-			}
-		}
-		return r.dao.DeletePermissionsByServiceAndCodes(txCtx, service, nil)
-	})
+	}
+	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, nil)
 }
 
 func (r *PermissionRepository) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {

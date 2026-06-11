@@ -108,10 +108,8 @@ type ResourceDAO struct {
 	db *gorm.DB
 }
 
-type resTxKey struct{}
-
 func (d *ResourceDAO) getDB(ctx context.Context) *gorm.DB {
-	tx, ok := ctx.Value(resTxKey{}).(*gorm.DB)
+	tx, ok := ctx.Value(txKey{}).(*gorm.DB)
 	if ok {
 		return tx
 	}
@@ -294,7 +292,7 @@ func (d *ResourceDAO) MarkAPIsAsOrphan(ctx context.Context, service string, urns
 
 func (d *ResourceDAO) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		newCtx := context.WithValue(ctx, resTxKey{}, tx)
+		newCtx := context.WithValue(ctx, txKey{}, tx)
 		return fn(newCtx)
 	})
 }

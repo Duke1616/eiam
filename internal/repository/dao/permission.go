@@ -103,10 +103,8 @@ type PermissionDAO struct {
 	db *gorm.DB
 }
 
-type permTxKey struct{}
-
 func (d *PermissionDAO) getDB(ctx context.Context) *gorm.DB {
-	tx, ok := ctx.Value(permTxKey{}).(*gorm.DB)
+	tx, ok := ctx.Value(txKey{}).(*gorm.DB)
 	if ok {
 		return tx
 	}
@@ -331,7 +329,7 @@ func (d *PermissionDAO) DeleteBindingsByPermCodes(ctx context.Context, codes []s
 
 func (d *PermissionDAO) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		newCtx := context.WithValue(ctx, permTxKey{}, tx)
+		newCtx := context.WithValue(ctx, txKey{}, tx)
 		return fn(newCtx)
 	})
 }

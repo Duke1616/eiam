@@ -60,24 +60,23 @@ func NewResourceRepository(dao dao.IResourceDAO) IResourceRepository {
 func (r *ResourceRepository) SyncMenus(ctx context.Context, menus domain.MenuList) error {
 	names := lo.Map(menus, func(m domain.Menu, _ int) string { return m.Name })
 
-	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
-		// 1. 转换并预同步
-		daoEntities := lo.Map(menus, func(m domain.Menu, _ int) dao.Menu {
-			return r.toDAOMenu(m)
-		})
-
-		if err := r.dao.BatchUpsertMenus(txCtx, daoEntities); err != nil {
-			return err
-		}
-
-		// 2. 拓扑对齐 (基于 ParentURN 精确修正 ParentID)
-		if err := r.alignTopology(txCtx, daoEntities, menus); err != nil {
-			return err
-		}
-
-		// 3. 孤儿标记 (全量对齐闭环)
-		return r.dao.MarkMenusAsOrphan(txCtx, names)
+	// NOTE: 不在此处开启新事务，直接复用调用方传入 ctx 中可能已存在的外层事务。
+	// 1. 转换并预同步
+	daoEntities := lo.Map(menus, func(m domain.Menu, _ int) dao.Menu {
+		return r.toDAOMenu(m)
 	})
+
+	if err := r.dao.BatchUpsertMenus(ctx, daoEntities); err != nil {
+		return err
+	}
+
+	// 2. 拓扑对齐 (基于 ParentURN 精确修正 ParentID)
+	if err := r.alignTopology(ctx, daoEntities, menus); err != nil {
+		return err
+	}
+
+	// 3. 孤儿标记 (全量对齐闭环)
+	return r.dao.MarkMenusAsOrphan(ctx, names)
 }
 
 func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.Menu, source domain.MenuList) error {
@@ -183,15 +182,14 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis 
 		}
 	})
 
-	return r.dao.Transaction(ctx, func(txCtx context.Context) error {
-		// 1. 批量同步元数据 (OnConflict Upsert 并强制设为 Active)
-		if err := r.dao.BatchInsertAPI(txCtx, daoApis); err != nil {
-			return err
-		}
+	// NOTE: 不在此处开启新事务，直接复用调用方（engine.Ingest）的外层事务上下文。
+	// 1. 批量同步元数据 (OnConflict Upsert 并强制设为 Active)
+	if err := r.dao.BatchInsertAPI(ctx, daoApis); err != nil {
+		return err
+	}
 
-		// 2. 将不再存在的接口标记为孤儿 (而非直接删除)
-		return r.dao.MarkAPIsAsOrphan(txCtx, service, urns)
-	})
+	// 2. 将不再存在的接口标记为孤儿 (而非直接删除)
+	return r.dao.MarkAPIsAsOrphan(ctx, service, urns)
 }
 
 func (r *ResourceRepository) MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error {
