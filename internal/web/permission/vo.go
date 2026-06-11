@@ -1,11 +1,13 @@
 package permission
 
 type Permission struct {
-	ID      int64  `json:"id"`
-	Service string `json:"service"`
-	Group   string `json:"group"`
-	Code    string `json:"code"`
-	Name    string `json:"name"`
+	ID       int64    `json:"id"`
+	Service  string   `json:"service"`
+	Group    string   `json:"group"`
+	Code     string   `json:"code"`
+	Name     string   `json:"name"`
+	HasMenu  bool     `json:"has_menu"`
+	MenuURNs []string `json:"menu_urns"`
 }
 
 // Manifest 权限清单，用于前端归一化管理逻辑能力项
@@ -115,4 +117,8 @@ type Subject struct {
 	Id   string `json:"id"`
 	Name string `json:"name"`
 	Desc string `json:"desc"`
+}
+
+type QueryMenusByURNsReq struct {
+	URNs []string `json:"urns" binding:"required"`
 }

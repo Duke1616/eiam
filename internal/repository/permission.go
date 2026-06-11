@@ -33,6 +33,8 @@ type IPermissionRepository interface {
 	FindBindingsByPerm(ctx context.Context, permId int64) ([]domain.ResourceBinding, error)
 	// FindCodesByResourceURNs 批量反向检索，返回 map[ResourceURN][]PermCode
 	FindCodesByResourceURNs(ctx context.Context, resURNs []string) (map[string][]string, error)
+	// GetMenuBindings 获取所有菜单类型的绑定关系 (PermCode -> MenuURNs)
+	GetMenuBindings(ctx context.Context) (map[string][]string, error)
 
 	// SyncResourceBindings 同步资源绑定关系 (Full-Sync 模式)
 	SyncResourceBindings(ctx context.Context, allURNs []string, mappings map[string][]string) error
@@ -197,6 +199,19 @@ func (r *PermissionRepository) FindCodesByResourceURNs(ctx context.Context, resU
 	res := make(map[string][]string)
 	for _, b := range bindings {
 		res[b.ResourceURN] = append(res[b.ResourceURN], b.PermCode)
+	}
+	return res, nil
+}
+
+func (r *PermissionRepository) GetMenuBindings(ctx context.Context) (map[string][]string, error) {
+	bindings, err := r.dao.ListMenuBindings(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string][]string)
+	for _, b := range bindings {
+		res[b.PermCode] = append(res[b.PermCode], b.ResourceURN)
 	}
 	return res, nil
 }

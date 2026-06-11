@@ -176,6 +176,61 @@ func (s *MenuTreeSuite) TestGetAuthorizedMenus() {
 	}
 }
 
+func (s *MenuTreeSuite) TestGetMenusByURNs() {
+	testCases := []struct {
+		name   string
+		before func(ctx context.Context)
+		urns   []string
+		verify func(t *testing.T, menus []domain.Menu)
+	}{
+		{
+			name: "场景1: 批量根据 URN 获取菜单成功",
+			before: func(ctx context.Context) {
+				testMenus := []*domain.Menu{
+					{Name: "用户管理", Path: "/system/user"},
+					{Name: "角色管理", Path: "/system/role"},
+					{Name: "部门管理", Path: "/system/dept"},
+				}
+				err := s.resourceSvc.SyncMenus(ctx, testMenus)
+				require.NoError(s.T(), err)
+			},
+			urns: []string{"eiam:menu:用户管理", "eiam:menu:角色管理"},
+			verify: func(t *testing.T, menus []domain.Menu) {
+				require.Len(t, menus, 2)
+				names := []string{menus[0].Name, menus[1].Name}
+				assert.Contains(t, names, "用户管理")
+				assert.Contains(t, names, "角色管理")
+			},
+		},
+		{
+			name: "场景2: 传入空 URN 列表返回空",
+			before: func(ctx context.Context) {
+			},
+			urns: []string{},
+			verify: func(t *testing.T, menus []domain.Menu) {
+				assert.Empty(t, menus)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			defer s.clearAll()
+			s.ensureAdminRole(context.Background())
+
+			tid, err := s.tenantSvc.CreateTenant(context.Background(), "测试中心", "test-center", fmt.Sprintf("user_%d", s.testUid), s.testUid)
+			require.NoError(s.T(), err)
+			ctx := ctxutil.WithTenantID(context.Background(), tid)
+
+			tc.before(ctx)
+			menus, err := s.permSvc.GetMenusByURNs(ctx, tc.urns)
+			require.NoError(s.T(), err)
+
+			tc.verify(s.T(), menus)
+		})
+	}
+}
+
 func (s *MenuTreeSuite) clearAll() {
 	s.db.Exec("DELETE FROM `tenant`")
 	s.db.Exec("DELETE FROM `membership`")

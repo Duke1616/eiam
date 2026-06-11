@@ -29,6 +29,8 @@ type IPermissionService interface {
 	GetByCode(ctx context.Context, code string) (domain.Permission, error)
 	// GetPermissionManifest 获取归一化的权限资产清单
 	GetPermissionManifest(ctx context.Context) (domain.PermissionManifest, error)
+	// GetMenusByURNs 批量查询指定 URN 的菜单资产
+	GetMenusByURNs(ctx context.Context, urns []string) ([]domain.Menu, error)
 	// BindResourcesToPermission 定义该功能码涵盖哪些物理资源 URN
 	BindResourcesToPermission(ctx context.Context, permId int64, permCode string, resURNs []string) error
 

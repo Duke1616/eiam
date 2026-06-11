@@ -71,6 +71,8 @@ type IPermissionDAO interface {
 	ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error)
 	// ListBindingsByResURNs 批量反查：查看一组 URN 分别归属哪些能力码
 	ListBindingsByResURNs(ctx context.Context, resURNs []string) ([]PermissionBinding, error)
+	// ListMenuBindings 获取所有菜单类型的资源绑定关系
+	ListMenuBindings(ctx context.Context) ([]PermissionBinding, error)
 
 	// SyncResourceBindings 同步物理资产与功能码的映射关系 (基于 URN 的 Full-Sync)
 	SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error
@@ -191,6 +193,12 @@ func (d *PermissionDAO) ListBindingsByResURNs(ctx context.Context, resURNs []str
 		return res, nil
 	}
 	err := d.getDB(ctx).Where("resource_urn IN ?", resURNs).Find(&res).Error
+	return res, err
+}
+
+func (d *PermissionDAO) ListMenuBindings(ctx context.Context) ([]PermissionBinding, error) {
+	var res []PermissionBinding
+	err := d.getDB(ctx).Where("resource_urn LIKE ?", "eiam:menu:%").Find(&res).Error
 	return res, err
 }
 

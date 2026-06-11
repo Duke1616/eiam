@@ -405,9 +405,10 @@ func (s *permissionService) GetByCode(ctx context.Context, code string) (domain.
 
 func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.PermissionManifest, error) {
 	var (
-		perms    []domain.Permission
-		svcMetas []domain.Service
-		eg       errgroup.Group
+		perms        []domain.Permission
+		svcMetas     []domain.Service
+		menuBindings map[string][]string
+		eg           errgroup.Group
 	)
 
 	// 1. 并行抓取权限底数与服务元数据
@@ -421,6 +422,11 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 		svcMetas, err = s.resourceSvc.ListServices(ctx)
 		return err
 	})
+	eg.Go(func() error {
+		var err error
+		menuBindings, err = s.permRepo.GetMenuBindings(ctx)
+		return err
+	})
 
 	if err := eg.Wait(); err != nil {
 		return domain.PermissionManifest{}, err
@@ -428,6 +434,12 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 
 	// 2. 数据预处理
 	perms = s.filterByScope(ctx, perms)
+	for i := range perms {
+		if urns, ok := menuBindings[perms[i].Code]; ok && len(urns) > 0 {
+			perms[i].HasMenu = true
+			perms[i].MenuURNs = urns
+		}
+	}
 	svcMap := slice.ToMap(svcMetas, func(s domain.Service) string { return s.Code })
 
 	// 3. 构建资产树
@@ -447,6 +459,26 @@ func (s *permissionService) filterByScope(ctx context.Context, perms []domain.Pe
 	return lo.Filter(perms, func(p domain.Permission, _ int) bool {
 		return p.Scope == domain.ScopeTenant
 	})
+}
+
+func (s *permissionService) GetMenusByURNs(ctx context.Context, urns []string) ([]domain.Menu, error) {
+	if len(urns) == 0 {
+		return nil, nil
+	}
+
+	allMenus, err := s.resourceSvc.ListAllMenus(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	urnSet := lo.SliceToMap(urns, func(u string) (string, struct{}) {
+		return u, struct{}{}
+	})
+
+	return lo.Filter(allMenus, func(m domain.Menu, _ int) bool {
+		_, ok := urnSet[m.URN()]
+		return ok
+	}), nil
 }
 
 // toServiceNodes 核心变换逻辑：按 Service -> Group 聚合

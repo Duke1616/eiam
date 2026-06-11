@@ -48,6 +48,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 	// 元数据管理：查询权限资产清单
 	g.GET("/manifest", h.Capability("权限资产清单", "manifest").
+		Needs("iam:permission:menus_by_urns").
 		Handle(ginx.W(h.GetPermissionManifest)),
 	)
 
@@ -59,6 +60,12 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	// 授权治理：查询可授权主体 (用户/角色)
 	g.POST("/subjects/search", h.Capability("搜索授权主体", "search_subjects").
 		Handle(ginx.B[SearchSubjectsReq](h.SearchSubjects)),
+	)
+
+	// 批量根据 URN 查询菜单详情
+	g.POST("/menus/by_urns", h.Capability("批量根据 URN 查询菜单详情", "menus_by_urns").
+		NoSync().
+		Handle(ginx.B[QueryMenusByURNsReq](h.ListMenusByURNs)),
 	)
 }
 
@@ -100,11 +107,13 @@ func (h *Handler) toEntryVOs(nodes []domain.GroupNode) []Entry {
 func (h *Handler) toActionVOs(perms []domain.Permission) []Permission {
 	return slice.Map(perms, func(idx int, p domain.Permission) Permission {
 		return Permission{
-			ID:      p.ID,
-			Service: p.Service,
-			Group:   p.Group,
-			Code:    p.Code,
-			Name:    p.Name,
+			ID:       p.ID,
+			Service:  p.Service,
+			Group:    p.Group,
+			Code:     p.Code,
+			Name:     p.Name,
+			HasMenu:  p.HasMenu,
+			MenuURNs: p.MenuURNs,
 		}
 	})
 }
@@ -193,6 +202,20 @@ func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{Data: h.toMenuVOs(menus)}, nil
+}
+
+func (h *Handler) ListMenusByURNs(ctx *ginx.Context, req QueryMenusByURNsReq) (ginx.Result, error) {
+	menus, err := h.svc.GetMenusByURNs(ctx.Request.Context(), req.URNs)
+	if err != nil {
+		return ginx.Result{Msg: "根据 URN 查询菜单信息失败"}, err
+	}
+
+	menuTree := make(domain.MenuTree, 0, len(menus))
+	for i := range menus {
+		menuTree = append(menuTree, &menus[i])
+	}
+
+	return ginx.Result{Data: h.toMenuVOs(menuTree)}, nil
 }
 
 func (h *Handler) toMenuVOs(menus domain.MenuTree) []Menu {

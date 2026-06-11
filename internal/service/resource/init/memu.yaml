@@ -10,7 +10,7 @@
     platforms: ["cmdb"]
   children:
   - name: GlobalSearchDiscovery
-    permission_code: "cmdb:dashboard:view"
+    permission_code: "cmdb:resource:search"
     path: /cmdb/dashboard/search
     component: /views/search/tabs-info.vue
     meta:
@@ -20,7 +20,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: GlobalSearchCenter
-    permission_code: "cmdb:dashboard:view"
+    permission_code: "cmdb:resource:search"
     path: /cmdb/dashboard
     component: /views/search/search.vue
     meta:
@@ -51,7 +51,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: ModelDetail
-    permission_code: "cmdb:info:view"
+    permission_code: "cmdb:model:get"
     path: info
     component: /views/model/info/index.vue
     meta:
@@ -61,17 +61,17 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: RelationshipTopology
-    permission_code: "cmdb:relation:view"
+    permission_code: "cmdb:model:relation_graph"
     path: relation
     component: /views/model/relation-graph/index.vue
     meta:
-      title: 关联关系
+      title: 模型拓扑
       icon: relation-graph
       is_hidden: false
       is_keepalive: false
       platforms: ["cmdb"]
   - name: RelationshipDefinition
-    permission_code: "cmdb:relation-type:view"
+    permission_code: "cmdb:relation:view"
     path: relation-type
     component: /views/model/relation-type/index.vue
     meta:
@@ -92,7 +92,7 @@
     platforms: ["cmdb"]
   children:
   - name: AssetRegistry
-    permission_code: "cmdb:asset:view"
+    permission_code: "cmdb:resource:view"
     path: index
     component: /views/resource/warehouse/index.vue
     meta:
@@ -102,7 +102,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: AssetList
-    permission_code: "cmdb:list:view"
+    permission_code: "cmdb:resource:view"
     path: list
     component: /views/resource/warehouse/list/list.vue
     meta:
@@ -112,7 +112,7 @@
       is_keepalive: false
       platforms: ["cmdb"]
   - name: AssetDetail
-    permission_code: "cmdb:info:view"
+    permission_code: "cmdb:resource:get"
     path: info
     component: /views/resource/warehouse/info/info.vue
     meta:
