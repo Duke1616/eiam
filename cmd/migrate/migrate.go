@@ -6,8 +6,9 @@ import (
 	"os"
 
 	"github.com/Duke1616/eiam/cmd/migrate/internal/config"
-	"github.com/Duke1616/eiam/cmd/migrate/internal/migration"
 	"github.com/Duke1616/eiam/cmd/migrate/internal/migrations"
+	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/pkg/migration"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +40,8 @@ func runMigrate() {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 
-	runner := migration.NewRunner(cfg, migrations.All(cfg.EncryptionKey, cfg.EncryptionVersion),
+	runner := migration.NewRunner(cfg.Config, migrations.All(cfg.EncryptionKey, cfg.EncryptionVersion),
+		migration.WithAutoMigrateFunc(dao.InitTables),
 		migration.WithPreHooks(migrations.PreHooks()...),
 		migration.WithPostHooks(migrations.PostHooks()...),
 	)

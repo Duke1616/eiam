@@ -1,0 +1,110 @@
+package migration
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+	"strconv"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+// mysqlReader 具体的通用 MySQL 读取实现 (支持 eflow)
+type mysqlReader[S any] struct {
+	model  any
+	offset int
+}
+
+func (r *mysqlReader[S]) ReadNext(ctx context.Context, env MigrationEnv) ([]S, error) {
+	var batch []S
+	err := env.MySQLSrc.WithContext(ctx).
+		Model(r.model).
+		Order("id asc").
+		Offset(r.offset).
+		Limit(env.BatchSize).
+		Find(&batch).Error
+	if err != nil {
+		return nil, err
+	}
+	r.offset += len(batch)
+	return batch, nil
+}
+
+func (r *mysqlReader[S]) Close(ctx context.Context) error {
+	return nil
+}
+
+// mysqlWriter 具体的通用 MySQL 写入实现
+type mysqlWriter[D any] struct{}
+
+func (w *mysqlWriter[D]) Write(ctx context.Context, env MigrationEnv, batch []D) (int64, error) {
+	if len(batch) == 0 {
+		return 0, nil
+	}
+	if env.DryRun {
+		return 0, nil
+	}
+	if env.DefaultTenantID != nil {
+		for i := range batch {
+			applyDefaultTenant(&batch[i], *env.DefaultTenantID)
+		}
+	}
+	err := env.MySQLDst.WithContext(ctx).
+		Clauses(clause.OnConflict{UpdateAll: true}).
+		CreateInBatches(batch, env.BatchSize).Error
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(batch)), nil
+}
+
+// noopTransformer 无转换包装器 (MySQL ➔ MySQL 同类型迁移)
+type noopTransformer[T any] struct{}
+
+func (t *noopTransformer[T]) Transform(src T) ([]T, error) {
+	return []T{src}, nil
+}
+
+// NewMySQLMigrator 通过 MySQL 规约创建通用迁移器
+func NewMySQLMigrator[T any](spec MySQLMigration[T]) Migrator {
+	return &genericMigrator[T, T]{
+		name:        spec.Name(),
+		reader:      &mysqlReader[T]{model: spec.Source()},
+		transformer: &noopTransformer[T]{},
+		writer:      &mysqlWriter[T]{},
+	}
+}
+
+// applyDefaultTenant 反射覆写租户 ID
+func applyDefaultTenant(dst any, tenantID int64) {
+	v := reflect.ValueOf(dst)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	field := v.FieldByName("TenantID")
+	if field.IsValid() && field.CanSet() {
+		switch field.Kind() {
+		case reflect.String:
+			field.SetString(strconv.FormatInt(tenantID, 10))
+		case reflect.Int, reflect.Int64:
+			field.SetInt(tenantID)
+		default:
+		}
+	}
+}
+
+// tableName 辅助解析目标表名
+func tableName(db *gorm.DB, model any) (string, error) {
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(model); err != nil {
+		return "", fmt.Errorf("解析目标表名失败: %w", err)
+	}
+	if stmt.Schema == nil {
+		return "", fmt.Errorf("解析目标表名失败: schema 为空")
+	}
+	if stmt.Schema.Table == "" {
+		return "", fmt.Errorf("解析目标表名失败: 表名为空")
+	}
+	return stmt.Schema.Table, nil
+}

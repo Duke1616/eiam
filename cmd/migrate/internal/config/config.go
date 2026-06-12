@@ -4,41 +4,36 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Duke1616/eiam/pkg/migration"
 	"github.com/spf13/viper"
 )
 
 // Config 是迁移命令的完整运行配置。
 type Config struct {
-	MongoDSN           string
-	MongoDBName        string
-	MySQLDstDSN        string
-	EncryptionKey      string
-	EncryptionVersion  string
-	BatchSize          int
-	Timeout            time.Duration
-	AutoMigrate        bool
-	ResetAutoIncrement bool
-	Truncate           bool
-	DryRun             bool
-	ConfigFile         string
+	migration.Config
+	EncryptionKey     string
+	EncryptionVersion string
+	ConfigFile        string
 }
 
 // Load 从全局 viper（已由 root 命令初始化）读取迁移配置。
 // 目标端 MySQL 复用应用主库 mysql.dsn，源端从 migration.source 读取。
 func Load() (Config, error) {
 	cfg := Config{
-		MongoDSN:           viper.GetString("migration.source.mongo.dsn"),
-		MongoDBName:        viper.GetString("migration.source.mongo.database"),
-		MySQLDstDSN:        viper.GetString("mysql.dsn"),
-		EncryptionKey:      viper.GetString("identity.key"),
-		EncryptionVersion:  viper.GetString("identity.version"),
-		BatchSize:          viper.GetInt("migration.batch_size"),
-		Timeout:            viper.GetDuration("migration.timeout"),
-		AutoMigrate:        viper.GetBool("migration.auto_migrate"),
-		ResetAutoIncrement: viper.GetBool("migration.reset_auto_increment"),
-		Truncate:           viper.GetBool("migration.truncate"),
-		DryRun:             viper.GetBool("migration.dry_run"),
-		ConfigFile:         viper.ConfigFileUsed(),
+		Config: migration.Config{
+			MongoDSN:           viper.GetString("migration.source.mongo.dsn"),
+			MongoDBName:        viper.GetString("migration.source.mongo.database"),
+			MySQLDstDSN:        viper.GetString("mysql.dsn"),
+			BatchSize:          viper.GetInt("migration.batch_size"),
+			Timeout:            viper.GetDuration("migration.timeout"),
+			AutoMigrate:        viper.GetBool("migration.auto_migrate"),
+			ResetAutoIncrement: viper.GetBool("migration.reset_auto_increment"),
+			Truncate:           viper.GetBool("migration.truncate"),
+			DryRun:             viper.GetBool("migration.dry_run"),
+		},
+		EncryptionKey:     viper.GetString("identity.key"),
+		EncryptionVersion: viper.GetString("identity.version"),
+		ConfigFile:        viper.ConfigFileUsed(),
 	}
 
 	if cfg.BatchSize == 0 {
