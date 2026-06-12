@@ -1,4 +1,5 @@
-config/
+/config/
+/internal/test/config/
 logs/
 .idea/
 .env
