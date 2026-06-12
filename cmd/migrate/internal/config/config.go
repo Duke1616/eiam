@@ -41,8 +41,8 @@ func Load() (Config, error) {
 			Truncate:           viper.GetBool("migration.truncate"),
 			DryRun:             viper.GetBool("migration.dry_run"),
 		},
-		EncryptionKey:     viper.GetString("identity.key"),
-		EncryptionVersion: viper.GetString("identity.version"),
+		EncryptionKey:     viper.GetString("migration.identity.key"),
+		EncryptionVersion: viper.GetString("migration.identity.version"),
 		ConfigFile:        viper.ConfigFileUsed(),
 	}
 
