@@ -1,5 +1,4 @@
 -- +goose Up
--- +goose StatementBegin
 -- 录入两大核心角色：super_admin (系统极权，Type=2 隐藏)、admin (租户管理员，Type=1 共享)
 -- 注意：tenant_id = 1 代表系统预置资源。
 INSERT INTO `role` (`tenant_id`, `code`, `name`, `type`, `desc`, `inline_policies`, `ctime`, `utime`)
@@ -62,10 +61,8 @@ VALUES (1, '本地账号登录', 'local', '{"min_length": 6, "max_failed_attempt
         FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `enabled` = VALUES(`enabled`), `utime` = VALUES(`utime`);
 
--- +goose StatementEnd
 
 -- +goose Down
--- +goose StatementBegin
 DELETE FROM `role` WHERE `tenant_id` = 1 AND `code` IN ('super_admin', 'admin');
 DELETE FROM `casbin_rule` WHERE `ptype` = 'g' AND `v0` = 'role:admin' AND `v1` = 'role:super_admin' AND `v2` = '1';
 DELETE FROM `user` WHERE `username` = 'admin';
@@ -76,6 +73,3 @@ DELETE FROM `tenant` WHERE `id` IN (1, 2);
 DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` IN (1, 2);
 DELETE FROM `user_profile` WHERE `user_id` = 1;
 DELETE FROM `identity_source` WHERE `id` = 1;
-
-
--- +goose StatementEnd
