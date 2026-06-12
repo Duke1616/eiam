@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var force bool
+
 // NewCommand 返回 migrate 子命令。
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -22,6 +24,7 @@ func NewCommand() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "强制重新执行所有迁移步骤（忽略已迁移的记录）")
 	return cmd
 }
 
@@ -34,6 +37,9 @@ func runMigrate() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
+	}
+	if force {
+		cfg.Force = true
 	}
 	log.Printf("使用迁移配置: %s", cfg.ConfigFile)
 

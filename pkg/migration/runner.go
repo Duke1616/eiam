@@ -199,6 +199,13 @@ func (r *Runner) shouldSkip(db *gorm.DB, migrator Migrator) (bool, error) {
 		return false, nil
 	}
 
+	if r.cfg.Force {
+		if err := db.Where("name = ?", migrator.Name()).Delete(&MigrationRecord{}).Error; err != nil {
+			return false, fmt.Errorf("强制重新迁移时清理旧记录 [%s] 失败: %w", migrator.Name(), err)
+		}
+		return false, nil
+	}
+
 	var record MigrationRecord
 	err := db.Where("name = ?", migrator.Name()).First(&record).Error
 	if err == nil {

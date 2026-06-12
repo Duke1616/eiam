@@ -20,6 +20,7 @@ type Config struct {
 	ResetAutoIncrement bool
 	Truncate           bool
 	DryRun             bool
+	Force              bool
 }
 
 // MigrationEnv 迁移环境变量，承载数据源连接

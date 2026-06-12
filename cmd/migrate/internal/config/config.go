@@ -40,6 +40,7 @@ func Load() (Config, error) {
 			ResetAutoIncrement: viper.GetBool("migration.reset_auto_increment"),
 			Truncate:           viper.GetBool("migration.truncate"),
 			DryRun:             viper.GetBool("migration.dry_run"),
+			Force:              viper.GetBool("migration.force"),
 		},
 		EncryptionKey:     viper.GetString("migration.identity.key"),
 		EncryptionVersion: viper.GetString("migration.identity.version"),
