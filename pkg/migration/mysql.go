@@ -3,6 +3,7 @@ package migration
 import (
 	"context"
 	"fmt"
+	"log"
 	"reflect"
 	"strconv"
 
@@ -66,13 +67,52 @@ func (t *noopTransformer[T]) Transform(src T) ([]T, error) {
 	return []T{src}, nil
 }
 
+type mysqlAutoIncrementSyncer struct {
+	dstModel any
+}
+
+func (s *mysqlAutoIncrementSyncer) SyncAutoIncrement(ctx context.Context, env MigrationEnv) error {
+	if env.MySQLSrc == nil || env.MySQLDst == nil {
+		return nil
+	}
+
+	table, err := tableName(env.MySQLDst, s.dstModel)
+	if err != nil {
+		return fmt.Errorf("同步自增值解析目标表名失败: %w", err)
+	}
+
+	srcDBName := env.MySQLSrc.Migrator().CurrentDatabase()
+	var autoInc *int64
+	// 从源库读取 AUTO_INCREMENT 值
+	err = env.MySQLSrc.WithContext(ctx).Raw(
+		"SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+		srcDBName, table,
+	).Scan(&autoInc).Error
+	if err != nil {
+		// 如果源表非 MySQL 自增表或读取报错，优雅跳过
+		return nil
+	}
+
+	if autoInc != nil && *autoInc > 1 {
+		log.Printf("[%s] 检测到源库自增起点为: %d, 正在同步至目标库...", table, *autoInc)
+		err = env.MySQLDst.WithContext(ctx).Exec(
+			fmt.Sprintf("ALTER TABLE %s AUTO_INCREMENT = %d", quoteIdentifier(table), *autoInc),
+		).Error
+		if err != nil {
+			return fmt.Errorf("同步表 %s 自增起点失败: %w", table, err)
+		}
+	}
+	return nil
+}
+
 // NewMySQLMigrator 通过 MySQL 规约创建通用迁移器
 func NewMySQLMigrator[T any](spec MySQLMigration[T]) Migrator {
 	return &genericMigrator[T, T]{
-		name:        spec.Name(),
-		reader:      &mysqlReader[T]{model: spec.Source()},
-		transformer: &noopTransformer[T]{},
-		writer:      &mysqlWriter[T]{},
+		name:          spec.Name(),
+		reader:        &mysqlReader[T]{model: spec.Source()},
+		transformer:   &noopTransformer[T]{},
+		writer:        &mysqlWriter[T]{},
+		autoIncSyncer: &mysqlAutoIncrementSyncer{dstModel: spec.Destination()},
 	}
 }
 

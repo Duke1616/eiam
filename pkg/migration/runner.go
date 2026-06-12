@@ -29,6 +29,45 @@ type MigrationRecord struct {
 	Utime     time.Time `gorm:"column:utime;type:datetime;not null;comment:'迁移完成时间'"`
 }
 
+// IRecordStore 定义了迁移历史记录的存储层接口
+type IRecordStore interface {
+	AutoMigrate(ctx context.Context) error
+	Get(ctx context.Context, name string) (*MigrationRecord, error)
+	Delete(ctx context.Context, name string) error
+	Save(ctx context.Context, record *MigrationRecord) error
+	Clear(ctx context.Context) error
+}
+
+type gormRecordStore struct {
+	db *gorm.DB
+}
+
+func NewGORMRecordStore(db *gorm.DB) IRecordStore {
+	return &gormRecordStore{db: db}
+}
+
+func (s *gormRecordStore) AutoMigrate(ctx context.Context) error {
+	return s.db.WithContext(ctx).AutoMigrate(&MigrationRecord{})
+}
+
+func (s *gormRecordStore) Get(ctx context.Context, name string) (*MigrationRecord, error) {
+	var record MigrationRecord
+	err := s.db.WithContext(ctx).Where("name = ?", name).First(&record).Error
+	return &record, err
+}
+
+func (s *gormRecordStore) Delete(ctx context.Context, name string) error {
+	return s.db.WithContext(ctx).Where("name = ?", name).Delete(&MigrationRecord{}).Error
+}
+
+func (s *gormRecordStore) Save(ctx context.Context, record *MigrationRecord) error {
+	return s.db.WithContext(ctx).Create(record).Error
+}
+
+func (s *gormRecordStore) Clear(ctx context.Context) error {
+	return s.db.WithContext(ctx).Exec("TRUNCATE TABLE migration_record").Error
+}
+
 // Runner 负责连接数据源，并按顺序执行一组迁移任务。
 type Runner struct {
 	cfg             Config
@@ -73,41 +112,100 @@ func WithDefaultTenantID(id int64) RunnerOption {
 
 // Run 执行完整迁移流程。
 func (r *Runner) Run(ctx context.Context) error {
+	// 1. 初始化环境变量与数据源连接
+	env, cleanup, err := r.initEnv(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	// 2. 初始化记录存储器
+	store := NewGORMRecordStore(env.MySQLDst)
+
+	// 3. 准备目标表结构与环境清理
+	if err = r.prepareDatabase(ctx, store, env.MySQLDst); err != nil {
+		return err
+	}
+
+	// 4. 执行迁移前预校验及数据清理
+	if err = r.runPreHooks(ctx, env); err != nil {
+		return err
+	}
+
+	// 5. 遍历并执行具体的迁移任务
+	if err = r.runMigrators(ctx, env, store); err != nil {
+		return err
+	}
+
+	// 5.5. 自动同步自增 ID 计数器起点
+	if !r.cfg.DryRun {
+		for _, m := range r.migrators {
+			if syncer, ok := m.(IAutoIncrementSyncer); ok {
+				if err = syncer.SyncAutoIncrement(ctx, env); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// 6. 执行迁移后修复钩子
+	return r.runPostHooks(ctx, env)
+}
+
+// initEnv 集中建立源端及目标端连接并进行探活，返回清理资源的闭包和统一的环境对象
+func (r *Runner) initEnv(ctx context.Context) (MigrationEnv, func(), error) {
+	var cleanups []func()
+	cleanup := func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	}
+
 	mongoClient, err := mongo.Connect(options.Client().ApplyURI(r.cfg.MongoDSN))
 	if err != nil {
-		return fmt.Errorf("连接源端 MongoDB 失败: %w", err)
+		return MigrationEnv{}, cleanup, fmt.Errorf("连接源端 MongoDB 失败: %w", err)
 	}
-	defer func() {
+	cleanups = append(cleanups, func() {
 		if err := mongoClient.Disconnect(context.Background()); err != nil {
 			log.Printf("warning: 关闭 MongoDB 连接失败: %v", err)
 		}
-	}()
+	})
+
 	if err = mongoClient.Ping(ctx, readpref.Primary()); err != nil {
-		return fmt.Errorf("探测源端 MongoDB 失败: %w", err)
+		cleanup()
+		return MigrationEnv{}, nil, fmt.Errorf("探测源端 MongoDB 失败: %w", err)
 	}
 
 	var mysqlSRC *gorm.DB
 	if r.cfg.MySQLSrcDSN != "" {
 		mysqlSRC, err = openMySQL(r.cfg.MySQLSrcDSN)
 		if err != nil {
-			return fmt.Errorf("连接源端 MySQL 失败: %w", err)
+			cleanup()
+			return MigrationEnv{}, nil, fmt.Errorf("连接源端 MySQL 失败: %w", err)
 		}
-		if err = pingMySQL(ctx, mysqlSRC); err != nil {
+		cleanups = append(cleanups, func() {
 			closeMySQL("源端 MySQL", mysqlSRC)
-			return fmt.Errorf("探测源端 MySQL 失败: %w", err)
+		})
+
+		if err = pingMySQL(ctx, mysqlSRC); err != nil {
+			cleanup()
+			return MigrationEnv{}, nil, fmt.Errorf("探测源端 MySQL 失败: %w", err)
 		}
-		defer closeMySQL("源端 MySQL", mysqlSRC)
 	}
 
 	mysqlDST, err := openMySQL(r.cfg.MySQLDstDSN)
 	if err != nil {
-		return fmt.Errorf("连接目标端 MySQL 失败: %w", err)
+		cleanup()
+		return MigrationEnv{}, nil, fmt.Errorf("连接目标端 MySQL 失败: %w", err)
 	}
-	if err = pingMySQL(ctx, mysqlDST); err != nil {
+	cleanups = append(cleanups, func() {
 		closeMySQL("目标端 MySQL", mysqlDST)
-		return fmt.Errorf("探测目标端 MySQL 失败: %w", err)
+	})
+
+	if err = pingMySQL(ctx, mysqlDST); err != nil {
+		cleanup()
+		return MigrationEnv{}, nil, fmt.Errorf("探测目标端 MySQL 失败: %w", err)
 	}
-	defer closeMySQL("目标端 MySQL", mysqlDST)
 
 	env := MigrationEnv{
 		MongoDB:         mongoClient.Database(r.cfg.MongoDBName),
@@ -118,40 +216,69 @@ func (r *Runner) Run(ctx context.Context) error {
 		DefaultTenantID: r.defaultTenantID,
 	}
 
-	// 始终自动初始化迁移状态控制记录表
-	if !r.cfg.DryRun {
-		if err = mysqlDST.AutoMigrate(&MigrationRecord{}); err != nil {
-			return fmt.Errorf("初始化迁移记录表失败: %w", err)
-		}
+	return env, cleanup, nil
+}
+
+// prepareDatabase 初始化迁移记录表和目标端表结构，并执行清空配置（若开启）
+func (r *Runner) prepareDatabase(ctx context.Context, store IRecordStore, db *gorm.DB) error {
+	if r.cfg.DryRun {
+		return nil
 	}
 
-	if r.cfg.AutoMigrate && !r.cfg.DryRun && r.autoMigrateFunc != nil {
+	// 始终自动初始化迁移状态控制记录表
+	if err := store.AutoMigrate(ctx); err != nil {
+		return fmt.Errorf("初始化迁移记录表失败: %w", err)
+	}
+
+	// 初始化目标端表结构
+	if r.cfg.AutoMigrate && r.autoMigrateFunc != nil {
 		log.Println("正在初始化目标端表结构")
-		if err = r.autoMigrateFunc(mysqlDST); err != nil {
+		if err := r.autoMigrateFunc(db); err != nil {
 			return fmt.Errorf("初始化目标端表结构失败: %w", err)
 		}
 	}
 
-	if r.cfg.Truncate && !r.cfg.DryRun {
-		if err = r.truncateDestinations(ctx, mysqlDST); err != nil {
+	// 清空目标表
+	if r.cfg.Truncate {
+		if err := r.truncateDestinations(ctx, db, store); err != nil {
 			return err
 		}
 	}
 
-	log.Printf("开始迁移: batch_size=%d dry_run=%t", r.cfg.BatchSize, r.cfg.DryRun)
+	return nil
+}
 
-	// Pre-hooks: 冲突检测与数据清理
+// runPreHooks 执行迁移前的冲突检测与数据清理钩子
+func (r *Runner) runPreHooks(ctx context.Context, env MigrationEnv) error {
 	for _, hook := range r.preHooks {
-		if err = hook(ctx, env); err != nil {
+		if err := hook(ctx, env); err != nil {
 			return fmt.Errorf("迁移前钩子失败: %w", err)
 		}
 	}
+	return nil
+}
+
+// runPostHooks 执行迁移后的数据一致性修复钩子
+func (r *Runner) runPostHooks(ctx context.Context, env MigrationEnv) error {
+	for _, hook := range r.postHooks {
+		if err := hook(ctx, env); err != nil {
+			return fmt.Errorf("迁移后钩子失败: %w", err)
+		}
+	}
+	return nil
+}
+
+// runMigrators 循环运行所有已注册的迁移器
+func (r *Runner) runMigrators(ctx context.Context, env MigrationEnv, store IRecordStore) error {
+	log.Printf("开始迁移: batch_size=%d dry_run=%t", r.cfg.BatchSize, r.cfg.DryRun)
 
 	for _, migrator := range r.migrators {
 		// 检查该任务是否已成功执行，已执行则跳过
-		if skipped, err1 := r.shouldSkip(mysqlDST, migrator); err1 != nil {
-			return err1
-		} else if skipped {
+		skipped, err := r.shouldSkip(ctx, store, migrator)
+		if err != nil {
+			return err
+		}
+		if skipped {
 			continue
 		}
 
@@ -172,37 +299,28 @@ func (r *Runner) Run(ctx context.Context) error {
 				Ctime:     startTime,
 				Utime:     time.Now(),
 			}
-			if err = mysqlDST.Create(&newRecord).Error; err != nil {
+			if err = store.Save(ctx, &newRecord); err != nil {
 				return fmt.Errorf("保存迁移历史记录 [%s] 失败: %w", migrator.Name(), err)
 			}
 		}
 	}
-
-	// Post-hooks: 数据补偿与一致性修复
-	for _, hook := range r.postHooks {
-		if err = hook(ctx, env); err != nil {
-			return fmt.Errorf("迁移后钩子失败: %w", err)
-		}
-	}
-
 	return nil
 }
 
 // shouldSkip 判断指定任务是否已存在执行成功的历史，存在则跳过以达到幂等性
-func (r *Runner) shouldSkip(db *gorm.DB, migrator Migrator) (bool, error) {
+func (r *Runner) shouldSkip(ctx context.Context, store IRecordStore, migrator Migrator) (bool, error) {
 	if r.cfg.DryRun {
 		return false, nil
 	}
 
 	if r.cfg.Force {
-		if err := db.Where("name = ?", migrator.Name()).Delete(&MigrationRecord{}).Error; err != nil {
+		if err := store.Delete(ctx, migrator.Name()); err != nil {
 			return false, fmt.Errorf("强制重新迁移时清理旧记录 [%s] 失败: %w", migrator.Name(), err)
 		}
 		return false, nil
 	}
 
-	var record MigrationRecord
-	err := db.Where("name = ?", migrator.Name()).First(&record).Error
+	record, err := store.Get(ctx, migrator.Name())
 	if err == nil {
 		log.Printf("迁移任务 [%s] 已经于 %s 执行成功过 (读取:%d 写入:%d)，直接跳过。若想重新执行，请在数据库中删除该任务对应的记录。",
 			migrator.Name(), record.Utime.Format("2006-01-02 15:04:05"), record.Read, record.Written)
@@ -249,7 +367,7 @@ func closeMySQL(name string, db *gorm.DB) {
 	}
 }
 
-func (r *Runner) truncateDestinations(ctx context.Context, db *gorm.DB) error {
+func (r *Runner) truncateDestinations(ctx context.Context, db *gorm.DB, store IRecordStore) error {
 	for i := len(r.migrators) - 1; i >= 0; i-- {
 		table, err := tableName(db, r.migrators[i].Destination())
 		if err != nil {
@@ -262,7 +380,7 @@ func (r *Runner) truncateDestinations(ctx context.Context, db *gorm.DB) error {
 	}
 
 	log.Println("正在清空迁移历史记录表")
-	if err := db.WithContext(ctx).Exec("TRUNCATE TABLE migration_record").Error; err != nil {
+	if err := store.Clear(ctx); err != nil {
 		log.Printf("warning: 清空迁移历史记录表失败: %v", err)
 	}
 	return nil

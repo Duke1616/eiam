@@ -7,14 +7,23 @@ import (
 
 // genericMigrator 通用泛型迁移驱动器
 type genericMigrator[S any, D any] struct {
-	name        string
-	reader      Reader[S]
-	transformer Transformer[S, D]
-	writer      Writer[D]
+	name          string
+	reader        Reader[S]
+	transformer   Transformer[S, D]
+	writer        Writer[D]
+	autoIncSyncer IAutoIncrementSyncer
 }
 
 func (m *genericMigrator[S, D]) Name() string     { return m.name }
 func (m *genericMigrator[S, D]) Destination() any { return new(D) }
+
+// SyncAutoIncrement 实现 IAutoIncrementSyncer 接口
+func (m *genericMigrator[S, D]) SyncAutoIncrement(ctx context.Context, env MigrationEnv) error {
+	if m.autoIncSyncer != nil {
+		return m.autoIncSyncer.SyncAutoIncrement(ctx, env)
+	}
+	return nil
+}
 
 func (m *genericMigrator[S, D]) Migrate(ctx context.Context, env MigrationEnv) (Result, error) {
 	defer m.reader.Close(ctx)

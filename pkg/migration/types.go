@@ -85,3 +85,9 @@ type MySQLMigration[T any] interface {
 	Source() any
 	Destination() any
 }
+
+// IAutoIncrementSyncer 代表支持在迁移结束后同步自增主键起点的迁移器
+type IAutoIncrementSyncer interface {
+	SyncAutoIncrement(ctx context.Context, env MigrationEnv) error
+}
+

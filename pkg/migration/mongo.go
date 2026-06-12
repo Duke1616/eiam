@@ -2,6 +2,9 @@ package migration
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -61,22 +64,74 @@ func (t *mongoTransformerMany[S, D]) Transform(src S) ([]D, error) {
 	return t.convertMany(src), nil
 }
 
+type mongoAutoIncrementSyncer struct {
+	collectionName string
+	dstModel       any
+}
+
+func (s *mongoAutoIncrementSyncer) SyncAutoIncrement(ctx context.Context, env MigrationEnv) error {
+	if env.MongoDB == nil || env.MySQLDst == nil {
+		return nil
+	}
+
+	table, err := tableName(env.MySQLDst, s.dstModel)
+	if err != nil {
+		return fmt.Errorf("同步自增值解析目标表名失败: %w", err)
+	}
+
+	coll := env.MongoDB.Collection("c_id_generator")
+	var record struct {
+		Name   string `bson:"name"`
+		NextID int64  `bson:"next_id"`
+	}
+
+	err = coll.FindOne(ctx, bson.M{"name": s.collectionName}).Decode(&record)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			// 未找到该集合的记录，优雅跳过
+			return nil
+		}
+		return fmt.Errorf("从 MongoDB 获取 [%s] 的自增起点失败: %w", s.collectionName, err)
+	}
+
+	if record.NextID > 1 {
+		log.Printf("[%s] 检测到 MongoDB 自增起点为: %d, 正在同步至目标库...", table, record.NextID)
+		err = env.MySQLDst.WithContext(ctx).Exec(
+			fmt.Sprintf("ALTER TABLE %s AUTO_INCREMENT = %d", quoteIdentifier(table), record.NextID),
+		).Error
+		if err != nil {
+			return fmt.Errorf("同步表 %s 自增起点失败: %w", table, err)
+		}
+	}
+	return nil
+}
+
 // NewMongoMigrator 通过 1:1 规约创建通用迁移器
 func NewMongoMigrator[S any, D any](spec MongoMigration[S, D]) Migrator {
+	var dst D
 	return &genericMigrator[S, D]{
 		name:        spec.Name(),
 		reader:      &mongoReader[S]{collectionName: spec.CollectionName()},
 		transformer: &mongoTransformer[S, D]{convert: spec.Convert},
 		writer:      &mysqlWriter[D]{},
+		autoIncSyncer: &mongoAutoIncrementSyncer{
+			collectionName: spec.CollectionName(),
+			dstModel:       &dst,
+		},
 	}
 }
 
 // NewMongoMigratorMany 通过 1:N 规约创建通用迁移器
 func NewMongoMigratorMany[S any, D any](spec MongoMigrationMany[S, D]) Migrator {
+	var dst D
 	return &genericMigrator[S, D]{
 		name:        spec.Name(),
 		reader:      &mongoReader[S]{collectionName: spec.CollectionName()},
 		transformer: &mongoTransformerMany[S, D]{convertMany: spec.ConvertMany},
 		writer:      &mysqlWriter[D]{},
+		autoIncSyncer: &mongoAutoIncrementSyncer{
+			collectionName: spec.CollectionName(),
+			dstModel:       &dst,
+		},
 	}
 }
