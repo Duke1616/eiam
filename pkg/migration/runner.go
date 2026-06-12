@@ -185,11 +185,6 @@ func (r *Runner) Run(ctx context.Context) error {
 		}
 	}
 
-	if r.cfg.ResetAutoIncrement && !r.cfg.DryRun {
-		if err = r.resetAutoIncrement(ctx, mysqlDST); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -269,20 +264,6 @@ func (r *Runner) truncateDestinations(ctx context.Context, db *gorm.DB) error {
 	log.Println("正在清空迁移历史记录表")
 	if err := db.WithContext(ctx).Exec("TRUNCATE TABLE migration_record").Error; err != nil {
 		log.Printf("warning: 清空迁移历史记录表失败: %v", err)
-	}
-	return nil
-}
-
-func (r *Runner) resetAutoIncrement(ctx context.Context, db *gorm.DB) error {
-	for _, migrator := range r.migrators {
-		table, err := tableName(db, migrator.Destination())
-		if err != nil {
-			return err
-		}
-		if err = db.WithContext(ctx).Exec("ALTER TABLE " + quoteIdentifier(table) + " AUTO_INCREMENT = 1").Error; err != nil {
-			return fmt.Errorf("重置目标表 %s 自增序列失败: %w", table, err)
-		}
-		log.Printf("已重置目标表 %s 自增序列", table)
 	}
 	return nil
 }

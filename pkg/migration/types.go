@@ -17,7 +17,6 @@ type Config struct {
 	BatchSize          int
 	Timeout            time.Duration
 	AutoMigrate        bool
-	ResetAutoIncrement bool
 	Truncate           bool
 	DryRun             bool
 	Force              bool
