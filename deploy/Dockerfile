@@ -10,4 +10,4 @@ ENV EGO_DEBUG=true
 WORKDIR /app
 COPY --from=build /app/dist/eiam .
 EXPOSE 8000
-ENTRYPOINT ["./eiam", "start"]
+ENTRYPOINT ["./eiam", "server"]
