@@ -130,7 +130,7 @@
     icon: order-center
     is_hidden: false
     is_keepalive: false
-    platforms: ["order"]
+    platforms: ["ticket"]
   children:
   - name: OrderSubmission
     permission_code: "ticket:center:pipeline"
@@ -141,7 +141,7 @@
       icon: submit-order
       is_hidden: false
       is_keepalive: false
-      platforms: ["order"]
+      platforms: ["ticket"]
   - name: OrderList
     permission_code: "ticket:center:my_start"
     path: list
@@ -151,7 +151,7 @@
       icon: order-list
       is_hidden: false
       is_keepalive: false
-      platforms: ["order"]
+      platforms: ["ticket"]
   - name: History
     permission_code: "ticket:task:view"
     path: history
@@ -161,7 +161,7 @@
       icon: task-history
       is_hidden: false
       is_keepalive: false
-      platforms: ["order"]
+      platforms: ["ticket"]
 - name: WorkflowEngine
   path: /cmdb/process
   component: Layouts
@@ -171,7 +171,7 @@
     icon: process-control
     is_hidden: false
     is_keepalive: false
-    platforms: ["order"]
+    platforms: ["ticket"]
   children:
   - name: ProcessTemplateManager
     permission_code: "ticket:template:view"
@@ -182,7 +182,7 @@
       icon: template
       is_hidden: false
       is_keepalive: true
-      platforms: ["order"]
+      platforms: ["ticket"]
   - name: ProcessTemplateDispatch
     permission_code: "ticket:dispatch:view"
     path: template/dispatch
@@ -192,7 +192,7 @@
       icon: search
       is_hidden: true
       is_keepalive: false
-      platforms: ["order"]
+      platforms: ["ticket"]
   - name: WorkflowGovernance
     permission_code: "ticket:workflow:view"
     path: workflow
@@ -202,7 +202,7 @@
       icon: process
       is_hidden: false
       is_keepalive: false
-      platforms: ["order"]
+      platforms: ["ticket"]
 - name: JobControlCenter
   path: /cmdb/task
   component: Layouts
@@ -212,7 +212,7 @@
     icon: task
     is_hidden: false
     is_keepalive: false
-    platforms: ["order", "automation"]
+    platforms: ["ticket", "task"]
   children:
   - name: TaskGovernance
     permission_code: "task:manager:view"
@@ -223,7 +223,7 @@
       icon: task-manager
       is_hidden: false
       is_keepalive: false
-      platforms: ["automation"]
+      platforms: ["task"]
   - name: JobTemplateRegistry
     permission_code: "ticket:codebook:view"
     path: codebook
@@ -233,7 +233,7 @@
       icon: codebook
       is_hidden: false
       is_keepalive: false
-      platforms: ["order", "automation"]
+      platforms: ["ticket", "task"]
   - name: JobExecutorPool
     permission_code: "task:executor:view"
     path: /task/executor
@@ -243,7 +243,7 @@
       icon: worker
       is_hidden: false
       is_keepalive: false
-      platforms: ["automation", "order"]
+      platforms: ["task", "ticket"]
   - name: JobRunnerInsight
     permission_code: "ticket:runner:view"
     path: runner
@@ -253,7 +253,7 @@
       icon: runner
       is_hidden: false
       is_keepalive: false
-      platforms: ["automation"]
+      platforms: ["task"]
 - name: AlertWorkbench
   path: /alert/workbench
   component: Layouts
@@ -396,7 +396,7 @@
     icon: notify_manager
     is_hidden: false
     is_keepalive: false
-    platforms: ["alert", "order"]
+    platforms: ["alert", "ticket"]
   children:
   - name: NotifyTemplateManager
     permission_code: "alert:template:view"
@@ -407,7 +407,7 @@
       icon: notify_template
       is_hidden: false
       is_keepalive: false
-      platforms: ["alert", "order"]
+      platforms: ["alert", "ticket"]
   - name: AlertNotifyTemplateCreate
     permission_code: "alert:template:add"
     path: /alert/notify/template/create
@@ -417,7 +417,7 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["order", "alert"]
+      platforms: ["ticket", "alert"]
   - name: AlertNotifyTemplateEditId
     permission_code: "alert:template:edit"
     path: /alert/notify/template/edit/:id
@@ -427,7 +427,7 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["order", "alert"]
+      platforms: ["ticket", "alert"]
   - name: NotificationTemplateGroup
     permission_code: "alert:template_set:view"
     path: /alert/notify/template-set
@@ -456,7 +456,7 @@
       icon: notify_escalation
       is_hidden: false
       is_keepalive: false
-      platforms: ["order", "alert"]
+      platforms: ["ticket", "alert"]
     children:
     - name: EscalationPolicy
       permission_code: "alert:escalation:config_view"
@@ -467,7 +467,7 @@
         icon: escalation_config
         is_hidden: false
         is_keepalive: false
-        platforms: ["alert", "order"]
+        platforms: ["alert", "ticket"]
     - name: EscalationStepTemplate
       permission_code: "alert:escalation:step_tmpl_view"
       path: /alert/notify/escalation/templates
@@ -477,7 +477,7 @@
         icon: escalation_step
         is_hidden: false
         is_keepalive: false
-        platforms: ["order", "alert"]
+        platforms: ["ticket", "alert"]
     - name: EscalationPolicyCreation
       permission_code: "alert:escalation:config_add"
       path: /alert/notify/escalation/config/create
@@ -487,7 +487,7 @@
         icon: template_set
         is_hidden: true
         is_keepalive: false
-        platforms: ["order", "alert"]
+        platforms: ["ticket", "alert"]
     - name: EscalationStepGovernance
       permission_code: "alert:escalation:step_view"
       path: /alert/notify/escalation/steps/:id
@@ -497,7 +497,7 @@
         icon: template_set
         is_hidden: true
         is_keepalive: false
-        platforms: ["order", "alert"]
+        platforms: ["ticket", "alert"]
 - name: OnCallLifecycle
   path: /alert/oncall
   component: Layouts
@@ -507,7 +507,7 @@
     icon: schedule
     is_hidden: false
     is_keepalive: false
-    platforms: ["system"]
+    platforms: ["iam"]
   children:
     - name: OnCallManager
       permission_code: "alert:oncall:view"
@@ -518,7 +518,7 @@
         icon: schedule
         is_hidden: false
         is_keepalive: false
-        platforms: ["system"]
+        platforms: ["iam"]
     - name: OnCallDetail
       permission_code: "alert:oncall:get"
       path: /alert/oncall/detail
@@ -528,7 +528,7 @@
         icon:
         is_hidden: true
         is_keepalive: false
-        platforms: ["system"]
+        platforms: ["iam"]
 - name: OrganizationGovernance
   path: /iam/organization
   component: Layouts
@@ -538,7 +538,7 @@
     icon: organization
     is_hidden: false
     is_keepalive: false
-    platforms: ["system"]
+    platforms: ["iam"]
   children:
     - name: DepartmentManager
       permission_code: "org:department:view"
@@ -549,7 +549,7 @@
         icon: department
         is_hidden: false
         is_keepalive: false
-        platforms: ["system"]
+        platforms: ["iam"]
     - name: TeamGovernance
       permission_code: "iam:team:view"
       path: /alert/system/team
@@ -559,7 +559,7 @@
         icon: team
         is_hidden: false
         is_keepalive: false
-        platforms: ["system", "alert"]
+        platforms: ["iam", "alert"]
 - name: IAMIdentityGovernance
   path: /iam/identity
   component: Layouts
@@ -569,7 +569,7 @@
     icon: identity
     is_hidden: false
     is_keepalive: false
-    platforms: ["system"]
+    platforms: ["iam"]
   children:
   - name: UserGovernance
     permission_code: "iam:user:view"
@@ -580,7 +580,7 @@
       icon: user
       is_hidden: false
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: UserDetail
     permission_code: "iam:user:get"
     path: /iam/identity/user/detail
@@ -590,7 +590,7 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: GroupGovernance
     permission_code: "iam:group:view"
     path: /iam/identity/group
@@ -600,7 +600,7 @@
       icon: user-group
       is_hidden: false
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: GroupDetail
     permission_code: "iam:group:get"
     path: /iam/identity/group/detail
@@ -609,7 +609,7 @@
       title: 分组详情
       is_hidden: true
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: RoleGovernance
     permission_code: "iam:role:view"
     path: /iam/identity/role
@@ -619,7 +619,7 @@
       icon: role
       is_hidden: false
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: RoleDetail
     permission_code: "iam:role:get"
     path: /iam/identity/role/detail
@@ -629,7 +629,7 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: TenantGovernance
     permission_code: "iam:tenant:view"
     path: /iam/identity/tenant
@@ -639,7 +639,7 @@
       icon: tenant
       is_hidden: false
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: TenantDetail
     permission_code: "iam:tenant:get"
     path: /iam/identity/tenant/detail
@@ -649,7 +649,7 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: IdentitySourceGovernance
     permission_code: "iam:identity_source:view"
     path: /iam/identity/source
@@ -659,7 +659,7 @@
       icon: identity_source
       is_hidden: false
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
 - name: IAMPermissionGovernance
   path: /iam/permission
   component: Layouts
@@ -669,7 +669,7 @@
     icon: permission
     is_hidden: false
     is_keepalive: false
-    platforms: ["system"]
+    platforms: ["iam"]
   children:
   - name: AuthorizationManager
     permission_code: "iam:permission:view_authorizations"
@@ -680,7 +680,7 @@
       icon: authorize
       is_hidden: false
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: PolicyManager
     permission_code: "iam:policy:view"
     path: /iam/permission/policy
@@ -690,7 +690,7 @@
       icon: policy
       is_hidden: false
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: PolicyEdit
     permission_code: "iam:policy:edit"
     path: /iam/permission/policy/edit
@@ -700,7 +700,7 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: PolicyDetail
     permission_code: "iam:policy:get"
     path: /iam/permission/policy/detail
@@ -710,7 +710,7 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
   - name: PolicyCreation
     permission_code: "iam:policy:add"
     path: /iam/permission/policy/create
@@ -720,4 +720,4 @@
       icon: 
       is_hidden: true
       is_keepalive: false
-      platforms: ["system"]
+      platforms: ["iam"]
