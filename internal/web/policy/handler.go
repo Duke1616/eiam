@@ -93,7 +93,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	// 查询特定用户组的关联策略 (管理侧使用)
 	g.POST("/list/attached/group", h.Capability("查询用户组策略", "view_group_policies").
 		Module("group").
-		Group("用户组管理").
+		Group("用户分组").
 		Handle(ginx.B[ListGroupPoliciesReq](h.GetPoliciesByGroupCode)),
 	)
 }
