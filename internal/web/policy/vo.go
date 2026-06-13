@@ -62,6 +62,14 @@ type ListRolePoliciesReq struct {
 	Type     uint8  `json:"type"`
 }
 
+type ListGroupPoliciesReq struct {
+	GroupCode string `json:"group_code"`
+	Offset    int64  `json:"offset"`
+	Limit     int64  `json:"limit"`
+	Keyword   string `json:"keyword"`
+	Type      uint8  `json:"type"`
+}
+
 type ListPolicyRes struct {
 	Total    int64    `json:"total"`
 	Policies []Policy `json:"policies"`

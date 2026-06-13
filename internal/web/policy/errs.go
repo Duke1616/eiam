@@ -14,6 +14,7 @@ var (
 
 	ErrInvalidUserId     = ginx.Result{Code: 4050001, Msg: "用户 ID 非法"}
 	ErrInvalidRoleCode   = ginx.Result{Code: 4050014, Msg: "角色代码非法"}
+	ErrInvalidGroupCode  = ginx.Result{Code: 4050018, Msg: "用户组代码非法"}
 	ErrGetUserFailed     = ginx.Result{Code: 4050002, Msg: "获取用户信息失败"}
 	ErrGetAttachedFailed = ginx.Result{Code: 4050003, Msg: "获取关联策略失败"}
 

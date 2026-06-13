@@ -90,6 +90,12 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Group("角色管理").
 		Handle(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
 	)
+	// 查询特定用户组的关联策略 (管理侧使用)
+	g.POST("/list/attached/group", h.Capability("查询用户组策略", "view_group_policies").
+		Module("group").
+		Group("用户组管理").
+		Handle(ginx.B[ListGroupPoliciesReq](h.GetPoliciesByGroupCode)),
+	)
 }
 
 func (h *Handler) GetPoliciesByUserId(ctx *ginx.Context, req ListUserPoliciesReq) (ginx.Result, error) {
@@ -137,6 +143,31 @@ func (h *Handler) GetPoliciesByRoleCode(ctx *ginx.Context, req ListRolePoliciesR
 
 	// 分页获取该角色关联的策略
 	ps, total, err := h.svc.ListAttachedPolicies(ctx.Request.Context(), domain.SubjectTypeRole, req.RoleCode, req.Offset, req.Limit, req.Keyword, domain.PolicyType(req.Type))
+	if err != nil {
+		return ErrGetAttachedFailed, err
+	}
+
+	return ginx.Result{
+		Data: ListPolicyRes{
+			Total: total,
+			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+				return h.toVO(src)
+			}),
+		},
+	}, nil
+}
+
+func (h *Handler) GetPoliciesByGroupCode(ctx *ginx.Context, req ListGroupPoliciesReq) (ginx.Result, error) {
+	if req.GroupCode == "" {
+		return ErrInvalidGroupCode, nil
+	}
+
+	// 设置默认分页
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+
+	ps, total, err := h.svc.ListAttachedPolicies(ctx.Request.Context(), domain.SubjectTypeGroup, req.GroupCode, req.Offset, req.Limit, req.Keyword, domain.PolicyType(req.Type))
 	if err != nil {
 		return ErrGetAttachedFailed, err
 	}
