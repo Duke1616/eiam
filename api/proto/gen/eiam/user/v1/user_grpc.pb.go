@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	UserService_QueryById_FullMethodName        = "/eiam.user.v1.UserService/QueryById"
+	UserService_QueryByUsername_FullMethodName  = "/eiam.user.v1.UserService/QueryByUsername"
 	UserService_QueryByUsernames_FullMethodName = "/eiam.user.v1.UserService/QueryByUsernames"
 	UserService_QueryByIds_FullMethodName       = "/eiam.user.v1.UserService/QueryByIds"
 )
@@ -32,6 +33,8 @@ const (
 type UserServiceClient interface {
 	// 通过用户ID查询单个用户信息
 	QueryById(ctx context.Context, in *QueryByIdReq, opts ...grpc.CallOption) (*QueryUserResp, error)
+	// 通过用户名查询单个用户信息
+	QueryByUsername(ctx context.Context, in *QueryByUsernameReq, opts ...grpc.CallOption) (*QueryUserResp, error)
 	// 通过用户名批量查询用户信息
 	QueryByUsernames(ctx context.Context, in *QueryByUsernamesReq, opts ...grpc.CallOption) (*QueryUsersResp, error)
 	// 通过用户ID批量查询用户信息
@@ -50,6 +53,16 @@ func (c *userServiceClient) QueryById(ctx context.Context, in *QueryByIdReq, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QueryUserResp)
 	err := c.cc.Invoke(ctx, UserService_QueryById_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) QueryByUsername(ctx context.Context, in *QueryByUsernameReq, opts ...grpc.CallOption) (*QueryUserResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QueryUserResp)
+	err := c.cc.Invoke(ctx, UserService_QueryByUsername_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +97,8 @@ func (c *userServiceClient) QueryByIds(ctx context.Context, in *QueryByIdsReq, o
 type UserServiceServer interface {
 	// 通过用户ID查询单个用户信息
 	QueryById(context.Context, *QueryByIdReq) (*QueryUserResp, error)
+	// 通过用户名查询单个用户信息
+	QueryByUsername(context.Context, *QueryByUsernameReq) (*QueryUserResp, error)
 	// 通过用户名批量查询用户信息
 	QueryByUsernames(context.Context, *QueryByUsernamesReq) (*QueryUsersResp, error)
 	// 通过用户ID批量查询用户信息
@@ -100,6 +115,9 @@ type UnimplementedUserServiceServer struct{}
 
 func (UnimplementedUserServiceServer) QueryById(context.Context, *QueryByIdReq) (*QueryUserResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method QueryById not implemented")
+}
+func (UnimplementedUserServiceServer) QueryByUsername(context.Context, *QueryByUsernameReq) (*QueryUserResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method QueryByUsername not implemented")
 }
 func (UnimplementedUserServiceServer) QueryByUsernames(context.Context, *QueryByUsernamesReq) (*QueryUsersResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method QueryByUsernames not implemented")
@@ -142,6 +160,24 @@ func _UserService_QueryById_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(UserServiceServer).QueryById(ctx, req.(*QueryByIdReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_QueryByUsername_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryByUsernameReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).QueryByUsername(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_QueryByUsername_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).QueryByUsername(ctx, req.(*QueryByUsernameReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -192,6 +228,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "QueryById",
 			Handler:    _UserService_QueryById_Handler,
+		},
+		{
+			MethodName: "QueryByUsername",
+			Handler:    _UserService_QueryByUsername_Handler,
 		},
 		{
 			MethodName: "QueryByUsernames",

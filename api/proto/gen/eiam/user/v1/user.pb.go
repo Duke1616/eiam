@@ -237,6 +237,51 @@ func (x *QueryByIdReq) GetId() int64 {
 	return 0
 }
 
+// 通过用户名查询单个用户请求
+type QueryByUsernameReq struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryByUsernameReq) Reset() {
+	*x = QueryByUsernameReq{}
+	mi := &file_eiam_user_v1_user_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryByUsernameReq) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryByUsernameReq) ProtoMessage() {}
+
+func (x *QueryByUsernameReq) ProtoReflect() protoreflect.Message {
+	mi := &file_eiam_user_v1_user_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryByUsernameReq.ProtoReflect.Descriptor instead.
+func (*QueryByUsernameReq) Descriptor() ([]byte, []int) {
+	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *QueryByUsernameReq) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
 // 通过用户名批量查询用户请求
 type QueryByUsernamesReq struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -247,7 +292,7 @@ type QueryByUsernamesReq struct {
 
 func (x *QueryByUsernamesReq) Reset() {
 	*x = QueryByUsernamesReq{}
-	mi := &file_eiam_user_v1_user_proto_msgTypes[2]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -259,7 +304,7 @@ func (x *QueryByUsernamesReq) String() string {
 func (*QueryByUsernamesReq) ProtoMessage() {}
 
 func (x *QueryByUsernamesReq) ProtoReflect() protoreflect.Message {
-	mi := &file_eiam_user_v1_user_proto_msgTypes[2]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -272,7 +317,7 @@ func (x *QueryByUsernamesReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryByUsernamesReq.ProtoReflect.Descriptor instead.
 func (*QueryByUsernamesReq) Descriptor() ([]byte, []int) {
-	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{2}
+	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *QueryByUsernamesReq) GetUsernames() []string {
@@ -292,7 +337,7 @@ type QueryByIdsReq struct {
 
 func (x *QueryByIdsReq) Reset() {
 	*x = QueryByIdsReq{}
-	mi := &file_eiam_user_v1_user_proto_msgTypes[3]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -304,7 +349,7 @@ func (x *QueryByIdsReq) String() string {
 func (*QueryByIdsReq) ProtoMessage() {}
 
 func (x *QueryByIdsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_eiam_user_v1_user_proto_msgTypes[3]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -317,7 +362,7 @@ func (x *QueryByIdsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryByIdsReq.ProtoReflect.Descriptor instead.
 func (*QueryByIdsReq) Descriptor() ([]byte, []int) {
-	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{3}
+	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *QueryByIdsReq) GetIds() []int64 {
@@ -339,7 +384,7 @@ type QueryUserResp struct {
 
 func (x *QueryUserResp) Reset() {
 	*x = QueryUserResp{}
-	mi := &file_eiam_user_v1_user_proto_msgTypes[4]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -351,7 +396,7 @@ func (x *QueryUserResp) String() string {
 func (*QueryUserResp) ProtoMessage() {}
 
 func (x *QueryUserResp) ProtoReflect() protoreflect.Message {
-	mi := &file_eiam_user_v1_user_proto_msgTypes[4]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -364,7 +409,7 @@ func (x *QueryUserResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryUserResp.ProtoReflect.Descriptor instead.
 func (*QueryUserResp) Descriptor() ([]byte, []int) {
-	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{4}
+	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *QueryUserResp) GetUser() *User {
@@ -400,7 +445,7 @@ type QueryUsersResp struct {
 
 func (x *QueryUsersResp) Reset() {
 	*x = QueryUsersResp{}
-	mi := &file_eiam_user_v1_user_proto_msgTypes[5]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -412,7 +457,7 @@ func (x *QueryUsersResp) String() string {
 func (*QueryUsersResp) ProtoMessage() {}
 
 func (x *QueryUsersResp) ProtoReflect() protoreflect.Message {
-	mi := &file_eiam_user_v1_user_proto_msgTypes[5]
+	mi := &file_eiam_user_v1_user_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -425,7 +470,7 @@ func (x *QueryUsersResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryUsersResp.ProtoReflect.Descriptor instead.
 func (*QueryUsersResp) Descriptor() ([]byte, []int) {
-	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{5}
+	return file_eiam_user_v1_user_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *QueryUsersResp) GetUsers() []*User {
@@ -466,7 +511,9 @@ const file_eiam_user_v1_user_proto_rawDesc = "" +
 	"\rdepartment_id\x18\b \x01(\x03R\fdepartmentId\x12\x19\n" +
 	"\bis_admin\x18\t \x01(\bR\aisAdmin\"\x1e\n" +
 	"\fQueryByIdReq\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\"3\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\"0\n" +
+	"\x12QueryByUsernameReq\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername\"3\n" +
 	"\x13QueryByUsernamesReq\x12\x1c\n" +
 	"\tusernames\x18\x01 \x03(\tR\tusernames\"!\n" +
 	"\rQueryByIdsReq\x12\x10\n" +
@@ -484,9 +531,10 @@ const file_eiam_user_v1_user_proto_rawDesc = "" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eUSER_NOT_FOUND\x10\x01\x12\x15\n" +
-	"\x11INVALID_PARAMETER\x10\x022\xf1\x01\n" +
+	"\x11INVALID_PARAMETER\x10\x022\xc3\x02\n" +
 	"\vUserService\x12D\n" +
-	"\tQueryById\x12\x1a.eiam.user.v1.QueryByIdReq\x1a\x1b.eiam.user.v1.QueryUserResp\x12S\n" +
+	"\tQueryById\x12\x1a.eiam.user.v1.QueryByIdReq\x1a\x1b.eiam.user.v1.QueryUserResp\x12P\n" +
+	"\x0fQueryByUsername\x12 .eiam.user.v1.QueryByUsernameReq\x1a\x1b.eiam.user.v1.QueryUserResp\x12S\n" +
 	"\x10QueryByUsernames\x12!.eiam.user.v1.QueryByUsernamesReq\x1a\x1c.eiam.user.v1.QueryUsersResp\x12G\n" +
 	"\n" +
 	"QueryByIds\x12\x1b.eiam.user.v1.QueryByIdsReq\x1a\x1c.eiam.user.v1.QueryUsersRespB\xab\x01\n" +
@@ -505,15 +553,16 @@ func file_eiam_user_v1_user_proto_rawDescGZIP() []byte {
 }
 
 var file_eiam_user_v1_user_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_eiam_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_eiam_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_eiam_user_v1_user_proto_goTypes = []any{
 	(ErrorCode)(0),              // 0: eiam.user.v1.ErrorCode
 	(*User)(nil),                // 1: eiam.user.v1.User
 	(*QueryByIdReq)(nil),        // 2: eiam.user.v1.QueryByIdReq
-	(*QueryByUsernamesReq)(nil), // 3: eiam.user.v1.QueryByUsernamesReq
-	(*QueryByIdsReq)(nil),       // 4: eiam.user.v1.QueryByIdsReq
-	(*QueryUserResp)(nil),       // 5: eiam.user.v1.QueryUserResp
-	(*QueryUsersResp)(nil),      // 6: eiam.user.v1.QueryUsersResp
+	(*QueryByUsernameReq)(nil),  // 3: eiam.user.v1.QueryByUsernameReq
+	(*QueryByUsernamesReq)(nil), // 4: eiam.user.v1.QueryByUsernamesReq
+	(*QueryByIdsReq)(nil),       // 5: eiam.user.v1.QueryByIdsReq
+	(*QueryUserResp)(nil),       // 6: eiam.user.v1.QueryUserResp
+	(*QueryUsersResp)(nil),      // 7: eiam.user.v1.QueryUsersResp
 }
 var file_eiam_user_v1_user_proto_depIdxs = []int32{
 	1, // 0: eiam.user.v1.QueryUserResp.user:type_name -> eiam.user.v1.User
@@ -521,13 +570,15 @@ var file_eiam_user_v1_user_proto_depIdxs = []int32{
 	1, // 2: eiam.user.v1.QueryUsersResp.users:type_name -> eiam.user.v1.User
 	0, // 3: eiam.user.v1.QueryUsersResp.error_code:type_name -> eiam.user.v1.ErrorCode
 	2, // 4: eiam.user.v1.UserService.QueryById:input_type -> eiam.user.v1.QueryByIdReq
-	3, // 5: eiam.user.v1.UserService.QueryByUsernames:input_type -> eiam.user.v1.QueryByUsernamesReq
-	4, // 6: eiam.user.v1.UserService.QueryByIds:input_type -> eiam.user.v1.QueryByIdsReq
-	5, // 7: eiam.user.v1.UserService.QueryById:output_type -> eiam.user.v1.QueryUserResp
-	6, // 8: eiam.user.v1.UserService.QueryByUsernames:output_type -> eiam.user.v1.QueryUsersResp
-	6, // 9: eiam.user.v1.UserService.QueryByIds:output_type -> eiam.user.v1.QueryUsersResp
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
+	3, // 5: eiam.user.v1.UserService.QueryByUsername:input_type -> eiam.user.v1.QueryByUsernameReq
+	4, // 6: eiam.user.v1.UserService.QueryByUsernames:input_type -> eiam.user.v1.QueryByUsernamesReq
+	5, // 7: eiam.user.v1.UserService.QueryByIds:input_type -> eiam.user.v1.QueryByIdsReq
+	6, // 8: eiam.user.v1.UserService.QueryById:output_type -> eiam.user.v1.QueryUserResp
+	6, // 9: eiam.user.v1.UserService.QueryByUsername:output_type -> eiam.user.v1.QueryUserResp
+	7, // 10: eiam.user.v1.UserService.QueryByUsernames:output_type -> eiam.user.v1.QueryUsersResp
+	7, // 11: eiam.user.v1.UserService.QueryByIds:output_type -> eiam.user.v1.QueryUsersResp
+	8, // [8:12] is the sub-list for method output_type
+	4, // [4:8] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name
@@ -544,7 +595,7 @@ func file_eiam_user_v1_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_eiam_user_v1_user_proto_rawDesc), len(file_eiam_user_v1_user_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

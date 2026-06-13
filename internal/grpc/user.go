@@ -47,6 +47,23 @@ func (u *UserServer) QueryById(ctx context.Context, req *userv1.QueryByIdReq) (*
 	}, nil
 }
 
+func (u *UserServer) QueryByUsername(ctx context.Context, req *userv1.QueryByUsernameReq) (*userv1.QueryUserResp, error) {
+	userInfo, err := u.userSvc.GetByUsername(ctx, req.Username)
+	if err != nil {
+		if u.isSystemError(err) {
+			return nil, u.toGRPCError(err)
+		}
+		return &userv1.QueryUserResp{
+			ErrorCode:    u.toGRPCErrorCode(err),
+			ErrorMessage: err.Error(),
+		}, nil
+	}
+	return &userv1.QueryUserResp{
+		User: u.ToRetrieveUsers(ctx, userInfo),
+	}, nil
+}
+
+
 func (u *UserServer) QueryByUsernames(ctx context.Context, req *userv1.QueryByUsernamesReq) (*userv1.QueryUsersResp, error) {
 	userInfos, err := u.userSvc.GetByUsernames(ctx, req.Usernames)
 	if err != nil {

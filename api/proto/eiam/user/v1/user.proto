@@ -41,6 +41,11 @@ message QueryByIdReq {
   int64 id = 1;
 }
 
+// 通过用户名查询单个用户请求
+message QueryByUsernameReq {
+  string username = 1;
+}
+
 // 通过用户名批量查询用户请求
 message QueryByUsernamesReq {
   repeated string usernames = 1;
@@ -69,6 +74,9 @@ message QueryUsersResp {
 service UserService {
   // 通过用户ID查询单个用户信息
   rpc QueryById (QueryByIdReq) returns (QueryUserResp);
+
+  // 通过用户名查询单个用户信息
+  rpc QueryByUsername (QueryByUsernameReq) returns (QueryUserResp);
 
   // 通过用户名批量查询用户信息
   rpc QueryByUsernames (QueryByUsernamesReq) returns (QueryUsersResp);
