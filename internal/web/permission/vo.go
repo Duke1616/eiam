@@ -79,7 +79,7 @@ type AuthorizationQueryReq struct {
 	Offset  int64  `json:"offset"`
 	Limit   int64  `json:"limit"`
 	Keyword string `json:"keyword"`
-	SubType string `json:"sub_type"` // user, role
+	SubType string `json:"sub_type"` // user, role, group
 	ObjType string `json:"obj_type"` // role, policy
 }
 

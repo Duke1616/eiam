@@ -74,16 +74,16 @@ type AttachPolicyReq struct {
 }
 
 type SubjectItem struct {
-	// Type 主体类型: user 或 role
+	// Type 主体类型: user、role 或 group
 	Type string `json:"type"`
 	// Code 主体标识（用户名或角色代码）
 	Code string `json:"code"`
 }
 
 // BatchAttachPolicyReq 批量绑定策略请求
-// 支持将多个策略同时绑定到多个主体（用户和角色可以混合）
+// 支持将多个策略同时绑定到多个主体（用户、角色和用户组可以混合）
 type BatchAttachPolicyReq struct {
-	// Subjects 主体列表，可同时包含 user 和 role
+	// Subjects 主体列表，可同时包含 user、role 和 group
 	Subjects []SubjectItem `json:"subjects"`
 	// PolicyCodes 策略代码列表
 	PolicyCodes []string `json:"policy_codes"`
