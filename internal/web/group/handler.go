@@ -3,6 +3,7 @@ package group
 import (
 	"github.com/Duke1616/eiam/internal/domain"
 	group_vc "github.com/Duke1616/eiam/internal/service/group"
+	role_vc "github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
@@ -11,13 +12,15 @@ import (
 
 type Handler struct {
 	capability.IRegistry
-	svc group_vc.IGroupService
+	svc     group_vc.IGroupService
+	roleSvc role_vc.IRoleService
 }
 
-func NewHandler(svc group_vc.IGroupService) *Handler {
+func NewHandler(svc group_vc.IGroupService, roleSvc role_vc.IRoleService) *Handler {
 	return &Handler{
-		IRegistry: capability.NewRegistry("iam", "group", "用户组管理"),
+		IRegistry: capability.NewRegistry("iam", "group", "用户分组"),
 		svc:       svc,
+		roleSvc:   roleSvc,
 	}
 }
 
@@ -47,6 +50,12 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	g.POST("/members", h.Capability("组成员列表", "members").
 		Handle(ginx.B[ListMembersRequest](h.ListMembers)),
+	)
+	g.POST("/list/attached/user", h.Capability("查询用户所属分组", "view").
+		Handle(ginx.B[ListAttachedUserGroupsRequest](h.ListAttachedUserGroups)),
+	)
+	g.POST("/list/attached/role", h.Capability("查询角色关联分组", "view").
+		Handle(ginx.B[ListAttachedRoleGroupsRequest](h.ListAttachedRoleGroups)),
 	)
 	g.POST("/role/assign", h.Capability("用户组分配角色", "assign_role").
 		Handle(ginx.B[AssignRoleRequest](h.AssignRole)),
@@ -167,6 +176,42 @@ func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersRequest) (ginx.R
 	}, nil
 }
 
+func (h *Handler) ListAttachedUserGroups(ctx *ginx.Context, req ListAttachedUserGroupsRequest) (ginx.Result, error) {
+	groups, total, err := h.svc.ListAttachedGroupsByUser(ctx.Request.Context(), req.Username, req.UserID, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
+		return ErrListAttachedGroupsFailed, err
+	}
+
+	res := slice.Map(groups, func(idx int, src domain.Group) Group {
+		return h.toGroupVo(src)
+	})
+
+	return ginx.Result{
+		Data: ListGroupsResponse{
+			Total:  total,
+			Groups: res,
+		},
+	}, nil
+}
+
+func (h *Handler) ListAttachedRoleGroups(ctx *ginx.Context, req ListAttachedRoleGroupsRequest) (ginx.Result, error) {
+	groups, total, err := h.svc.ListAttachedGroupsByRole(ctx.Request.Context(), req.RoleCode, req.Offset, req.Limit, req.Keyword)
+	if err != nil {
+		return ErrListAttachedGroupsFailed, err
+	}
+
+	res := slice.Map(groups, func(idx int, src domain.Group) Group {
+		return h.toGroupVo(src)
+	})
+
+	return ginx.Result{
+		Data: ListGroupsResponse{
+			Total:  total,
+			Groups: res,
+		},
+	}, nil
+}
+
 func (h *Handler) AssignRole(ctx *ginx.Context, req AssignRoleRequest) (ginx.Result, error) {
 	_, err := h.svc.AssignRole(ctx.Request.Context(), req.GroupCode, req.RoleCode)
 	if err != nil {
@@ -192,12 +237,25 @@ func (h *Handler) ListRoles(ctx *ginx.Context) (ginx.Result, error) {
 		return ginx.Result{Code: 400, Msg: "参数错误"}, nil
 	}
 
-	roles, err := h.svc.ListRoles(ctx.Request.Context(), code)
+	roleCodes, err := h.svc.ListRoles(ctx.Request.Context(), code)
 	if err != nil {
 		return ErrListGroupRolesFailed, err
 	}
 
-	return ginx.Result{Data: roles}, nil
+	if len(roleCodes) == 0 {
+		return ginx.Result{Data: []Role{}}, nil
+	}
+
+	roles, err := h.roleSvc.ListByIncludeCodes(ctx.Request.Context(), roleCodes)
+	if err != nil {
+		return ErrListGroupRolesFailed, err
+	}
+
+	return ginx.Result{
+		Data: slice.Map(roles, func(idx int, src domain.Role) Role {
+			return h.toRoleVo(src)
+		}),
+	}, nil
 }
 
 func (h *Handler) toGroupVo(g domain.Group) Group {
@@ -208,6 +266,17 @@ func (h *Handler) toGroupVo(g domain.Group) Group {
 		Desc:  g.Desc,
 		Ctime: g.Ctime,
 		Utime: g.Utime,
+	}
+}
+
+func (h *Handler) toRoleVo(r domain.Role) Role {
+	return Role{
+		ID:    r.ID,
+		Code:  r.Code,
+		Name:  r.Name,
+		Desc:  r.Desc,
+		Ctime: r.Ctime,
+		Utime: r.Utime,
 	}
 }
 

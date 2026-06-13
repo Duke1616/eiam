@@ -48,16 +48,24 @@ func (s *groupService) Delete(ctx context.Context, id int64) error {
 
 	// 2. 清除 Casbin 规则
 	// 2.1 清除用户加入组的规则：g, user:xxx, group:code, tid
-	_, _ = s.enforcer.RemoveFilteredGroupingPolicy(1, domain.GroupSubject(group.Code), "", strconv.FormatInt(tid, 10))
+	_, _ = s.enforcer.RemoveFilteredGroupingPolicy(domain.CasbinObjectIndex, domain.GroupSubject(group.Code), strconv.FormatInt(tid, 10))
 
 	// 2.2 清除组关联角色的规则：g, group:code, role:xxx, tid
-	_, _ = s.enforcer.RemoveFilteredGroupingPolicy(0, domain.GroupSubject(group.Code), "", strconv.FormatInt(tid, 10))
+	_, _ = s.enforcer.RemoveFilteredGroupingPolicy(domain.CasbinSubjectIndex, domain.GroupSubject(group.Code), "", strconv.FormatInt(tid, 10))
 
 	return nil
 }
 
 func (s *groupService) List(ctx context.Context, offset, limit int64) ([]domain.Group, int64, error) {
 	return s.repo.List(ctx, offset, limit)
+}
+
+func (s *groupService) Search(ctx context.Context, keyword string, offset, limit int64) ([]domain.Group, error) {
+	return s.repo.Search(ctx, keyword, offset, limit)
+}
+
+func (s *groupService) CountSearch(ctx context.Context, keyword string) (int64, error) {
+	return s.repo.CountSearch(ctx, keyword)
 }
 
 func (s *groupService) GetByCode(ctx context.Context, code string) (domain.Group, error) {
@@ -153,6 +161,47 @@ func (s *groupService) ListMembers(ctx context.Context, groupCode string, offset
 	}
 
 	return s.repo.ListMembers(ctx, group.ID, offset, limit, keyword)
+}
+
+func (s *groupService) ListAttachedGroupsByUser(ctx context.Context, username string, userID int64, offset, limit int64, keyword string) ([]domain.Group, int64, error) {
+	if userID == 0 && username == "" {
+		return nil, 0, nil
+	}
+
+	if userID == 0 {
+		user, err := s.userRepo.FindByUsername(ctx, username)
+		if err != nil {
+			return nil, 0, err
+		}
+		userID = user.ID
+	}
+
+	return s.repo.ListGroupsByUserID(ctx, userID, offset, limit, keyword)
+}
+
+func (s *groupService) ListAttachedGroupsByRole(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]domain.Group, int64, error) {
+	if roleCode == "" {
+		return nil, 0, nil
+	}
+
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	policies, err := s.enforcer.GetFilteredGroupingPolicy(1, domain.RoleSubject(roleCode), strconv.FormatInt(tid, 10))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	groupCodes := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		if len(policy) > 0 {
+			groupCodes = append(groupCodes, domain.ExtractGroupCode(policy[0]))
+		}
+	}
+
+	if len(groupCodes) == 0 {
+		return nil, 0, nil
+	}
+
+	return s.repo.ListGroupsByCodes(ctx, groupCodes, offset, limit, keyword)
 }
 
 func (s *groupService) AssignRole(ctx context.Context, groupCode string, roleCode string) (bool, error) {

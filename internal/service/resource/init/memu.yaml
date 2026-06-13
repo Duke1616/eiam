@@ -529,6 +529,37 @@
         is_hidden: true
         is_keepalive: false
         platforms: ["system"]
+- name: OrganizationGovernance
+  path: /iam/organization
+  component: Layouts
+  redirect: /iam/organization/department
+  meta:
+    title: 组织管理
+    icon: organization
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["system"]
+  children:
+    - name: DepartmentManager
+      permission_code: "org:department:view"
+      path: /iam/organization/department
+      component: /pages/iam/department/index.vue
+      meta:
+        title: 部门管理
+        icon: department
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["system"]
+    - name: TeamGovernance
+      permission_code: "iam:team:view"
+      path: /alert/system/team
+      component: /pages/alert/team/index.vue
+      meta:
+        title: 团队管理
+        icon: team
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["system", "alert"]
 - name: IAMIdentityGovernance
   path: /iam/identity
   component: Layouts
@@ -557,6 +588,25 @@
     meta:
       title: 用户详情
       icon: 
+      is_hidden: true
+      is_keepalive: false
+      platforms: ["system"]
+  - name: GroupGovernance
+    permission_code: "iam:group:view"
+    path: /iam/identity/group
+    component: /pages/iam/group/index.vue
+    meta:
+      title: 用户分组
+      icon: user-group
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["system"]
+  - name: GroupDetail
+    permission_code: "iam:group:get"
+    path: /iam/identity/group/detail
+    component: /pages/iam/group/detail.vue
+    meta:
+      title: 分组详情
       is_hidden: true
       is_keepalive: false
       platforms: ["system"]
@@ -610,37 +660,6 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["system"]
-- name: OrganizationGovernance
-  path: /iam/organization
-  component: Layouts
-  redirect: /iam/organization/department
-  meta:
-    title: 组织管理
-    icon: organization
-    is_hidden: false
-    is_keepalive: false
-    platforms: ["system"]
-  children:
-    - name: DepartmentManager
-      permission_code: "org:department:view"
-      path: /iam/organization/department
-      component: /pages/iam/department/index.vue
-      meta:
-        title: 部门管理
-        icon: department
-        is_hidden: false
-        is_keepalive: false
-        platforms: ["system"]
-    - name: TeamGovernance
-      permission_code: "iam:team:view"
-      path: /alert/system/team
-      component: /pages/alert/team/index.vue
-      meta:
-        title: 团队管理
-        icon: team
-        is_hidden: false
-        is_keepalive: false
-        platforms: ["system", "alert"]
 - name: IAMPermissionGovernance
   path: /iam/permission
   component: Layouts

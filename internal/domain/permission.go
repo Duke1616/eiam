@@ -26,6 +26,15 @@ const (
 )
 
 const (
+	// CasbinSubjectIndex Casbin 规则中主体字段位置 (v0)
+	CasbinSubjectIndex = 0
+	// CasbinObjectIndex Casbin 规则中对象/角色/组字段位置 (v1)
+	CasbinObjectIndex = 1
+	// CasbinDomainIndex Casbin 规则中租户域字段位置 (v2)
+	CasbinDomainIndex = 2
+)
+
+const (
 	ScopeSystem = "system" // 仅系统租户可见
 	ScopeTenant = "tenant" // 所有租户可见
 )

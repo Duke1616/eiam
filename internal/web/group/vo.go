@@ -17,6 +17,21 @@ type ListGroupRequest struct {
 	Limit  int64 `json:"limit"`
 }
 
+type ListAttachedUserGroupsRequest struct {
+	Username string `json:"username"`
+	UserID   int64  `json:"user_id"`
+	Offset   int64  `json:"offset"`
+	Limit    int64  `json:"limit"`
+	Keyword  string `json:"keyword"`
+}
+
+type ListAttachedRoleGroupsRequest struct {
+	RoleCode string `json:"role_code" binding:"required"`
+	Offset   int64  `json:"offset"`
+	Limit    int64  `json:"limit"`
+	Keyword  string `json:"keyword"`
+}
+
 type AssignMembersRequest struct {
 	GroupCode string   `json:"group_code" binding:"required"`
 	Usernames []string `json:"usernames" binding:"required"`
@@ -70,4 +85,13 @@ type ListGroupsResponse struct {
 type ListMembersResponse struct {
 	Total   int64  `json:"total"`
 	Members []User `json:"members"`
+}
+
+type Role struct {
+	ID    int64  `json:"id"`
+	Code  string `json:"code"`
+	Name  string `json:"name"`
+	Desc  string `json:"desc"`
+	Ctime int64  `json:"ctime"`
+	Utime int64  `json:"utime"`
 }

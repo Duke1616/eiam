@@ -26,19 +26,37 @@ type UserGroup struct {
 	Ctime    int64 `gorm:"comment:'创建时间'"`
 }
 
+// IGroupDAO 用户组数据访问对象接口
 type IGroupDAO interface {
+	// Insert 插入新用户组
 	Insert(ctx context.Context, g Group) (int64, error)
+	// Update 更新用户组基本信息
 	Update(ctx context.Context, g Group) (int64, error)
+	// Delete 删除用户组，并删除其下的所有成员关联
 	Delete(ctx context.Context, id int64) error
+	// GetByCode 根据唯一标识码查询用户组
 	GetByCode(ctx context.Context, code string) (Group, error)
+	// GetByID 根据ID查询用户组
 	GetByID(ctx context.Context, id int64) (Group, error)
+	// List 分页查询用户组列表
 	List(ctx context.Context, offset, limit int64) ([]Group, int64, error)
+	// Search 根据关键字分页模糊搜索用户组
+	Search(ctx context.Context, offset, limit int64, keyword string) ([]Group, error)
+	// CountSearch 模糊搜索用户组的总数
+	CountSearch(ctx context.Context, keyword string) (int64, error)
 
-	// 组-用户关系
+	// BindMembers 批量绑定用户组成员关系
 	BindMembers(ctx context.Context, bindings []UserGroup) error
+	// UnbindMembers 批量解绑用户组成员关系
 	UnbindMembers(ctx context.Context, groupID int64, userIDs []int64) error
+	// ListMembers 分页查询该用户组下的成员列表，支持按关键字搜索
 	ListMembers(ctx context.Context, groupID int64, offset, limit int64, keyword string) ([]User, int64, error)
+	// CountMembers 获取该用户组下的成员数量
 	CountMembers(ctx context.Context, groupID int64) (int64, error)
+	// ListGroupsByUserID 分页查询用户所属的用户组列表，支持按关键字过滤
+	ListGroupsByUserID(ctx context.Context, userID int64, offset, limit int64, keyword string) ([]Group, int64, error)
+	// ListGroupsByCodes 根据组编码列表分页查询用户组，支持按关键字过滤
+	ListGroupsByCodes(ctx context.Context, codes []string, offset, limit int64, keyword string) ([]Group, int64, error)
 }
 
 type groupDAO struct {
@@ -103,6 +121,26 @@ func (dao *groupDAO) List(ctx context.Context, offset, limit int64) ([]Group, in
 	return gs, total, err
 }
 
+func (dao *groupDAO) Search(ctx context.Context, offset, limit int64, keyword string) ([]Group, error) {
+	var gs []Group
+	db := dao.db.WithContext(ctx).Model(&Group{})
+	if keyword != "" {
+		db = db.Where("name LIKE ? OR code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&gs).Error
+	return gs, err
+}
+
+func (dao *groupDAO) CountSearch(ctx context.Context, keyword string) (int64, error) {
+	var total int64
+	db := dao.db.WithContext(ctx).Model(&Group{})
+	if keyword != "" {
+		db = db.Where("name LIKE ? OR code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	err := db.Count(&total).Error
+	return total, err
+}
+
 func (dao *groupDAO) BindMembers(ctx context.Context, bindings []UserGroup) error {
 	if len(bindings) == 0 {
 		return nil
@@ -151,4 +189,48 @@ func (dao *groupDAO) CountMembers(ctx context.Context, groupID int64) (int64, er
 	var count int64
 	err := dao.db.WithContext(ctx).Model(&UserGroup{}).Where("group_id = ?", groupID).Count(&count).Error
 	return count, err
+}
+
+func (dao *groupDAO) ListGroupsByUserID(ctx context.Context, userID int64, offset, limit int64, keyword string) ([]Group, int64, error) {
+	var (
+		gs    []Group
+		total int64
+	)
+
+	subQuery := dao.db.WithContext(ctx).Model(&UserGroup{}).
+		Where("user_id = ?", userID).
+		Select("group_id")
+
+	db := dao.db.WithContext(ctx).Model(&Group{}).
+		Where("id IN (?)", subQuery)
+	if keyword != "" {
+		db = db.Where("name LIKE ? OR code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&gs).Error
+	return gs, total, err
+}
+
+func (dao *groupDAO) ListGroupsByCodes(ctx context.Context, codes []string, offset, limit int64, keyword string) ([]Group, int64, error) {
+	var (
+		gs    []Group
+		total int64
+	)
+
+	db := dao.db.WithContext(ctx).Model(&Group{}).
+		Where("code IN ?", codes)
+	if keyword != "" {
+		db = db.Where("name LIKE ? OR code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := db.Offset(int(offset)).Limit(int(limit)).Order("ctime DESC").Find(&gs).Error
+	return gs, total, err
 }

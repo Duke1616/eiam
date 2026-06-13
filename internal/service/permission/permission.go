@@ -349,32 +349,33 @@ func (s *permissionService) getEffectivePolicies(ctx context.Context, username s
 		ctx = ctxutil.WithTenantID(ctx, authTid.Int64())
 	}
 
-	// 1. 获取用户的所有角色（包括继承）
+	// 1. 获取用户的所有角色和组（包括继承）
 	roleSubjects, err := s.GetRolesForUser(ctx, username)
 	if err != nil {
 		return nil, err
 	}
 
-	// 去除角色前缀，获取纯角色代码
-	roleCodes := lo.Map(roleSubjects, func(subject string, _ int) string {
-		return strings.TrimPrefix(subject, domain.PrefixRole)
+	// 2. 解析为合法的 Subject 列表 (过滤掉未知类型)
+	parsedSubjects := lo.FilterMap(roleSubjects, func(rawSub string, _ int) (domain.Subject, bool) {
+		sub := domain.ParseSubject(rawSub)
+		return sub, sub.Type != "unknown"
 	})
 
-	// 2. 构建主体：用户和所有角色
-	subjects := []domain.Subject{
-		{Type: domain.SubjectTypeUser, ID: username},
-	}
-	for _, code := range roleCodes {
-		subjects = append(subjects, domain.Subject{Type: domain.SubjectTypeRole, ID: code})
-	}
+	// 3. 构造需要拉取绑定策略的主体集合 (用户 + 关联的角色与用户组)
+	subjects := append([]domain.Subject{{Type: domain.SubjectTypeUser, ID: username}}, parsedSubjects...)
 
-	// 3. 获取所有主体的策略
+	// 4. 仅提取出角色代码集合 (用于查询内联策略)
+	roleCodes := lo.FilterMap(parsedSubjects, func(sub domain.Subject, _ int) (string, bool) {
+		return sub.ID, sub.Type == domain.SubjectTypeRole
+	})
+
+	// 5. 获取所有主体的策略
 	policiesMap, err := s.policySvc.GetAttachedBySubjects(ctx, subjects)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. 获取角色的内联策略
+	// 6. 获取角色的内联策略
 	roles, err := s.roleSvc.ListByIncludeCodes(ctx, roleCodes)
 	if err != nil {
 		return nil, err
@@ -385,12 +386,8 @@ func (s *permissionService) getEffectivePolicies(ctx context.Context, username s
 		inlinePolicies = append(inlinePolicies, r.InlinePolicies...)
 	}
 
-	// 5. 合并所有策略
-	var allPolicies []domain.Policy
-	for _, ps := range policiesMap {
-		allPolicies = append(allPolicies, ps...)
-	}
-	allPolicies = append(allPolicies, inlinePolicies...)
+	// 7. 合并并去重所有策略
+	allPolicies := append(lo.Flatten(lo.Values(policiesMap)), inlinePolicies...)
 
 	return lo.UniqBy(allPolicies, func(p domain.Policy) string { return p.Code }), nil
 }
@@ -1073,19 +1070,17 @@ func (s *permissionService) hydrateMetadata(ctx context.Context, rules []dao.Cas
 }
 
 func (s *permissionService) fetchMetadataMap(ctx context.Context, urns []string) (map[string]domain.EntityMetadata, error) {
-	var (
-		eg        errgroup.Group
-		roleCodes []string
-		mu        sync.Mutex // 保护映射表并发写入
-		metaMap   = make(map[string]domain.EntityMetadata)
-	)
+	// 1. 过滤并提取角色代码清单
+	roleCodes := lo.FilterMap(urns, func(urn string, _ int) (string, bool) {
+		sub := domain.ParseSubject(urn)
+		return sub.ID, sub.Type == domain.SubjectTypeRole
+	})
 
-	// 分类
-	for _, urn := range urns {
-		if strings.HasPrefix(urn, domain.PrefixRole) {
-			roleCodes = append(roleCodes, strings.TrimPrefix(urn, domain.PrefixRole))
-		}
-	}
+	var (
+		eg      errgroup.Group
+		mu      sync.Mutex // 保护映射表并发写入
+		metaMap = make(map[string]domain.EntityMetadata)
+	)
 
 	// 并行回填
 	eg.Go(func() error {

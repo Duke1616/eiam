@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/pkg/searcher"
+	"github.com/Duke1616/eiam/internal/service/group"
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
@@ -14,16 +15,15 @@ import (
 func InitSearchSubjectProviders(
 	roleSvc role.IRoleService,
 	userSvc user.IUserService,
-
+	groupSvc group.IGroupService,
 ) searcher.ISubjectRegistry {
 	// 1. 构造搜索注册中心
 	registry := searcher.NewSubjectRegistry()
 
 	// 2. 注册服务
-	registry.Register(NewRoleAdapter(roleSvc), NewUserAdapter(userSvc))
+	registry.Register(NewRoleAdapter(roleSvc), NewUserAdapter(userSvc), NewGroupAdapter(groupSvc))
 
 	return registry
-
 }
 
 func NewRoleAdapter(roleSvc role.IRoleService) searcher.SubjectProvider {
@@ -54,6 +54,21 @@ func NewUserAdapter(userSvc user.IUserService) searcher.SubjectProvider {
 		},
 		func(src domain.User) searcher.Subject {
 			return searcher.Subject{Type: domain.SubjectTypeUser, ID: src.Username, Name: src.Profile.Nickname}
+		},
+	)
+}
+
+func NewGroupAdapter(groupSvc group.IGroupService) searcher.SubjectProvider {
+	return searcher.NewSubjectAdapter(
+		domain.SubjectTypeGroup,
+		func(ctx context.Context, keyword string, offset, limit int64) ([]domain.Group, error) {
+			return groupSvc.Search(ctx, keyword, offset, limit)
+		},
+		func(ctx context.Context, keyword string) (int64, error) {
+			return groupSvc.CountSearch(ctx, keyword)
+		},
+		func(src domain.Group) searcher.Subject {
+			return searcher.Subject{Type: domain.SubjectTypeGroup, ID: src.Code, Name: src.Name, Desc: src.Desc}
 		},
 	)
 }
