@@ -89,7 +89,7 @@ func InitApp() (*App, error) {
 	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
 	iResourceService := resource.NewResourceService(iResourceRepository, iServiceRepository)
 	iAuthorizer := InitOPA()
-	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer, iBoundaryChecker)
+	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer, iBoundaryChecker, iTenantRepository)
 	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, iPasskeyService, iPermissionService, provider)
 	policyHandler := policy2.NewHandler(iPolicyService, iUserService, iPermissionService)
 	tenantHandler := tenant2.NewHandler(iTenantService, iPermissionService, provider)

@@ -49,6 +49,7 @@ type permissionService struct {
 	permRepo    repository.IPermissionRepository
 	policySvc   policy.IPolicyService
 	authorizer  authz.IAuthorizer
+	tenantRepo  repository.ITenantRepository
 
 	// registry 注册中心 (组合模式处理：全域搜索与计数聚合)
 	registry searcher.ISubjectRegistry
@@ -63,7 +64,8 @@ func NewPermissionService(
 	resourceSvc resource.IResourceService,
 	permRepo repository.IPermissionRepository,
 	auth authz.IAuthorizer,
-	boundary checker.IBoundaryChecker) IPermissionService {
+	boundary checker.IBoundaryChecker,
+	tenantRepo repository.ITenantRepository) IPermissionService {
 	if en == nil {
 		panic("权限服务初始化失败: Casbin Enforcer 为空，请检查数据库与配置文件")
 	}
@@ -77,6 +79,7 @@ func NewPermissionService(
 		permRepo:    permRepo,
 		authorizer:  auth,
 		boundary:    boundary,
+		tenantRepo:  tenantRepo,
 	}
 }
 
@@ -713,10 +716,15 @@ func (s *permissionService) RemoveRolesFromUser(ctx context.Context, usernames [
 		return true, nil
 	}
 
-	tid := ctxutil.GetTenantID(ctx).String()
+	// 1. 个人空间防自锁安全红线校验
+	if err := s.validatePersonalTenantAdmin(ctx, usernames, roleCodes); err != nil {
+		return false, err
+	}
 
-	// 1. 获取该租户下的所有关联规则，以获取包含 v3 (时间戳) 的完整规则
-	existingRules, _ := s.enforcer.GetFilteredGroupingPolicy(2, tid)
+	tid := ctxutil.GetTenantID(ctx)
+
+	// 2. 获取该租户下的所有关联规则，以获取包含 v3 (时间戳) 的完整规则
+	existingRules, _ := s.enforcer.GetFilteredGroupingPolicy(2, tid.String())
 
 	// 2. 构造待删除的匹配集合
 	userSubjects := lo.SliceToMap(usernames, func(u string) (string, struct{}) {
@@ -741,6 +749,24 @@ func (s *permissionService) RemoveRolesFromUser(ctx context.Context, usernames [
 	}
 
 	return s.enforcer.RemoveGroupingPolicies(rulesToRemove)
+}
+
+// validatePersonalTenantAdmin 校验是否在个人空间下试图解绑主人的 admin 角色
+func (s *permissionService) validatePersonalTenantAdmin(ctx context.Context, usernames []string, roleCodes []string) error {
+	tid := ctxutil.GetTenantID(ctx)
+	tenant, err := s.tenantRepo.FindById(ctx, tid.Int64())
+	if err != nil {
+		return err
+	}
+
+	if strings.HasSuffix(tenant.Code, "-personal") {
+		owner := strings.TrimSuffix(tenant.Code, "-personal")
+		if slices.Contains(usernames, owner) && slices.Contains(roleCodes, "admin") {
+			return errs.ErrPersonalTenantAdminUnassignForbidden
+		}
+	}
+
+	return nil
 }
 
 func (s *permissionService) AddRoleInheritance(ctx context.Context, roleCode string, parentRoleCode string) (bool, error) {

@@ -321,6 +321,9 @@ func (h *Handler) BatchAssignRole(ctx *ginx.Context, req BatchAssignRoleRequest)
 func (h *Handler) BatchUnassignRole(ctx *ginx.Context, req BatchUnassignRoleRequest) (ginx.Result, error) {
 	_, err := h.permSvc.RemoveRolesFromUser(ctx.Request.Context(), req.Usernames, req.RoleCodes)
 	if err != nil {
+		if errors.Is(err, errs.ErrPersonalTenantAdminUnassignForbidden) {
+			return ErrPersonalTenantAdminUnassignForbidden, err
+		}
 		return ErrRoleAssignFailed, err
 	}
 
@@ -330,6 +333,9 @@ func (h *Handler) BatchUnassignRole(ctx *ginx.Context, req BatchUnassignRoleRequ
 func (h *Handler) UnassignRole(ctx *ginx.Context, req UnassignRoleRequest) (ginx.Result, error) {
 	_, err := h.permSvc.RemoveRolesFromUser(ctx.Request.Context(), []string{req.Username}, []string{req.RoleCode})
 	if err != nil {
+		if errors.Is(err, errs.ErrPersonalTenantAdminUnassignForbidden) {
+			return ErrPersonalTenantAdminUnassignForbidden, err
+		}
 		return ErrRoleAssignFailed, err
 	}
 

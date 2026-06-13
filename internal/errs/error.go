@@ -40,4 +40,7 @@ var (
 	// 角色管理相关错误
 	ErrDeleteSystemRole = errors.New("系统预置角色禁止删除")
 	ErrRoleInUse        = errors.New("角色正在使用中，请先解除所有关联（用户或子角色）后再重试删除")
+	
+	// 个人空间相关错误
+	ErrPersonalTenantAdminUnassignForbidden = errors.New("个人空间无法解绑拥有者的 admin 角色")
 )
