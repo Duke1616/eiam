@@ -45,7 +45,7 @@
     path: index
     component: /views/model/index.vue
     meta:
-      title: 模型资产
+      title: 模型定义
       icon: model-one
       is_hidden: false
       is_keepalive: false
@@ -53,7 +53,7 @@
   - name: ModelDetail
     permission_code: "cmdb:model:get"
     path: info
-    component: /views/model/info/index.vue
+    component: /views/model/detail.vue
     meta:
       title: 模型详情
       icon: 
@@ -63,7 +63,7 @@
   - name: RelationshipTopology
     permission_code: "cmdb:model:relation_graph"
     path: relation
-    component: /views/model/relation-graph/index.vue
+    component: /pages/cmdb/relation-graph/index.vue
     meta:
       title: 模型拓扑
       icon: relation-graph
@@ -73,7 +73,7 @@
   - name: RelationshipDefinition
     permission_code: "cmdb:relation:view"
     path: relation-type
-    component: /views/model/relation-type/index.vue
+    component: /pages/cmdb/relation-type/index.vue
     meta:
       title: 关联类型
       icon: relation-type
@@ -94,7 +94,7 @@
   - name: AssetRegistry
     permission_code: "cmdb:resource:view"
     path: index
-    component: /views/resource/warehouse/index.vue
+    component: /pages/cmdb/resource/index.vue
     meta:
       title: 资产仓库
       icon: resource
@@ -104,7 +104,7 @@
   - name: AssetList
     permission_code: "cmdb:resource:view"
     path: list
-    component: /views/resource/warehouse/list/list.vue
+    component: /pages/cmdb/resource/list.vue
     meta:
       title: 资产列表
       icon: 
@@ -114,7 +114,7 @@
   - name: AssetDetail
     permission_code: "cmdb:resource:get"
     path: info
-    component: /views/resource/warehouse/info/info.vue
+    component: /pages/cmdb/resource/detail.vue
     meta:
       title: 资产详情
       icon: 

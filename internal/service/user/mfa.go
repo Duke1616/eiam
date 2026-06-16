@@ -39,33 +39,16 @@ func (s *userService) VerifyAndEnableTOTP(ctx context.Context, userID int64, cod
 		return errors.New("验证码不正确")
 	}
 
-	u, err := s.repo.FindById(ctx, userID)
-	if err != nil {
-		return err
-	}
-
-	u.MfaType = "totp"
 	encrypted, err := s.cm.Encrypt(secret)
 	if err != nil {
 		return fmt.Errorf("加密 MFA 密钥失败: %w", err)
 	}
-	u.MfaSecret = encrypted
 
-	_, err = s.repo.Update(ctx, u)
-	return err
+	return s.repo.UpdateMfa(ctx, userID, "totp", encrypted)
 }
 
 func (s *userService) DisableMFA(ctx context.Context, userID int64) error {
-	u, err := s.repo.FindById(ctx, userID)
-	if err != nil {
-		return err
-	}
-
-	u.MfaType = ""
-	u.MfaSecret = ""
-
-	_, err = s.repo.Update(ctx, u)
-	return err
+	return s.repo.UpdateMfa(ctx, userID, "", "")
 }
 
 func (s *userService) VerifyLoginMFA(ctx context.Context, token, code string) (domain.LoginResult, error) {

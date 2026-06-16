@@ -75,6 +75,8 @@ type IUserDAO interface {
 	FindIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]UserIdentity, error)
 	// FindByIdentity 根据身份标识查找关联的完整用户
 	FindByIdentity(ctx context.Context, provider, identityID string) (User, UserProfile, []UserIdentity, error)
+	// UpdateMfa 更新用户 MFA 绑定信息
+	UpdateMfa(ctx context.Context, id int64, mfaType, mfaSecret string) error
 }
 
 type userDAO struct {
@@ -452,6 +454,16 @@ func (dao *userDAO) BatchUpsertProfilesAndIdentities(ctx context.Context, profil
 		return nil
 	})
 }
+// UpdateMfa 更新用户 MFA 绑定信息
+func (dao *userDAO) UpdateMfa(ctx context.Context, id int64, mfaType, mfaSecret string) error {
+	now := time.Now().UnixMilli()
+	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"mfa_type":   mfaType,
+		"mfa_secret": mfaSecret,
+		"utime":      now,
+	}).Error
+}
+
 func (dao *userDAO) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error {
 	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("last_login_at", loginAt).Error
 }

@@ -84,6 +84,8 @@ type IUserRepository interface {
 	GetMfaToken(ctx context.Context, token string) (int64, error)
 	DeleteMfaToken(ctx context.Context, token string) error
 	IncMfaAttempts(ctx context.Context, token string) (int, error)
+	// UpdateMfa 更新用户 MFA 绑定信息
+	UpdateMfa(ctx context.Context, id int64, mfaType, mfaSecret string) error
 }
 
 type userRepository struct {
@@ -374,6 +376,11 @@ func (repo *userRepository) toEntity(u domain.User) dao.User {
 		Utime:       u.Utime,
 		LastLoginAt: u.LastLoginAt,
 	}
+}
+
+// UpdateMfa 更新用户 MFA 绑定信息
+func (repo *userRepository) UpdateMfa(ctx context.Context, id int64, mfaType, mfaSecret string) error {
+	return repo.dao.UpdateMfa(ctx, id, mfaType, mfaSecret)
 }
 
 func (repo *userRepository) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error {
