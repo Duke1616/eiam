@@ -42,7 +42,7 @@
   - name: ModelInventory
     permission_code: "cmdb:model:view"
     path: index
-    component: /views/model/index.vue
+    component: /pages/cmdb/model/index.vue
     meta:
       title: 模型定义
       icon: model-one
@@ -52,7 +52,7 @@
   - name: ModelDetail
     permission_code: "cmdb:model:get"
     path: info
-    component: /views/model/detail.vue
+    component: /pages/cmdb/model/detail.vue
     meta:
       title: 模型详情
       icon: 
@@ -132,7 +132,7 @@
     platforms: ["ticket"]
   children:
   - name: TicketSubmission
-    permission_code: "ticket:center:pipeline"
+    permission_code: "ticket:manager:submit"
     path: start
     component: /pages/ticket/start/index.vue
     meta:
@@ -141,10 +141,10 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["ticket"]
-  - name: TicketCenter
-    permission_code: "ticket:center:my_start"
+  - name: TicketManager
+    permission_code: "ticket:manager:my_start"
     path: manager
-    component: /pages/ticket/center/index.vue
+    component: /pages/ticket/manager/index.vue
     meta:
       title: 工单管理
       icon: order-list
@@ -162,9 +162,9 @@
       is_keepalive: false
       platforms: ["ticket"]
 - name: WorkflowEngine
-  path: /cmdb/process
+  path: /ticket/process
   component: Layouts
-  redirect: /cmdb/process/index
+  redirect: /ticket/process/template
   meta:
     title: 流程控制
     icon: process-control
@@ -172,40 +172,40 @@
     is_keepalive: false
     platforms: ["ticket"]
   children:
-  - name: ProcessTemplateManager
-    permission_code: "ticket:template:view"
-    path: template
-    component: /pages/ticket/template/index.vue
-    meta:
-      title: 模版管理
-      icon: template
-      is_hidden: false
-      is_keepalive: true
-      platforms: ["ticket"]
-  - name: ProcessTemplateDispatch
-    permission_code: "ticket:dispatch:view"
-    path: template/dispatch
-    component: /views/process/dispatch/index.vue
-    meta:
-      title: 自动派发
-      icon: search
-      is_hidden: true
-      is_keepalive: false
-      platforms: ["ticket"]
-  - name: WorkflowGovernance
-    permission_code: "ticket:workflow:view"
-    path: workflow
-    component: /views/process/manager/index.vue
-    meta:
-      title: 流程管理
-      icon: process
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["ticket"]
+    - name: ProcessTemplateManager
+      permission_code: "ticket:template:view"
+      path: template
+      component: /pages/ticket/template/index.vue
+      meta:
+        title: 模版管理
+        icon: template
+        is_hidden: false
+        is_keepalive: true
+        platforms: ["ticket"]
+    - name: TicketTemplateDispatch
+      permission_code: "ticket:dispatch:view"
+      path: template/dispatch
+      component: /pages/ticket/template/dispatch.vue
+      meta:
+        title: 自动派发
+        icon: search
+        is_hidden: true
+        is_keepalive: false
+        platforms: ["ticket"]
+    - name: WorkflowGovernance
+      permission_code: "ticket:workflow:view"
+      path: workflow
+      component: /pages/ticket/workflow/index.vue
+      meta:
+        title: 流程定义
+        icon: process
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["ticket"]
 - name: JobControlCenter
-  path: /cmdb/task
+  path: /task/center
   component: Layouts
-  redirect: /cmdb/task/codebook
+  redirect: /task/center/manager
   meta:
     title: 任务中心
     icon: task
@@ -213,46 +213,46 @@
     is_keepalive: false
     platforms: ["ticket", "task"]
   children:
-  - name: TaskGovernance
-    permission_code: "task:manager:view"
-    path: /task/manager
-    component: /views/task/manager/index.vue
-    meta:
-      title: 任务管理
-      icon: task-manager
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["task"]
-  - name: JobTemplateRegistry
-    permission_code: "ticket:codebook:view"
-    path: codebook
-    component: /views/task/codebook/index.vue
-    meta:
-      title: 脚本引擎
-      icon: codebook
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["ticket", "task"]
-  - name: JobExecutorPool
-    permission_code: "task:executor:view"
-    path: /task/executor
-    component: /views/task/worker/index.vue
-    meta:
-      title: 执行节点
-      icon: worker
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["task", "ticket"]
-  - name: JobRunnerInsight
-    permission_code: "ticket:runner:view"
-    path: runner
-    component: /views/task/runner/index.vue
-    meta:
-      title: 执行单元
-      icon: runner
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["task"]
+    - name: TaskGovernance
+      permission_code: "task:manager:view"
+      path: manager
+      component: /pages/task/manager/index.vue
+      meta:
+        title: 任务管理
+        icon: task-manager
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["task"]
+    - name: JobTemplateRegistry
+      permission_code: "ticket:codebook:view"
+      path: codebook
+      component: /pages/task/codebook/index.vue
+      meta:
+        title: 脚本引擎
+        icon: codebook
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["ticket", "task"]
+    - name: JobExecutorPool
+      permission_code: "task:executor:view"
+      path: executor
+      component: /pages/task/worker/index.vue
+      meta:
+        title: 执行节点
+        icon: worker
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["task", "ticket"]
+    - name: JobRunnerInsight
+      permission_code: "ticket:runner:view"
+      path: runner
+      component: /pages/task/runner/index.vue
+      meta:
+        title: 执行单元
+        icon: runner
+        is_hidden: false
+        is_keepalive: false
+        platforms: ["task"]
 - name: AlertWorkbench
   path: /alert/workbench
   component: Layouts
