@@ -9,24 +9,23 @@
     is_keepalive: false
     platforms: ["cmdb"]
   children:
-  - name: GlobalSearchDiscovery
-    permission_code: "cmdb:resource:search"
-    path: /cmdb/dashboard/search
-    component: /views/search/tabs-info.vue
-    meta:
-      title: 搜索列表
-      icon: 
-      is_hidden: true
-      is_keepalive: false
-      platforms: ["cmdb"]
   - name: GlobalSearchCenter
     permission_code: "cmdb:resource:search"
     path: /cmdb/dashboard
-    component: /views/search/search.vue
+    component: /pages/cmdb/search/search.vue
     meta:
       title: 全局搜索
       icon: search
       is_hidden: false
+      is_keepalive: false
+      platforms: ["cmdb"]
+  - name: GlobalSearchDiscovery
+    permission_code: "cmdb:resource:search"
+    path: /cmdb/dashboard/search
+    component: /pages/cmdb/search/tabs-info.vue
+    meta:
+      title: 搜索列表
+      is_hidden: true
       is_keepalive: false
       platforms: ["cmdb"]
 - name: ModelGovernance
@@ -121,10 +120,10 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["cmdb"]
-- name: OrderServiceCenter
-  path: /cmdb/order
+- name: TicketServiceCenter
+  path: /ticket/center
   component: Layouts
-  redirect: /cmdb/order/index
+  redirect: /ticket/start
   meta:
     title: 工单中心
     icon: order-center
@@ -132,30 +131,30 @@
     is_keepalive: false
     platforms: ["ticket"]
   children:
-  - name: OrderSubmission
+  - name: TicketSubmission
     permission_code: "ticket:center:pipeline"
     path: start
-    component: /views/order/start/index.vue
+    component: /pages/ticket/start/index.vue
     meta:
       title: 提交工单
       icon: submit-order
       is_hidden: false
       is_keepalive: false
       platforms: ["ticket"]
-  - name: OrderList
+  - name: TicketCenter
     permission_code: "ticket:center:my_start"
-    path: list
-    component: /views/order/index.vue
+    path: manager
+    component: /pages/ticket/center/index.vue
     meta:
-      title: 工单列表
+      title: 工单管理
       icon: order-list
       is_hidden: false
       is_keepalive: false
       platforms: ["ticket"]
-  - name: History
+  - name: TicketTaskHistory
     permission_code: "ticket:task:view"
-    path: history
-    component: /views/task/history/index.vue
+    path: task-history
+    component: /pages/ticket/task-history/index.vue
     meta:
       title: 任务记录
       icon: task-history
@@ -176,7 +175,7 @@
   - name: ProcessTemplateManager
     permission_code: "ticket:template:view"
     path: template
-    component: /views/process/template/index.vue
+    component: /pages/ticket/template/index.vue
     meta:
       title: 模版管理
       icon: template
