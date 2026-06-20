@@ -230,7 +230,7 @@
     - name: ScriptEngine
       path: scripts
       component: /pages/task/codebook/index.vue
-      permission_code: "task:script:view"
+      permission_code: "task:codebook:view_project"
       meta:
         title: 脚本引擎
         icon: codebook
@@ -238,7 +238,7 @@
     - name: ScriptWorkspace
       path: scripts/workspace
       component: /pages/task/codebook/workspace.vue
-      permission_code: "task:script:view"
+      permission_code: "task:codebook:view_tree"
       meta:
         title: 脚本工作区
         icon: codebook
