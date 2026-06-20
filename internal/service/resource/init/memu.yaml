@@ -31,7 +31,7 @@
 - name: ModelGovernance
   path: /cmdb/model
   component: Layouts
-  redirect: /cmdb/model/index
+  redirect: /cmdb/model/define
   meta:
     title: 模型管理
     icon: model
@@ -41,7 +41,7 @@
   children:
   - name: ModelInventory
     permission_code: "cmdb:model:view"
-    path: index
+    path: define
     component: /pages/cmdb/model/index.vue
     meta:
       title: 模型定义
@@ -61,7 +61,7 @@
       platforms: ["cmdb"]
   - name: RelationshipTopology
     permission_code: "cmdb:model:relation_graph"
-    path: relation
+    path: graph
     component: /pages/cmdb/relation-graph/index.vue
     meta:
       title: 模型拓扑
@@ -202,57 +202,64 @@
         is_hidden: false
         is_keepalive: false
         platforms: ["ticket"]
-- name: JobControlCenter
+- name: TaskCenter
   path: /task/center
   component: Layouts
   redirect: /task/center/manager
   meta:
     title: 任务中心
     icon: task
-    is_hidden: false
-    is_keepalive: false
     platforms: ["ticket", "task"]
   children:
-    - name: TaskGovernance
-      permission_code: "task:manager:view"
+    - name: TaskManager
       path: manager
       component: /pages/task/manager/index.vue
+      permission_code: "task:manager:view"
       meta:
         title: 任务管理
         icon: task-manager
-        is_hidden: false
-        is_keepalive: false
         platforms: ["task"]
-    - name: JobTemplateRegistry
-      permission_code: "ticket:codebook:view"
-      path: codebook
-      component: /pages/task/codebook/index.vue
-      meta:
-        title: 脚本引擎
-        icon: codebook
-        is_hidden: false
-        is_keepalive: false
-        platforms: ["ticket", "task"]
-    - name: JobExecutorPool
+    - name: TaskExecutorNodes
+      path: executors
+      component: /pages/task/executor/index.vue
       permission_code: "task:executor:view"
-      path: executor
-      component: /pages/task/worker/index.vue
       meta:
         title: 执行节点
         icon: worker
-        is_hidden: false
-        is_keepalive: false
         platforms: ["task", "ticket"]
-    - name: JobRunnerInsight
-      permission_code: "ticket:runner:view"
-      path: runner
+    - name: ScriptEngine
+      path: scripts
+      component: /pages/task/codebook/index.vue
+      permission_code: "task:script:view"
+      meta:
+        title: 脚本引擎
+        icon: codebook
+        platforms: ["ticket", "task"]
+    - name: ScriptWorkspace
+      path: scripts/workspace
+      component: /pages/task/codebook/workspace.vue
+      permission_code: "task:script:view"
+      meta:
+        title: 脚本工作区
+        icon: codebook
+        is_hidden: true
+        platforms: ["ticket", "task"]
+    - name: TaskRunners
+      path: runners
       component: /pages/task/runner/index.vue
+      permission_code: "task:runner:view"
       meta:
         title: 执行单元
         icon: runner
-        is_hidden: false
-        is_keepalive: false
         platforms: ["task"]
+    - name: GlobalVariables
+      path: variables
+      component: /pages/task/variable/index.vue
+      permission_code: "task:variable:view"
+      meta:
+        title: 全局变量
+        icon: variable
+        platforms: ["task", "ticket"]
 - name: AlertWorkbench
   path: /alert/workbench
   component: Layouts
