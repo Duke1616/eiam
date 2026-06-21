@@ -7,7 +7,9 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	deptsvc "github.com/Duke1616/eiam/internal/service/department"
 	"github.com/Duke1616/eiam/internal/service/discovery"
+	groupsvc "github.com/Duke1616/eiam/internal/service/group"
 	invitationsvc "github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
@@ -19,7 +21,9 @@ import (
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/service/user/passkey"
+	depthdl "github.com/Duke1616/eiam/internal/web/department"
 	discoveryhdl "github.com/Duke1616/eiam/internal/web/discovery"
+	grouphdl "github.com/Duke1616/eiam/internal/web/group"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
@@ -27,10 +31,6 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
-	deptsvc "github.com/Duke1616/eiam/internal/service/department"
-	groupsvc "github.com/Duke1616/eiam/internal/service/group"
-	depthdl "github.com/Duke1616/eiam/internal/web/department"
-	grouphdl "github.com/Duke1616/eiam/internal/web/group"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
@@ -73,6 +73,7 @@ func InitApp() (*App, error) {
 		// DAOs
 		dao.NewUserDAO,
 		dao.NewTenantDAO,
+		dao.NewTenantKeyDAO,
 		dao.NewRoleDAO,
 		dao.NewPermissionDAO,
 		dao.NewResourceDAO,
@@ -86,6 +87,7 @@ func InitApp() (*App, error) {
 		// Repositories
 		repository.NewUserRepository,
 		repository.NewTenantRepository,
+		repository.NewTenantKeyRepository,
 		repository.NewRoleRepository,
 		repository.NewPermissionRepository,
 		repository.NewResourceRepository,
@@ -101,6 +103,7 @@ func InitApp() (*App, error) {
 		passkey.NewPasskeyService,
 		ldap.NewLdapService,
 		tenantsvc.NewTenantService,
+		tenantsvc.NewTenantKeyService,
 		role.NewRoleService,
 		resource.NewResourceService,
 		resource.NewResourceInitializer,
@@ -141,6 +144,7 @@ func InitApp() (*App, error) {
 
 		// GRPC Server
 		grpc.NewUserServer,
+		grpc.NewTenantServiceServer,
 		InitGrpcServer,
 		wire.Struct(new(App), "*"),
 	)

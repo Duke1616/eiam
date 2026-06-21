@@ -63,21 +63,22 @@ type tenantService struct {
 	userRepo repository.IUserRepository
 	roleSvc  role.IRoleService      // 注入角色服务：用于初始化系统固有角色
 	enforcer *casbin.SyncedEnforcer // 直接操作引擎，打破循环依赖
+	keySvc   ITenantKeyService      // 注入租户凭证服务
 }
 
-func NewTenantService(r repository.ITenantRepository, userRepo repository.IUserRepository, roleSvc role.IRoleService, enforcer *casbin.SyncedEnforcer) ITenantService {
+func NewTenantService(r repository.ITenantRepository, userRepo repository.IUserRepository, roleSvc role.IRoleService, enforcer *casbin.SyncedEnforcer, keySvc ITenantKeyService) ITenantService {
 	return &tenantService{
 		repo:     r,
 		userRepo: userRepo,
 		roleSvc:  roleSvc,
 		enforcer: enforcer,
+		keySvc:   keySvc,
 	}
 }
 
 // CreateTenant 创建租户的核心流程
 func (s *tenantService) CreateTenant(ctx context.Context, name, code, username string, userID int64) (int64, error) {
 	// 1. 保存租户基本信息
-	tenantID := ctxutil.GetTenantID(ctx).Int64()
 	tenantID, err := s.repo.Create(ctx, domain.Tenant{
 		Name:   name,
 		Code:   code,
@@ -100,7 +101,12 @@ func (s *tenantService) CreateTenant(ctx context.Context, name, code, username s
 		ctxutil.ContextID(tenantID).String(),
 		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	)
+	if err != nil {
+		return tenantID, err
+	}
 
+	// 4. 自动生成默认凭证
+	_, err = s.keySvc.GenerateKey(ctx, tenantID, "系统自动生成的默认密钥")
 	return tenantID, err
 }
 
@@ -128,6 +134,12 @@ func (s *tenantService) InitPersonalTenant(ctx context.Context, userId int64, us
 		ctxutil.ContextID(tenantID).String(),
 		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	)
+	if err != nil {
+		return 0, err
+	}
+
+	// 4. 自动生成默认凭证
+	_, err = s.keySvc.GenerateKey(ctx, tenantID, "个人空间默认密钥")
 	if err != nil {
 		return 0, err
 	}
@@ -195,7 +207,17 @@ func (s *tenantService) BatchInitPersonalTenant(ctx context.Context, users []dom
 	})
 
 	_, err = s.enforcer.AddGroupingPolicies(rules)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 5. 批量生成默认凭证
+	for _, st := range savedTenants {
+		if _, err = s.keySvc.GenerateKey(ctx, st.ID, "个人空间默认密钥"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *tenantService) GetTenantsByUserId(ctx context.Context, userId int64) ([]domain.Tenant, error) {

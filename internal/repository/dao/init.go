@@ -28,5 +28,6 @@ func InitTables(db *gorm.DB) error {
 		&UserDepartment{},
 		&Group{},
 		&UserGroup{},
+		&TenantKey{},
 	)
 }

@@ -43,4 +43,8 @@ var (
 	
 	// 个人空间相关错误
 	ErrPersonalTenantAdminUnassignForbidden = errors.New("个人空间无法解绑拥有者的 admin 角色")
+
+	// 租户密钥相关错误
+	ErrTenantKeyDisabled = errors.New("租户凭证已被禁用")
+	ErrInvalidTenantKey  = errors.New("凭证密钥不正确")
 )

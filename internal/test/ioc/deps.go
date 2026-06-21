@@ -14,6 +14,7 @@ type PermissionSuiteDeps struct {
 	DB          *gorm.DB
 	Enforcer    *casbin.SyncedEnforcer
 	TenantSvc   tenant.ITenantService
+	TenantKeySvc tenant.ITenantKeyService
 	RoleSvc     role.IRoleService
 	PolicySvc   policy.IPolicyService
 	ResourceSvc resource.IResourceService

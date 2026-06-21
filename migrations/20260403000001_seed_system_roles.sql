@@ -61,6 +61,12 @@ VALUES (1, '本地账号登录', 'local', '{"min_length": 6, "max_failed_attempt
         FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `enabled` = VALUES(`enabled`), `utime` = VALUES(`utime`);
 
+-- 初始化默认租户空间的校验凭证 (AK/SK)
+INSERT INTO `tenant_key` (`tenant_id`, `access_key`, `secret_key`, `status`, `description`, `ctime`, `utime`)
+VALUES (2, 'AK6b8b0e8cda13a37bfa2b39dc', 'f8d55a305e9ea2be9f39dfec1a7e44ba1f0340b0800e28ea', 1, '默认租户初始凭证',
+        FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000), FLOOR(UNIX_TIMESTAMP(NOW(3)) * 1000))
+ON DUPLICATE KEY UPDATE `secret_key` = VALUES(`secret_key`), `utime` = VALUES(`utime`);
+
 
 -- +goose Down
 DELETE FROM `role` WHERE `tenant_id` = 1 AND `code` IN ('super_admin', 'admin');
@@ -73,3 +79,4 @@ DELETE FROM `tenant` WHERE `id` IN (1, 2);
 DELETE FROM `membership` WHERE `user_id` = 1 AND `tenant_id` IN (1, 2);
 DELETE FROM `user_profile` WHERE `user_id` = 1;
 DELETE FROM `identity_source` WHERE `id` = 1;
+DELETE FROM `tenant_key` WHERE `tenant_id` = 2 AND `access_key` = 'AK6b8b0e8cda13a37bfa2b39dc';

@@ -36,6 +36,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 
 		// DAOs
 		dao.NewTenantDAO,
+		dao.NewTenantKeyDAO,
 		dao.NewRoleDAO,
 		dao.NewResourceDAO,
 		dao.NewPermissionDAO,
@@ -45,6 +46,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 
 		// Repositories
 		repository.NewTenantRepository,
+		repository.NewTenantKeyRepository,
 		repository.NewRoleRepository,
 		repository.NewResourceRepository,
 		repository.NewPermissionRepository,
@@ -59,6 +61,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		policysvc.NewPolicyService,
 		checker.NewBoundaryChecker,
 		tenant.NewTenantService,
+		tenant.NewTenantKeyService,
 
 		// 组装返回结构
 		wire.Struct(new(PermissionSuiteDeps), "*"),
