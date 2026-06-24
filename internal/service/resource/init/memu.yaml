@@ -273,7 +273,7 @@
   children:
   - name: AlertWorkspace
     permission_code: "alert:workspace:view"
-    path: /alert/workspace/:id
+    path: /alert/workspace
     component: /pages/alert/workspace/index.vue
     meta:
       title: 工作空间
@@ -380,16 +380,6 @@
     meta:
       title: 历史告警
       icon: alert_his
-      is_hidden: false
-      is_keepalive: false
-      platforms: ["alert"]
-  - name: AlertRoutingLogic
-    permission_code: "alert:routing_rule:view"
-    path: /alert/manager/routing
-    component: /pages/alert/routing/index.vue
-    meta:
-      title: 路由规则
-      icon: dispatch_rule
       is_hidden: false
       is_keepalive: false
       platforms: ["alert"]
