@@ -10,18 +10,29 @@ import (
 	"github.com/samber/lo"
 )
 
+// IDepartmentRepository 部门仓储接口
 type IDepartmentRepository interface {
+	// Create 创建部门
 	Create(ctx context.Context, d domain.Department) (int64, error)
+	// Update 更新部门基本信息
 	Update(ctx context.Context, d domain.Department) (int64, error)
+	// Delete 删除部门
 	Delete(ctx context.Context, id int64) error
+	// GetByID 根据ID查询部门
 	GetByID(ctx context.Context, id int64) (domain.Department, error)
+	// ListAll 查询全部部门
 	ListAll(ctx context.Context) ([]domain.Department, error)
+	// CountChildren 统计部门下的子部门数量
 	CountChildren(ctx context.Context, id int64) (int64, error)
 
 	// 部门-用户关系
+	// BindUsers 批量将用户绑定至部门
 	BindUsers(ctx context.Context, deptID int64, userIDs []int64) error
+	// UnbindUsers 批量将用户从部门解绑
 	UnbindUsers(ctx context.Context, deptID int64, userIDs []int64) error
+	// ListMembers 分页查询部门成员列表，支持按关键字过滤
 	ListMembers(ctx context.Context, deptID int64, offset, limit int64, keyword string) ([]domain.User, int64, error)
+	// CountMembers 获取部门成员数量
 	CountMembers(ctx context.Context, deptID int64) (int64, error)
 }
 

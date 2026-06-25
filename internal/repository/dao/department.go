@@ -29,18 +29,30 @@ type UserDepartment struct {
 	Ctime        int64 `gorm:"comment:'创建时间'"`
 }
 
+// IDepartmentDAO 部门数据访问对象接口
 type IDepartmentDAO interface {
+	// Insert 插入新部门
 	Insert(ctx context.Context, d Department) (int64, error)
+	// Update 更新部门基本信息
 	Update(ctx context.Context, d Department) (int64, error)
+	// Delete 删除部门
 	Delete(ctx context.Context, id int64) error
+	// GetByID 根据ID查询部门
 	GetByID(ctx context.Context, id int64) (Department, error)
+	// ListAll 查询全部部门
 	ListAll(ctx context.Context) ([]Department, error)
+	// CountChildren 统计部门下的子部门数量
 	CountChildren(ctx context.Context, id int64) (int64, error)
 
 	// 部门-用户关系
+
+	// BindUsers 批量绑定部门成员关系
 	BindUsers(ctx context.Context, bindings []UserDepartment) error
+	// UnbindUsers 批量解绑部门成员关系
 	UnbindUsers(ctx context.Context, deptID int64, userIDs []int64) error
+	// ListMembers 分页查询部门成员列表，支持按关键字过滤
 	ListMembers(ctx context.Context, deptID int64, offset, limit int64, keyword string) ([]User, int64, error)
+	// CountMembers 获取部门成员数量
 	CountMembers(ctx context.Context, deptID int64) (int64, error)
 }
 
