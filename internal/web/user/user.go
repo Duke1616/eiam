@@ -380,7 +380,7 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 			User:            ToUserVO(u),
 			Tenants:         ToTenantVOs(tenants),
 			CurrentTenantID: tenantID,
-			IsAdmin:         lo.Contains(roles, domain.RoleAdmin),
+			IsAdmin:         domain.HasAdminRole(roles),
 			Permissions:     permissions,
 		},
 	}, nil

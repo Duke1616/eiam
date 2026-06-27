@@ -394,56 +394,26 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["alert"]
-  - name: AlertEscalationPipeline
-    path: /alert/notify/escalation
-    redirect: /pages/alert/escalation/index.vue
+  - name: EscalationPolicy
+    permission_code: "alert:escalation:config_view"
+    path: /alert/notify/escalation/config
+    component: /pages/alert/escalation/index.vue
     meta:
-      title: 通知升级
-      icon: notify_escalation
+      title: 升级配置
+      icon: escalation_config
       is_hidden: false
       is_keepalive: false
+      platforms: ["alert", "ticket"]
+  - name: EscalationStepGovernance
+    permission_code: "alert:escalation:step_view"
+    path: /alert/notify/escalation/steps
+    component: /pages/alert/escalation/steps.vue
+    meta:
+      title: 步骤管理
+      icon: template_set
+      is_hidden: true
+      is_keepalive: false
       platforms: ["ticket", "alert"]
-    children:
-    - name: EscalationPolicy
-      permission_code: "alert:escalation:config_view"
-      path: /alert/notify/escalation/config
-      component: /pages/alert/escalation/index.vue
-      meta:
-        title: 升级配置
-        icon: escalation_config
-        is_hidden: false
-        is_keepalive: false
-        platforms: ["alert", "ticket"]
-    - name: EscalationStepTemplate
-      permission_code: "alert:escalation:step_tmpl_view"
-      path: /alert/notify/escalation/templates
-      component: /pages/alert/escalation/templates.vue
-      meta:
-        title: 步骤模版
-        icon: escalation_step
-        is_hidden: false
-        is_keepalive: false
-        platforms: ["ticket", "alert"]
-    - name: EscalationPolicyCreation
-      permission_code: "alert:escalation:config_add"
-      path: /alert/notify/escalation/config/create
-      component: /pages/alert/escalation/create.vue
-      meta:
-        title: 创建升级配置
-        icon: template_set
-        is_hidden: true
-        is_keepalive: false
-        platforms: ["ticket", "alert"]
-    - name: EscalationStepGovernance
-      permission_code: "alert:escalation:step_view"
-      path: /alert/notify/escalation/steps/:id
-      component: /pages/alert/escalation/steps.vue
-      meta:
-        title: 步骤管理
-        icon: template_set
-        is_hidden: true
-        is_keepalive: false
-        platforms: ["ticket", "alert"]
 - name: OnCallLifecycle
   path: /alert/oncall
   component: Layouts

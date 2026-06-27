@@ -19,6 +19,8 @@ type IDepartmentService interface {
 	List(ctx context.Context) (domain.DepartmentTree, error)
 	// GetByID 根据ID获取部门详情
 	GetByID(ctx context.Context, id int64) (domain.Department, error)
+	// ListByUserID 获取用户所在部门
+	ListByUserID(ctx context.Context, userID int64) ([]domain.Department, error)
 	// AssignUsers 批量添加用户到部门
 	AssignUsers(ctx context.Context, deptID int64, userIDs []int64) error
 	// RemoveUsers 从部门批量移出用户

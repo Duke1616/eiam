@@ -1,10 +1,17 @@
 package domain
 
+import "slices"
+
 const (
 	RoleTypeSystem uint8 = 1            // 系统预设全局角色 (tenant_id 强制为 0)
 	RoleTypeCustom uint8 = 2            // 租户私有自定义角色
 	RoleAdmin            = "role:admin" // 系统内置：租户管理员
+	RoleSuperAdmin       = "role:super_admin"
 )
+
+func HasAdminRole(roles []string) bool {
+	return slices.Contains(roles, RoleAdmin) || slices.Contains(roles, RoleSuperAdmin)
+}
 
 // Role 角色定义集：既是策略容器，也是可扮演身份（Principal）
 type Role struct {

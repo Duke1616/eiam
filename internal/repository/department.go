@@ -22,6 +22,8 @@ type IDepartmentRepository interface {
 	GetByID(ctx context.Context, id int64) (domain.Department, error)
 	// ListAll 查询全部部门
 	ListAll(ctx context.Context) ([]domain.Department, error)
+	// ListByUserID 查询用户所在部门
+	ListByUserID(ctx context.Context, userID int64) ([]domain.Department, error)
 	// CountChildren 统计部门下的子部门数量
 	CountChildren(ctx context.Context, id int64) (int64, error)
 
@@ -74,6 +76,16 @@ func (repo *departmentRepository) GetByID(ctx context.Context, id int64) (domain
 
 func (repo *departmentRepository) ListAll(ctx context.Context) ([]domain.Department, error) {
 	ds, err := repo.dao.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return lo.Map(ds, func(item dao.Department, _ int) domain.Department {
+		return repo.toDomain(item)
+	}), nil
+}
+
+func (repo *departmentRepository) ListByUserID(ctx context.Context, userID int64) ([]domain.Department, error) {
+	ds, err := repo.dao.ListByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}

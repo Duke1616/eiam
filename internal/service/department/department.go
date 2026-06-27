@@ -81,6 +81,10 @@ func (s *departmentService) GetByID(ctx context.Context, id int64) (domain.Depar
 	return s.repo.GetByID(ctx, id)
 }
 
+func (s *departmentService) ListByUserID(ctx context.Context, userID int64) ([]domain.Department, error) {
+	return s.repo.ListByUserID(ctx, userID)
+}
+
 func (s *departmentService) AssignUsers(ctx context.Context, deptID int64, userIDs []int64) error {
 	return s.repo.BindUsers(ctx, deptID, userIDs)
 }

@@ -145,6 +145,7 @@ func InitApp() (*App, error) {
 		// GRPC Server
 		grpc.NewUserServer,
 		grpc.NewTenantServiceServer,
+		grpc.NewDepartmentServer,
 		InitGrpcServer,
 		wire.Struct(new(App), "*"),
 	)

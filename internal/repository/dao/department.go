@@ -41,6 +41,8 @@ type IDepartmentDAO interface {
 	GetByID(ctx context.Context, id int64) (Department, error)
 	// ListAll 查询全部部门
 	ListAll(ctx context.Context) ([]Department, error)
+	// ListByUserID 查询用户所在部门
+	ListByUserID(ctx context.Context, userID int64) ([]Department, error)
 	// CountChildren 统计部门下的子部门数量
 	CountChildren(ctx context.Context, id int64) (int64, error)
 
@@ -98,6 +100,19 @@ func (dao *departmentDAO) GetByID(ctx context.Context, id int64) (Department, er
 func (dao *departmentDAO) ListAll(ctx context.Context) ([]Department, error) {
 	var ds []Department
 	err := dao.db.WithContext(ctx).Order("sort ASC, ctime DESC").Find(&ds).Error
+	return ds, err
+}
+
+func (dao *departmentDAO) ListByUserID(ctx context.Context, userID int64) ([]Department, error) {
+	var ds []Department
+	subQuery := dao.db.WithContext(ctx).Model(&UserDepartment{}).
+		Where("user_id = ?", userID).
+		Select("department_id")
+
+	err := dao.db.WithContext(ctx).Model(&Department{}).
+		Where("id IN (?)", subQuery).
+		Order("sort ASC, ctime DESC").
+		Find(&ds).Error
 	return ds, err
 }
 

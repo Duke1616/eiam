@@ -11,7 +11,6 @@ import (
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/gotomicro/ego/core/elog"
-	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
@@ -63,7 +62,6 @@ func (u *UserServer) QueryByUsername(ctx context.Context, req *userv1.QueryByUse
 	}, nil
 }
 
-
 func (u *UserServer) QueryByUsernames(ctx context.Context, req *userv1.QueryByUsernamesReq) (*userv1.QueryUsersResp, error) {
 	userInfos, err := u.userSvc.GetByUsernames(ctx, req.Usernames)
 	if err != nil {
@@ -108,7 +106,7 @@ func (u *UserServer) ToRetrieveUsers(ctx context.Context, src domain.User) *user
 		DisplayName: src.Profile.Nickname,
 		Email:       src.Email,
 		Phone:       src.Profile.Phone,
-		IsAdmin:     lo.Contains(roles, domain.RoleAdmin),
+		IsAdmin:     domain.HasAdminRole(roles),
 	}
 
 	if lark, ok := src.GetPrimaryIdentity("feishu"); ok {

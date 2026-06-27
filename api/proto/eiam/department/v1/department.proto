@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package eiam.department.v1;
+
+import "eiam/user/v1/user.proto";
+
+option go_package = "github.com/Duke1616/eiam/api/proto/gen/eiam/department/v1;departmentv1";
+
+message Department {
+  // 部门ID
+  int64 id = 1;
+  // 父部门ID
+  int64 parent_id = 2;
+  // 部门名称
+  string name = 3;
+  // 排序号
+  int64 sort = 4;
+  // 部门领导列表
+  repeated string leaders = 5;
+  // 主负责人
+  string main_leader = 6;
+  // 创建时间
+  int64 ctime = 7;
+  // 更新时间
+  int64 utime = 8;
+}
+
+// 错误代码枚举定义
+enum ErrorCode {
+  // 未指定错误码
+  ERROR_CODE_UNSPECIFIED = 0;
+  // 未找到指定部门
+  DEPARTMENT_NOT_FOUND = 1;
+  // 请求参数无效
+  INVALID_PARAMETER = 2;
+}
+
+// 通过用户ID查询所在部门请求
+message QueryByUserIdReq {
+  int64 user_id = 1;
+}
+
+// 查询用户所在部门响应，部门信息中包含 main_leader 与 leaders
+message QueryDepartmentsResp {
+  repeated Department departments = 1;
+  ErrorCode error_code = 2;
+  string error_message = 3;
+}
+
+// 查询部门成员请求
+message ListMembersReq {
+  int64 department_id = 1;
+  int64 offset = 2;
+  int64 limit = 3;
+  string keyword = 4;
+}
+
+// 查询部门成员响应
+message ListMembersResp {
+  repeated eiam.user.v1.User members = 1;
+  int64 total = 2;
+  ErrorCode error_code = 3;
+  string error_message = 4;
+}
+
+// 部门服务定义
+service DepartmentService {
+  // 通过用户ID查询用户所在部门，包含 main_leader 与 leaders
+  rpc QueryByUserId (QueryByUserIdReq) returns (QueryDepartmentsResp);
+
+  // 分页查询部门下的成员
+  rpc ListMembers (ListMembersReq) returns (ListMembersResp);
+}
