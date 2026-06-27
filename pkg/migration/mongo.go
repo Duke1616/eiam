@@ -79,6 +79,7 @@ func (s *mongoAutoIncrementSyncer) SyncAutoIncrement(ctx context.Context, env Mi
 		return fmt.Errorf("同步自增值解析目标表名失败: %w", err)
 	}
 
+	// 1. 从 MongoDB 读取自增值
 	coll := env.MongoDB.Collection("c_id_generator")
 	var record struct {
 		Name   string `bson:"name"`
@@ -88,21 +89,38 @@ func (s *mongoAutoIncrementSyncer) SyncAutoIncrement(ctx context.Context, env Mi
 	err = coll.FindOne(ctx, bson.M{"name": s.collectionName}).Decode(&record)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			// 未找到该集合的记录，优雅跳过
 			return nil
 		}
 		return fmt.Errorf("从 MongoDB 获取 [%s] 的自增起点失败: %w", s.collectionName, err)
 	}
 
-	if record.NextID > 1 {
-		log.Printf("[%s] 检测到 MongoDB 自增起点为: %d, 正在同步至目标库...", table, record.NextID)
-		err = env.MySQLDst.WithContext(ctx).Exec(
-			fmt.Sprintf("ALTER TABLE %s AUTO_INCREMENT = %d", quoteIdentifier(table), record.NextID),
-		).Error
-		if err != nil {
-			return fmt.Errorf("同步表 %s 自增起点失败: %w", table, err)
-		}
+	if record.NextID <= 1 {
+		return nil
 	}
+
+	// 2. 读取目标 MySQL 当前最大 ID
+	var maxID int64
+	env.MySQLDst.WithContext(ctx).Raw(
+		fmt.Sprintf("SELECT COALESCE(MAX(id), 0) FROM %s", quoteIdentifier(table)),
+	).Scan(&maxID)
+
+	// 3. 取较大值（保证只增不减）
+	newAutoInc := record.NextID
+	if maxID+1 > newAutoInc {
+		newAutoInc = maxID + 1
+	}
+
+	// 4. 执行设置
+	log.Printf("[%s] 调整自增值: MongoDB=%d, MySQL最大ID=%d, 最终设置为=%d",
+		table, record.NextID, maxID, newAutoInc)
+
+	err = env.MySQLDst.WithContext(ctx).Exec(
+		fmt.Sprintf("ALTER TABLE %s AUTO_INCREMENT = %d", quoteIdentifier(table), newAutoInc),
+	).Error
+	if err != nil {
+		return fmt.Errorf("同步表 %s 自增起点失败: %w", table, err)
+	}
+
 	return nil
 }
 
