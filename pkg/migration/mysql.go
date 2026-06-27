@@ -81,27 +81,38 @@ func (s *mysqlAutoIncrementSyncer) SyncAutoIncrement(ctx context.Context, env Mi
 		return fmt.Errorf("同步自增值解析目标表名失败: %w", err)
 	}
 
+	// 1. 读取源库自增值
 	srcDBName := env.MySQLSrc.Migrator().CurrentDatabase()
-	var autoInc *int64
-	// 从源库读取 AUTO_INCREMENT 值
+	var srcAutoInc *int64
 	err = env.MySQLSrc.WithContext(ctx).Raw(
 		"SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
 		srcDBName, table,
-	).Scan(&autoInc).Error
-	if err != nil {
-		// 如果源表非 MySQL 自增表或读取报错，优雅跳过
+	).Scan(&srcAutoInc).Error
+	if err != nil || srcAutoInc == nil || *srcAutoInc <= 1 {
 		return nil
 	}
 
-	if autoInc != nil && *autoInc > 1 {
-		log.Printf("[%s] 检测到源库自增起点为: %d, 正在同步至目标库...", table, *autoInc)
-		err = env.MySQLDst.WithContext(ctx).Exec(
-			fmt.Sprintf("ALTER TABLE %s AUTO_INCREMENT = %d", quoteIdentifier(table), *autoInc),
-		).Error
-		if err != nil {
-			return fmt.Errorf("同步表 %s 自增起点失败: %w", table, err)
-		}
+	// 2. 读取目标库当前最大ID
+	var maxID int64
+	env.MySQLDst.WithContext(ctx).Raw(
+		fmt.Sprintf("SELECT COALESCE(MAX(id), 0) FROM %s", quoteIdentifier(table)),
+	).Scan(&maxID)
+
+	// 3. 取较大值作为目标自增值（保证只增不减）
+	newAutoInc := *srcAutoInc
+	if maxID+1 > newAutoInc {
+		newAutoInc = maxID + 1
 	}
+
+	// 4. 执行设置
+	err = env.MySQLDst.WithContext(ctx).Exec(
+		fmt.Sprintf("ALTER TABLE %s AUTO_INCREMENT = %d", quoteIdentifier(table), newAutoInc),
+	).Error
+	if err != nil {
+		return fmt.Errorf("同步表 %s 自增起点失败: %w", table, err)
+	}
+
+	log.Printf("[%s] 自增值已同步为: %d", table, newAutoInc)
 	return nil
 }
 
