@@ -10,16 +10,17 @@ import (
 
 // Config 通用迁移配置
 type Config struct {
-	MongoDSN           string
-	MongoDBName        string
-	MySQLSrcDSN        string
-	MySQLDstDSN        string
-	BatchSize          int
-	Timeout            time.Duration
-	AutoMigrate        bool
-	Truncate           bool
-	DryRun             bool
-	Force              bool
+	MongoDSN               string
+	MongoDBName            string
+	MySQLSrcDSN            string
+	MySQLDstDSN            string
+	BatchSize              int
+	Timeout                time.Duration
+	AutoMigrate            bool
+	Truncate               bool
+	DryRun                 bool
+	Force                  bool
+	SkipResetAutoIncrement bool
 }
 
 // MigrationEnv 迁移环境变量，承载数据源连接
@@ -90,4 +91,3 @@ type MySQLMigration[T any] interface {
 type IAutoIncrementSyncer interface {
 	SyncAutoIncrement(ctx context.Context, env MigrationEnv) error
 }
-

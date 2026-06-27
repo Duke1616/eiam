@@ -138,7 +138,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	// 5.5. 自动同步自增 ID 计数器起点
-	if !r.cfg.DryRun {
+	if !r.cfg.DryRun && !r.cfg.SkipResetAutoIncrement {
 		for _, m := range r.migrators {
 			if syncer, ok := m.(IAutoIncrementSyncer); ok {
 				if err = syncer.SyncAutoIncrement(ctx, env); err != nil {

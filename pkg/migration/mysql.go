@@ -98,10 +98,21 @@ func (s *mysqlAutoIncrementSyncer) SyncAutoIncrement(ctx context.Context, env Mi
 		fmt.Sprintf("SELECT COALESCE(MAX(id), 0) FROM %s", quoteIdentifier(table)),
 	).Scan(&maxID)
 
-	// 3. 取较大值作为目标自增值（保证只增不减）
+	// 2.5 读取目标库当前的 AUTO_INCREMENT 状态值，防止重新同步时将自增起点往回调低
+	dstDBName := env.MySQLDst.Migrator().CurrentDatabase()
+	var dstAutoInc *int64
+	_ = env.MySQLDst.WithContext(ctx).Raw(
+		"SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+		dstDBName, table,
+	).Scan(&dstAutoInc)
+
+	// 3. 取三者中最大值作为目标自增值（保证绝对只增不减）
 	newAutoInc := *srcAutoInc
 	if maxID+1 > newAutoInc {
 		newAutoInc = maxID + 1
+	}
+	if dstAutoInc != nil && *dstAutoInc > newAutoInc {
+		newAutoInc = *dstAutoInc
 	}
 
 	// 4. 执行设置
