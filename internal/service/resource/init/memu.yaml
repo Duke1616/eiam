@@ -79,6 +79,16 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["cmdb"]
+  - name: PluginDefinition
+    permission_code: "cmdb:plugin:view"
+    path: plugin-define
+    component: /pages/cmdb/plugin/index.vue
+    meta:
+      title: 插件中心
+      icon: plugin
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["cmdb"]
 - name: AssetGovernance
   path: /cmdb/resource
   component: Layouts
@@ -120,6 +130,16 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["cmdb"]
+- name: AssetTerminal
+  permission_code: "cmdb:terminal:connect"
+  path: /cmdb/terminal
+  component: TermLayouts
+  meta:
+    title: 在线终端
+    is_hidden: true
+    is_keepalive: false
+    is_affix: false
+    platforms: ["cmdb"]
 - name: TicketServiceCenter
   path: /ticket/center
   component: Layouts
