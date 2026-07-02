@@ -59,6 +59,7 @@ func InitSession(cmd redis.Cmdable) session.Provider {
 	cookieC := &cookie.TokenCarrier{
 		MaxAge:   int(day.Seconds()),
 		Name:     cfg.Cookie.Name,
+		Path:     "/",
 		Secure:   true,
 		HttpOnly: false,
 		Domain:   cfg.Cookie.Domain,

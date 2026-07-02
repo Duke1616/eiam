@@ -387,12 +387,11 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 func (h *Handler) Logout(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := session.Get(ctx)
-	if err != nil || sess == nil {
+	if _, err := session.Get(ctx); err != nil {
 		return ginx.Result{Msg: "已退出登录"}, nil
 	}
 
-	if err = sess.Destroy(ctx.Request.Context()); err != nil {
+	if err := h.sp.Destroy(ctx); err != nil {
 		return ErrInternalServer, err
 	}
 
