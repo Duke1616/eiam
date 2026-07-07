@@ -130,16 +130,6 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["cmdb"]
-- name: AssetTerminal
-  permission_code: "cmdb:terminal:connect"
-  path: /cmdb/terminal
-  component: TermLayouts
-  meta:
-    title: 在线终端
-    is_hidden: true
-    is_keepalive: false
-    is_affix: false
-    platforms: ["cmdb"]
 - name: TicketServiceCenter
   path: /ticket/center
   component: Layouts

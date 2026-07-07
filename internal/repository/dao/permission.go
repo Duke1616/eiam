@@ -13,7 +13,8 @@ import (
 // Permission 逻辑权限能力定义 (全平台标准，不分租户)
 type Permission struct {
 	Id      int64    `gorm:"type:bigint;primaryKey;autoIncrement;comment:'权限ID'"`
-	Service string   `gorm:"type:varchar(64);not null;default:'';index:idx_perm_service;comment:'所属服务'"`
+	Service string   `gorm:"type:varchar(64);not null;default:'';index:idx_perm_service_source;comment:'所属服务'"`
+	Source  string   `gorm:"type:varchar(128);not null;default:'';index:idx_perm_service_source;comment:'资产来源'"`
 	Code    string   `gorm:"type:varchar(128);not null;uniqueIndex:uniq_idx_perm_code;comment:'逻辑权限码'"`
 	Name    string   `gorm:"type:varchar(255);not null;comment:'能力名称'"`
 	Group   string   `gorm:"type:varchar(64);not null;default:'';comment:'所属分组'"`
@@ -85,9 +86,9 @@ type IPermissionDAO interface {
 	// CountByService 按服务分组统计权限点总数
 	CountByService(ctx context.Context) ([]ServiceCount, error)
 	// DeletePermissionsByServiceAndCodes 删除指定服务下不在给定 codes 列表中的所有权限
-	DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error
+	DeletePermissionsByServiceAndCodes(ctx context.Context, service, source string, codes []string) error
 	// MarkPermissionsAsOrphan 将不在 codes 列表中的权限标记为孤儿状态
-	MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error
+	MarkPermissionsAsOrphan(ctx context.Context, service, source string, codes []string) error
 	// DeleteBindingsByPermCodes 根据逻辑权限码列表物理删除所有的资源绑定关系
 	DeleteBindingsByPermCodes(ctx context.Context, codes []string) error
 	// Transaction 开启事务支持
@@ -138,7 +139,7 @@ func (d *PermissionDAO) BatchInsert(ctx context.Context, perms []Permission) err
 	// 1. 批量插入/更新权限数据
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "code"}},
-		DoUpdates: clause.AssignmentColumns([]string{"name", "group", "needs", "scope", "utime", "status", "sort"}),
+		DoUpdates: clause.AssignmentColumns([]string{"service", "source", "name", "group", "needs", "scope", "utime", "status", "sort"}),
 	}).CreateInBatches(perms, 100).Error
 }
 
@@ -303,21 +304,21 @@ func (d *PermissionDAO) CountByService(ctx context.Context) ([]ServiceCount, err
 	return res, err
 }
 
-func (d *PermissionDAO) DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error {
+func (d *PermissionDAO) DeletePermissionsByServiceAndCodes(ctx context.Context, service, source string, codes []string) error {
 	if service == "" {
 		return nil
 	}
 	if len(codes) == 0 {
-		return d.getDB(ctx).Where("service = ?", service).Delete(&Permission{}).Error
+		return d.getDB(ctx).Where("service = ? AND source = ?", service, source).Delete(&Permission{}).Error
 	}
-	return d.getDB(ctx).Where("service = ? AND code NOT IN ?", service, codes).Delete(&Permission{}).Error
+	return d.getDB(ctx).Where("service = ? AND source = ? AND code NOT IN ?", service, source, codes).Delete(&Permission{}).Error
 }
 
-func (d *PermissionDAO) MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error {
+func (d *PermissionDAO) MarkPermissionsAsOrphan(ctx context.Context, service, source string, codes []string) error {
 	if len(codes) == 0 {
-		return d.getDB(ctx).Model(&Permission{}).Where("service = ?", service).Update("status", PermissionStatusOrphan).Error
+		return d.getDB(ctx).Model(&Permission{}).Where("service = ? AND source = ?", service, source).Update("status", PermissionStatusOrphan).Error
 	}
-	return d.getDB(ctx).Model(&Permission{}).Where("service = ? AND code NOT IN ?", service, codes).Update("status", PermissionStatusOrphan).Error
+	return d.getDB(ctx).Model(&Permission{}).Where("service = ? AND source = ? AND code NOT IN ?", service, source, codes).Update("status", PermissionStatusOrphan).Error
 }
 
 func (d *PermissionDAO) DeleteBindingsByPermCodes(ctx context.Context, codes []string) error {

@@ -11,7 +11,6 @@ import (
 	"github.com/samber/lo"
 )
 
-
 // Engine 统一资源录入引擎，负责将各类来源的资产归一化后落盘并维护绑定关系。
 type Engine interface {
 	// Ingest 执行全量资产同步（SDK 上报/远端发现）。
@@ -55,22 +54,22 @@ func NewEngine(
 func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
 	return e.permRepo.Transaction(ctx, func(txCtx context.Context) error {
 		// 1. 物理清空该服务的所有旧逻辑权限和资源映射关系
-		if err := e.permRepo.PhysicalClearService(txCtx, snap.Service); err != nil {
+		if err := e.permRepo.PhysicalClearService(txCtx, snap.Service, snap.Source); err != nil {
 			return fmt.Errorf("清空旧权限与映射失败: %w", err)
 		}
 
 		// 2. 物理清空该服务的所有 API 物理资产
-		if err := e.resRepo.DeleteAPIsByServiceAndURNs(txCtx, snap.Service, nil); err != nil {
+		if err := e.resRepo.DeleteAPIsByServiceAndURNs(txCtx, snap.Service, snap.Source, nil); err != nil {
 			return fmt.Errorf("清空旧 API 资产失败: %w", err)
 		}
 
 		// 3. 同步写入最新的逻辑权限点
-		if err := e.permRepo.SyncPermissions(txCtx, snap.Service, snap.Permissions); err != nil {
+		if err := e.permRepo.SyncPermissions(txCtx, snap.Service, snap.Source, snap.Permissions); err != nil {
 			return fmt.Errorf("同步权限点失败: %w", err)
 		}
 
 		// 4. 同步写入最新的物理接口资产
-		if err := e.resRepo.SyncAPIs(txCtx, snap.Service, snap.APIs); err != nil {
+		if err := e.resRepo.SyncAPIs(txCtx, snap.Service, snap.Source, snap.APIs); err != nil {
 			return fmt.Errorf("同步 API 资产失败: %w", err)
 		}
 
@@ -92,6 +91,7 @@ func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
 
 		e.logger.Info("资产全量同步完成",
 			elog.String("service", snap.Service),
+			elog.String("source", snap.Source),
 			elog.Int("permissions", len(snap.Permissions)),
 			elog.Int("apis", len(snap.APIs)),
 			elog.Int("menus", len(menus)),
@@ -116,7 +116,6 @@ func filterAPIBindings(bindings map[string][]string) map[string][]string {
 	}
 	return result
 }
-
 
 // IngestMenus 执行本地菜单资产的全量同步（Full-Sync 模式）。
 // 同步菜单元数据的同时，对绑定关系执行先删后插的强一致性对齐。

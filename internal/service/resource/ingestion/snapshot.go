@@ -9,6 +9,7 @@ import (
 // 所有外部来源（SDK 协议、本地 YAML）在进入处理引擎前，必须先归一化为 Snapshot。
 type Snapshot struct {
 	Service     string
+	Source      string
 	Permissions []domain.Permission
 	APIs        []domain.API
 	Menus       domain.MenuTree
@@ -25,6 +26,7 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 	for i, p := range req.Permissions {
 		perms[i] = domain.Permission{
 			Service: req.Service,
+			Source:  req.Source,
 			Code:    p.Code,
 			Name:    p.Name,
 			Group:   p.Group,
@@ -40,6 +42,7 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 	for i, a := range req.APIs {
 		apis[i] = domain.API{
 			Service: req.Service,
+			Source:  req.Source,
 			Name:    a.Name,
 			Method:  a.Method,
 			Path:    a.Path,
@@ -55,6 +58,7 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 	// 带来的菜单冲突及绑定关系错乱。
 	return Snapshot{
 		Service:     req.Service,
+		Source:      req.Source,
 		Permissions: perms,
 		APIs:        apis,
 		Menus:       nil,

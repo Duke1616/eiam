@@ -17,9 +17,10 @@ import (
 
 // SDK 提供登录验证和权限鉴权的 Gin 中间件
 type SDK struct {
-	baseURL string
-	client  *http.Client
-	logger  *elog.Component
+	baseURL    string
+	client     *http.Client
+	logger     *elog.Component
+	pathPrefix string
 }
 
 // NewSDK 创建鉴权 SDK 实例 (服务名将通过 capability 自动感知识别)
@@ -45,6 +46,11 @@ func NewSDKWithURL(baseURL string) *SDK {
 		client:  &http.Client{},
 		logger:  elog.DefaultLogger.With(elog.FieldComponentName("policy-sdk")),
 	}
+}
+
+func (s *SDK) WithPathPrefix(prefix string) *SDK {
+	s.pathPrefix = normalizePathPrefix(prefix)
+	return s
 }
 
 type checkLoginResp struct {
@@ -107,7 +113,7 @@ func (s *SDK) CheckPolicy() gin.HandlerFunc {
 		}
 
 		// 3. 发起远程判定
-		path, method := ctx.FullPath(), ctx.Request.Method
+		path, method := s.resolvePolicyPath(ctx.FullPath()), ctx.Request.Method
 		var res apiResult[authorizeResult]
 		if err := s.callAPI(ctx, "/api/permission/check_policy", checkPolicyReq{
 			Service: info.Service,
@@ -129,6 +135,31 @@ func (s *SDK) CheckPolicy() gin.HandlerFunc {
 
 		ctx.Next()
 	}
+}
+
+func (s *SDK) resolvePolicyPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		path = "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if s.pathPrefix == "" {
+		return path
+	}
+	if path == "/" {
+		return s.pathPrefix
+	}
+	return s.pathPrefix + path
+}
+
+func normalizePathPrefix(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" || prefix == "/" {
+		return ""
+	}
+	return "/" + strings.Trim(prefix, "/")
 }
 
 // callAPI 内部处理透传和请求发送

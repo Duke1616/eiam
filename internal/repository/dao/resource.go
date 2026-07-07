@@ -45,7 +45,8 @@ type MenuMeta struct {
 // API 接口资源表 (物理元数据)
 type API struct {
 	Id      int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'接口ID'"`
-	Service string `gorm:"type:varchar(128);not null;uniqueIndex:idx_service_method_path;comment:'所属服务'"`
+	Service string `gorm:"type:varchar(128);not null;uniqueIndex:idx_service_method_path;index:idx_service_source;comment:'所属服务'"`
+	Source  string `gorm:"type:varchar(128);not null;default:'';index:idx_service_source;comment:'资产来源'"`
 	Name    string `gorm:"type:varchar(255);not null;comment:'接口描述名称'"`
 	Method  string `gorm:"type:varchar(16);not null;uniqueIndex:idx_service_method_path;comment:'HTTP动词'"`
 	Path    string `gorm:"type:varchar(255);not null;uniqueIndex:idx_service_method_path;comment:'接口路径'"`
@@ -96,9 +97,9 @@ type IResourceDAO interface {
 	// ListAPIsByService 列出指定服务下所有状态为 Active 的接口
 	ListAPIsByService(ctx context.Context, service string) ([]API, error)
 	// DeleteAPIsByServiceAndURNs 删除指定服务下不在给定 URN 列表中的接口（物理删除）
-	DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error
+	DeleteAPIsByServiceAndURNs(ctx context.Context, service, source string, urns []string) error
 	// MarkAPIsAsOrphan 将指定服务下不在 URN 列表中的接口标记为 orphan 状态
-	MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error
+	MarkAPIsAsOrphan(ctx context.Context, service, source string, urns []string) error
 
 	// Transaction 在事务上下文中执行 fn，通过 ctx 传递 tx 对象
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
@@ -246,7 +247,7 @@ func (d *ResourceDAO) BatchInsertAPI(ctx context.Context, apis []API) error {
 
 	// 升级为 CreateInBatches 分批保护，阻断超大服务注册下的包溢出
 	return d.getDB(ctx).Clauses(clause.OnConflict{
-		DoUpdates: clause.AssignmentColumns([]string{"name", "utime", "status"}),
+		DoUpdates: clause.AssignmentColumns([]string{"source", "name", "utime", "status"}),
 	}).CreateInBatches(apis, 100).Error
 }
 
@@ -269,23 +270,23 @@ func (d *ResourceDAO) ListAPIsByService(ctx context.Context, service string) ([]
 	return apis, err
 }
 
-func (d *ResourceDAO) DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error {
+func (d *ResourceDAO) DeleteAPIsByServiceAndURNs(ctx context.Context, service, source string, urns []string) error {
 	if len(urns) == 0 {
-		return d.getDB(ctx).Where("service = ?", service).Delete(&API{}).Error
+		return d.getDB(ctx).Where("service = ? AND source = ?", service, source).Delete(&API{}).Error
 	}
 
 	// 利用 MySQL 的 LOWER(CONCAT(method, ':', path)) 来匹配 URN 格式
-	return d.getDB(ctx).Where("service = ?", service).
+	return d.getDB(ctx).Where("service = ? AND source = ?", service, source).
 		Where("LOWER(CONCAT(method, ':', path)) NOT IN ?", urns).
 		Delete(&API{}).Error
 }
 
-func (d *ResourceDAO) MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error {
+func (d *ResourceDAO) MarkAPIsAsOrphan(ctx context.Context, service, source string, urns []string) error {
 	if len(urns) == 0 {
-		return d.getDB(ctx).Model(&API{}).Where("service = ?", service).Update("status", APIStatusOrphan).Error
+		return d.getDB(ctx).Model(&API{}).Where("service = ? AND source = ?", service, source).Update("status", APIStatusOrphan).Error
 	}
 
-	return d.getDB(ctx).Model(&API{}).Where("service = ?", service).
+	return d.getDB(ctx).Model(&API{}).Where("service = ? AND source = ?", service, source).
 		Where("LOWER(CONCAT(method, ':', path)) NOT IN ?", urns).
 		Update("status", APIStatusOrphan).Error
 }

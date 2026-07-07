@@ -115,6 +115,7 @@ type MenuMeta struct {
 type API struct {
 	ID      int64  `json:"id"`
 	Service string `json:"service"`
+	Source  string `json:"source"`
 	Name    string `json:"name"`
 	Method  string `json:"method"`
 	Path    string `json:"path"`

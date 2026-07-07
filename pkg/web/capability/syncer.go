@@ -11,10 +11,18 @@ import (
 
 // SyncRequest 定义了 SDK 上报资产给 EIAM 的标准协议 (Snapshot)
 type SyncRequest struct {
+	Source      string         `json:"source,omitempty"`
 	Service     string         `json:"service"`
 	Permissions []Permission   `json:"permissions"`
 	APIs        []ResourceInfo `json:"apis"`
 	Menus       []Menu         `json:"menus"`
+}
+
+func (r SyncRequest) OwnerKey() string {
+	if r.Source == "" {
+		return r.Service
+	}
+	return r.Service + "@" + r.Source
 }
 
 // Hash 计算资产快照的稳定哈希值

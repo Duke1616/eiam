@@ -47,13 +47,13 @@ type IPermissionRepository interface {
 	// CountByService 按服务分组统计权限点总数
 	CountByService(ctx context.Context) (map[string]int64, error)
 	// SyncPermissions 高性能同步逻辑权限点 (支持 Full-Sync)
-	SyncPermissions(ctx context.Context, service string, perms []domain.Permission) error
+	SyncPermissions(ctx context.Context, service, source string, perms []domain.Permission) error
 	// MarkPermissionsAsOrphan 将不在给定列表中的权限标记为孤儿
-	MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error
+	MarkPermissionsAsOrphan(ctx context.Context, service, source string, codes []string) error
 	// DeletePermissionsByServiceAndCodes 删除指定服务下不在给定 codes 列表中的所有权限
-	DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error
+	DeletePermissionsByServiceAndCodes(ctx context.Context, service, source string, codes []string) error
 	// PhysicalClearService 物理清除该服务下的所有权限元数据及资源映射关系 (用于强一致同步)
-	PhysicalClearService(ctx context.Context, service string) error
+	PhysicalClearService(ctx context.Context, service, source string) error
 	// Transaction 开启事务支持
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
@@ -69,6 +69,7 @@ func NewPermissionRepository(dao dao.IPermissionDAO) IPermissionRepository {
 func (r *PermissionRepository) CreatePermission(ctx context.Context, p domain.Permission) (int64, error) {
 	return r.dao.Insert(ctx, dao.Permission{
 		Service: p.Service,
+		Source:  p.Source,
 		Code:    p.Code,
 		Name:    p.Name,
 		Group:   p.Group,
@@ -83,6 +84,7 @@ func (r *PermissionRepository) BatchCreatePermission(ctx context.Context, perms 
 	for _, p := range perms {
 		daoPerms = append(daoPerms, dao.Permission{
 			Service: p.Service,
+			Source:  p.Source,
 			Code:    p.Code,
 			Name:    p.Name,
 			Group:   p.Group,
@@ -122,6 +124,7 @@ func (r *PermissionRepository) toDomain(p dao.Permission) domain.Permission {
 	return domain.Permission{
 		ID:      p.Id,
 		Service: p.Service,
+		Source:  p.Source,
 		Code:    p.Code,
 		Name:    p.Name,
 		Group:   p.Group,
@@ -280,7 +283,7 @@ func (r *PermissionRepository) CountByService(ctx context.Context) (map[string]i
 	return res, nil
 }
 
-func (r *PermissionRepository) SyncPermissions(ctx context.Context, service string, perms []domain.Permission) error {
+func (r *PermissionRepository) SyncPermissions(ctx context.Context, service, source string, perms []domain.Permission) error {
 	// 先根据传入权限点原生的 Sort 进行升序排序，确保保序
 	slices.SortFunc(perms, func(a, b domain.Permission) int {
 		return a.Sort - b.Sort
@@ -300,18 +303,18 @@ func (r *PermissionRepository) SyncPermissions(ctx context.Context, service stri
 	}
 
 	// 2. 将废弃的资产标记为孤儿 (而非直接删除)
-	return r.dao.MarkPermissionsAsOrphan(ctx, service, codes)
+	return r.dao.MarkPermissionsAsOrphan(ctx, service, source, codes)
 }
 
-func (r *PermissionRepository) MarkPermissionsAsOrphan(ctx context.Context, service string, codes []string) error {
-	return r.dao.MarkPermissionsAsOrphan(ctx, service, codes)
+func (r *PermissionRepository) MarkPermissionsAsOrphan(ctx context.Context, service, source string, codes []string) error {
+	return r.dao.MarkPermissionsAsOrphan(ctx, service, source, codes)
 }
 
-func (r *PermissionRepository) DeletePermissionsByServiceAndCodes(ctx context.Context, service string, codes []string) error {
-	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, codes)
+func (r *PermissionRepository) DeletePermissionsByServiceAndCodes(ctx context.Context, service, source string, codes []string) error {
+	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, source, codes)
 }
 
-func (r *PermissionRepository) PhysicalClearService(ctx context.Context, service string) error {
+func (r *PermissionRepository) PhysicalClearService(ctx context.Context, service, source string) error {
 	// 不在此处开启新事务，调用方（engine.Ingest）负责管理外层事务边界。
 	all, err := r.dao.ListAll(ctx)
 	if err != nil {
@@ -320,7 +323,7 @@ func (r *PermissionRepository) PhysicalClearService(ctx context.Context, service
 
 	var codes []string
 	for _, p := range all {
-		if p.Service == service {
+		if p.Service == service && p.Source == source {
 			codes = append(codes, p.Code)
 		}
 	}
@@ -330,7 +333,7 @@ func (r *PermissionRepository) PhysicalClearService(ctx context.Context, service
 			return err
 		}
 	}
-	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, nil)
+	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, source, nil)
 }
 
 func (r *PermissionRepository) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {

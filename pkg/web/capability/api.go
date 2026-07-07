@@ -336,6 +336,8 @@ type Collector struct {
 	menuProviders []MenuProvider
 	engine        *gin.Engine
 	service       string // 显式 Service 覆写 (通常从 Permission/ResourceInfo 自动推导)
+	source        string
+	apiPathPrefix string
 }
 
 func NewCollector() *Collector {
@@ -356,6 +358,12 @@ func WithRouter(engine *gin.Engine) SyncOption {
 func WithService(name string) SyncOption {
 	return func(c *Collector) { c.service = name }
 }
+func WithSource(source string) SyncOption {
+	return func(c *Collector) { c.source = strings.TrimSpace(source) }
+}
+func WithAPIPathPrefix(prefix string) SyncOption {
+	return func(c *Collector) { c.apiPathPrefix = normalizePathPrefix(prefix) }
+}
 
 func (c *Collector) Collect(opts ...SyncOption) SyncRequest {
 	for _, opt := range opts {
@@ -363,6 +371,7 @@ func (c *Collector) Collect(opts ...SyncOption) SyncRequest {
 	}
 
 	req := SyncRequest{
+		Source:      c.source,
 		Permissions: c.collectPermissions(),
 		APIs:        c.collectAPIs(),
 		Menus:       c.collectMenus(),
@@ -430,7 +439,7 @@ func (c *Collector) collectAPIs() []ResourceInfo {
 			continue
 		}
 		info.Method = route.Method
-		info.Path = route.Path
+		info.Path = applyPathPrefix(c.apiPathPrefix, route.Path)
 		apis = append(apis, info)
 	}
 	return apis
@@ -440,4 +449,29 @@ func (c *Collector) collectMenus() []Menu {
 	return lo.FlatMap(c.menuProviders, func(p MenuProvider, _ int) []Menu {
 		return p.ProvideMenus()
 	})
+}
+
+func normalizePathPrefix(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" || prefix == "/" {
+		return ""
+	}
+	return "/" + strings.Trim(prefix, "/")
+}
+
+func applyPathPrefix(prefix string, routePath string) string {
+	routePath = strings.TrimSpace(routePath)
+	if routePath == "" {
+		routePath = "/"
+	}
+	if !strings.HasPrefix(routePath, "/") {
+		routePath = "/" + routePath
+	}
+	if prefix == "" {
+		return routePath
+	}
+	if routePath == "/" {
+		return prefix
+	}
+	return prefix + routePath
 }

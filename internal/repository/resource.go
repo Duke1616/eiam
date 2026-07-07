@@ -25,11 +25,11 @@ type IResourceRepository interface {
 	// ListAPIsByService 获取指定服务的接口清单
 	ListAPIsByService(ctx context.Context, service string) ([]domain.API, error)
 	// SyncAPIs 高性能同步接口资产 (支持 Full-Sync)
-	SyncAPIs(ctx context.Context, service string, apis []domain.API) error
+	SyncAPIs(ctx context.Context, service, source string, apis []domain.API) error
 	// MarkAPIsAsOrphan 将不在给定列表中的 API 标记为孤儿
-	MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error
+	MarkAPIsAsOrphan(ctx context.Context, service, source string, urns []string) error
 	// DeleteAPIsByServiceAndURNs 物理删除指定服务下不在给定 URN 列表中的接口
-	DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error
+	DeleteAPIsByServiceAndURNs(ctx context.Context, service, source string, urns []string) error
 
 	// UpsertMenu 智能更新录入菜单资产，基于 Name 匹配以保留原始 ID
 	UpsertMenu(ctx context.Context, m *domain.Menu) error
@@ -127,6 +127,7 @@ func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.M
 func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64, error) {
 	return r.dao.InsertAPI(ctx, dao.API{
 		Service: a.Service,
+		Source:  a.Source,
 		Name:    a.Name,
 		Method:  a.Method,
 		Path:    a.Path,
@@ -135,7 +136,7 @@ func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64
 
 func (r *ResourceRepository) BatchCreateAPI(ctx context.Context, apis []domain.API) error {
 	daoApis := lo.Map(apis, func(a domain.API, _ int) dao.API {
-		return dao.API{Service: a.Service, Name: a.Name, Method: a.Method, Path: a.Path}
+		return dao.API{Service: a.Service, Source: a.Source, Name: a.Name, Method: a.Method, Path: a.Path}
 	})
 	return r.dao.BatchInsertAPI(ctx, daoApis)
 }
@@ -168,7 +169,7 @@ func (r *ResourceRepository) ListAPIsByService(ctx context.Context, service stri
 	return lo.Map(apis, func(a dao.API, _ int) domain.API { return r.toDomainAPI(a) }), nil
 }
 
-func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis []domain.API) error {
+func (r *ResourceRepository) SyncAPIs(ctx context.Context, service, source string, apis []domain.API) error {
 	urns := lo.Map(apis, func(a domain.API, _ int) string {
 		return strings.ToLower(a.Method) + ":" + a.Path
 	})
@@ -176,6 +177,7 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis 
 	daoApis := lo.Map(apis, func(a domain.API, _ int) dao.API {
 		return dao.API{
 			Service: service,
+			Source:  source,
 			Name:    a.Name,
 			Method:  a.Method,
 			Path:    a.Path,
@@ -189,15 +191,15 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service string, apis 
 	}
 
 	// 2. 将不再存在的接口标记为孤儿 (而非直接删除)
-	return r.dao.MarkAPIsAsOrphan(ctx, service, urns)
+	return r.dao.MarkAPIsAsOrphan(ctx, service, source, urns)
 }
 
-func (r *ResourceRepository) MarkAPIsAsOrphan(ctx context.Context, service string, urns []string) error {
-	return r.dao.MarkAPIsAsOrphan(ctx, service, urns)
+func (r *ResourceRepository) MarkAPIsAsOrphan(ctx context.Context, service, source string, urns []string) error {
+	return r.dao.MarkAPIsAsOrphan(ctx, service, source, urns)
 }
 
-func (r *ResourceRepository) DeleteAPIsByServiceAndURNs(ctx context.Context, service string, urns []string) error {
-	return r.dao.DeleteAPIsByServiceAndURNs(ctx, service, urns)
+func (r *ResourceRepository) DeleteAPIsByServiceAndURNs(ctx context.Context, service, source string, urns []string) error {
+	return r.dao.DeleteAPIsByServiceAndURNs(ctx, service, source, urns)
 }
 
 func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) error {
@@ -308,6 +310,7 @@ func (r *ResourceRepository) toDomainAPI(a dao.API) domain.API {
 	return domain.API{
 		ID:      a.Id,
 		Service: a.Service,
+		Source:  a.Source,
 		Name:    a.Name,
 		Method:  a.Method,
 		Path:    a.Path,

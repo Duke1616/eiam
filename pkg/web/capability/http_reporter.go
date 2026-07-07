@@ -19,7 +19,7 @@ type httpReporter struct {
 	client   *http.Client
 	l        *elog.Component
 
-	// 简化为单个服务的上报控制器
+	// 简化为单个 owner(service/source) 的上报控制器
 	mu   sync.RWMutex
 	req  SyncRequest
 	once sync.Once
@@ -85,6 +85,7 @@ func (r *httpReporter) runRegistrationLoop() {
 		if err := r.doPost(ctx, req); err != nil {
 			r.l.Error("EIAM SDK HTTP 资产上报异常",
 				elog.String("service", req.Service),
+				elog.String("source", req.Source),
 				elog.FieldErr(err))
 		}
 

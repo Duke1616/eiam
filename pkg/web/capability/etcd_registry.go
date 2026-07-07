@@ -44,10 +44,11 @@ func NewEtcdRegistry(client *clientv3.Client, ttl int) Registry {
 }
 
 func (r *etcdRegistry) Sync(ctx context.Context, req SyncRequest) error {
+	ownerKey := req.OwnerKey()
 	service := req.Service
 
 	// 1. 检查该服务是否已有运行中的控制器
-	actual, loaded := r.controllers.LoadOrStore(service, &registrationController{
+	actual, loaded := r.controllers.LoadOrStore(ownerKey, &registrationController{
 		req: req,
 	})
 	ctrl := actual.(*registrationController)
@@ -66,6 +67,7 @@ func (r *etcdRegistry) Sync(ctx context.Context, req SyncRequest) error {
 		if oldHash != newHash {
 			r.l.Info("EIAM SDK 检测到运行中服务的资产哈希变更，正在重构控制器协程...",
 				elog.String("service", service),
+				elog.String("source", req.Source),
 				elog.String("oldHash", oldHash),
 				elog.String("newHash", newHash))
 
@@ -79,7 +81,7 @@ func (r *etcdRegistry) Sync(ctx context.Context, req SyncRequest) error {
 				req:    req,
 				cancel: cancel,
 			}
-			r.controllers.Store(service, newCtrl)
+			r.controllers.Store(ownerKey, newCtrl)
 
 			// 异步启动全新的注册控制器以秒级重新竞选 Leader 并执行全量对账
 			go r.runRegistrationController(cCtx, newCtrl)
@@ -99,13 +101,14 @@ func (r *etcdRegistry) Sync(ctx context.Context, req SyncRequest) error {
 // runRegistrationController 抢占式注册控制器
 func (r *etcdRegistry) runRegistrationController(ctx context.Context, ctrl *registrationController) {
 	service := ctrl.req.Service
-	manifestKey := fmt.Sprintf("%s/%s", manifestPrefix, service)
-	hashKey := fmt.Sprintf("%s/%s", hashPrefix, service)
+	ownerKey := ctrl.req.OwnerKey()
+	manifestKey := fmt.Sprintf("%s/%s", manifestPrefix, ownerKey)
+	hashKey := fmt.Sprintf("%s/%s", hashPrefix, ownerKey)
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.l.Info("EIAM SDK 资产注册控制器已停止", elog.String("service", service))
+			r.l.Info("EIAM SDK 资产注册控制器已停止", elog.String("service", service), elog.String("source", ctrl.req.Source))
 			return
 		default:
 			// 获取当前最新的请求数据
@@ -116,6 +119,7 @@ func (r *etcdRegistry) runRegistrationController(ctx context.Context, ctrl *regi
 			if err := r.executeLeaderRegistration(ctx, req, manifestKey, hashKey); err != nil {
 				r.l.Error("EIAM SDK 注册控制器执行异常，准备重试",
 					elog.String("service", service),
+					elog.String("source", req.Source),
 					elog.FieldErr(err))
 				time.Sleep(10 * time.Second)
 			}
@@ -132,7 +136,7 @@ func (r *etcdRegistry) executeLeaderRegistration(ctx context.Context, req SyncRe
 	if err == nil && len(resp.Kvs) > 0 && string(resp.Kvs[0].Value) == currentHash {
 		mResp, _ := r.client.Get(ctx, manifestKey)
 		if len(mResp.Kvs) > 0 {
-			r.l.Info("EIAM SDK 资产版本一致且集群已有 Leader，本节点进入 Standby 模式", elog.String("service", req.Service))
+			r.l.Info("EIAM SDK 资产版本一致且集群已有 Leader，本节点进入 Standby 模式", elog.String("service", req.Service), elog.String("source", req.Source))
 			// 观察者模式：等待 1 分钟后再检查，或者监听事件（这里简单处理为 Sleep）
 			select {
 			case <-ctx.Done():
@@ -152,7 +156,7 @@ func (r *etcdRegistry) executeLeaderRegistration(ctx context.Context, req SyncRe
 
 	// 3. 竞争 Leader 身份
 	mutex := concurrency.NewMutex(sess, manifestKey)
-	r.l.Info("EIAM SDK 正在尝试竞争资产报备 Leader 身份...", elog.String("service", req.Service))
+	r.l.Info("EIAM SDK 正在尝试竞争资产报备 Leader 身份...", elog.String("service", req.Service), elog.String("source", req.Source))
 
 	if err = mutex.Lock(ctx); err != nil {
 		return err
@@ -166,7 +170,7 @@ func (r *etcdRegistry) executeLeaderRegistration(ctx context.Context, req SyncRe
 
 	data, _ := json.Marshal(req)
 	if shouldSync {
-		r.l.Info("EIAM SDK 发现资产版本变更，启动全量对账...", elog.String("hash", currentHash))
+		r.l.Info("EIAM SDK 发现资产版本变更，启动全量对账...", elog.String("service", req.Service), elog.String("source", req.Source), elog.String("hash", currentHash))
 		// 这里由于 Registry 接口定义限制，暂无法直接调用外部对账 API，
 		// 但我们可以在这里把全量数据写入 manifestKey，触发 EIAM Server 的 Watcher
 		if _, err = r.client.Put(ctx, manifestKey, string(data), clientv3.WithLease(sess.Lease())); err != nil {
@@ -174,10 +178,10 @@ func (r *etcdRegistry) executeLeaderRegistration(ctx context.Context, req SyncRe
 		}
 		// 同步成功后更新永久存根
 		_, _ = r.client.Put(ctx, hashKey, currentHash)
-		r.l.Info("EIAM SDK 资产全量同步指令已下发", elog.String("service", req.Service))
+		r.l.Info("EIAM SDK 资产全量同步指令已下发", elog.String("service", req.Service), elog.String("source", req.Source))
 	} else {
 		// 仅接管心跳，维持在线状态
-		r.l.Info("EIAM SDK 接管 Leader 成功，资产版本有效，仅维持心跳", elog.String("service", req.Service))
+		r.l.Info("EIAM SDK 接管 Leader 成功，资产版本有效，仅维持心跳", elog.String("service", req.Service), elog.String("source", req.Source))
 		if _, err = r.client.Put(ctx, manifestKey, string(data), clientv3.WithLease(sess.Lease())); err != nil {
 			return err
 		}
@@ -188,7 +192,7 @@ func (r *etcdRegistry) executeLeaderRegistration(ctx context.Context, req SyncRe
 	case <-ctx.Done():
 		return nil
 	case <-sess.Done():
-		r.l.Warn("EIAM SDK Etcd 会话断开，准备重新选举", elog.String("service", req.Service))
+		r.l.Warn("EIAM SDK Etcd 会话断开，准备重新选举", elog.String("service", req.Service), elog.String("source", req.Source))
 		return nil
 	}
 }
