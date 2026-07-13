@@ -2,6 +2,8 @@ package dao
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
@@ -19,9 +21,9 @@ type ITenantDAO interface {
 	// FindByCode 根据唯一标识代码查询租户详情
 	FindByCode(ctx context.Context, code string) (Tenant, error)
 	// FindAll 分页获取系统内所有租户列表
-	FindAll(ctx context.Context, offset, limit int64) ([]Tenant, error)
+	FindAll(ctx context.Context, offset, limit int64, keyword string) ([]Tenant, error)
 	// Count 统计系统内租户总数
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, keyword string) (int64, error)
 	// Update 更新租户名称、域名及状态等信息
 	Update(ctx context.Context, t Tenant) error
 	// Delete 物理删除租户记录
@@ -187,16 +189,33 @@ func (d *TenantDAO) FindByCode(ctx context.Context, code string) (Tenant, error)
 	return t, err
 }
 
-func (d *TenantDAO) FindAll(ctx context.Context, offset, limit int64) ([]Tenant, error) {
+func (d *TenantDAO) FindAll(ctx context.Context, offset, limit int64, keyword string) ([]Tenant, error) {
 	var ts []Tenant
-	err := d.db.WithContext(ctx).Offset(int(offset)).Limit(int(limit)).Find(&ts).Error
+	err := d.tenantQuery(ctx, keyword).Offset(int(offset)).Limit(int(limit)).Find(&ts).Error
 	return ts, err
 }
 
-func (d *TenantDAO) Count(ctx context.Context) (int64, error) {
+func (d *TenantDAO) Count(ctx context.Context, keyword string) (int64, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&Tenant{}).Count(&count).Error
+	err := d.tenantQuery(ctx, keyword).Count(&count).Error
 	return count, err
+}
+
+func (d *TenantDAO) tenantQuery(ctx context.Context, keyword string) *gorm.DB {
+	query := d.db.WithContext(ctx).Model(&Tenant{})
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return query
+	}
+
+	like := "%" + keyword + "%"
+	sql := "name LIKE ? OR code LIKE ? OR domain LIKE ?"
+	args := []any{like, like, like}
+	if id, err := strconv.ParseInt(keyword, 10, 64); err == nil {
+		sql = "id = ? OR " + sql
+		args = append([]any{id}, args...)
+	}
+	return query.Where(sql, args...)
 }
 
 func (d *TenantDAO) Update(ctx context.Context, t Tenant) error {

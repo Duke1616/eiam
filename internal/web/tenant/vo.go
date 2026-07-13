@@ -20,8 +20,13 @@ type UpdateTenantReq struct {
 }
 
 type ListTenantReq struct {
-	Offset int64 `json:"offset"`
-	Limit  int64 `json:"limit"`
+	Offset  int64  `json:"offset"`
+	Limit   int64  `json:"limit"`
+	Keyword string `json:"keyword"`
+}
+
+type ListTenantsByIDsReq struct {
+	IDs []int64 `json:"ids" binding:"required"`
 }
 
 type BatchDeleteTenantReq struct {
@@ -37,6 +42,10 @@ type ListUserTenantsReq struct {
 
 type ListTenantRes struct {
 	Total   int64      `json:"total"`
+	Tenants []TenantVO `json:"tenants"`
+}
+
+type ListTenantsByIDsRes struct {
 	Tenants []TenantVO `json:"tenants"`
 }
 

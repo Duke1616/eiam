@@ -65,6 +65,10 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g.POST("/list", h.Capability("全量租户列表", "view").
 		Handle(ginx.B[ListTenantReq](h.ListTenants)),
 	)
+	g.POST("/list/by-ids", h.Capability("批量查询租户", "view_by_ids").
+		NoSync().
+		Handle(ginx.B[ListTenantsByIDsReq](h.ListTenantsByIDs)),
+	)
 	g.POST("/update", h.Capability("修改租户信息", "edit").
 		Handle(ginx.B[UpdateTenantReq](h.UpdateTenant)),
 	)
@@ -256,7 +260,7 @@ func (h *Handler) ListTenants(ctx *ginx.Context, req ListTenantReq) (ginx.Result
 		return ErrTenantAccess, fmt.Errorf("非系统管理员禁止查询租户列表")
 	}
 
-	tenants, total, err := h.svc.List(ctx.Context, req.Offset, req.Limit)
+	tenants, total, err := h.svc.List(ctx.Context, req.Offset, req.Limit, req.Keyword)
 	if err != nil {
 		return ErrTenantList, err
 	}
@@ -264,6 +268,19 @@ func (h *Handler) ListTenants(ctx *ginx.Context, req ListTenantReq) (ginx.Result
 	return ginx.Result{
 		Data: ListTenantRes{
 			Total:   total,
+			Tenants: ToTenantVOs(tenants),
+		},
+	}, nil
+}
+
+func (h *Handler) ListTenantsByIDs(ctx *ginx.Context, req ListTenantsByIDsReq) (ginx.Result, error) {
+	tenants, err := h.svc.ListByIDs(ctx.Context, req.IDs)
+	if err != nil {
+		return ErrTenantList, err
+	}
+
+	return ginx.Result{
+		Data: ListTenantsByIDsRes{
 			Tenants: ToTenantVOs(tenants),
 		},
 	}, nil

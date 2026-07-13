@@ -18,9 +18,11 @@ type ITenantRepository interface {
 	// FindByCode 根据 Code 获取租户领域模型
 	FindByCode(ctx context.Context, code string) (domain.Tenant, error)
 	// FindAll 分页获取租户领域模型列表
-	FindAll(ctx context.Context, offset, limit int64) ([]domain.Tenant, error)
+	FindAll(ctx context.Context, offset, limit int64, keyword string) ([]domain.Tenant, error)
+	// FindByIDs 根据 ID 列表批量获取租户领域模型
+	FindByIDs(ctx context.Context, ids []int64) ([]domain.Tenant, error)
 	// Count 统计租户总数
-	Count(ctx context.Context) (int64, error)
+	Count(ctx context.Context, keyword string) (int64, error)
 	// Update 更新租户领域模型
 	Update(ctx context.Context, t domain.Tenant) error
 	// Delete 删除租户记录
@@ -113,8 +115,8 @@ func (r *TenantRepository) FindByCode(ctx context.Context, code string) (domain.
 	return r.toDomain(t), nil
 }
 
-func (r *TenantRepository) FindAll(ctx context.Context, offset, limit int64) ([]domain.Tenant, error) {
-	ts, err := r.dao.FindAll(ctx, offset, limit)
+func (r *TenantRepository) FindAll(ctx context.Context, offset, limit int64, keyword string) ([]domain.Tenant, error) {
+	ts, err := r.dao.FindAll(ctx, offset, limit, keyword)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +127,18 @@ func (r *TenantRepository) FindAll(ctx context.Context, offset, limit int64) ([]
 	return res, nil
 }
 
-func (r *TenantRepository) Count(ctx context.Context) (int64, error) {
-	return r.dao.Count(ctx)
+func (r *TenantRepository) FindByIDs(ctx context.Context, ids []int64) ([]domain.Tenant, error) {
+	ts, err := r.dao.FindTenantsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return slice.Map(ts, func(idx int, src dao.Tenant) domain.Tenant {
+		return r.toDomain(src)
+	}), nil
+}
+
+func (r *TenantRepository) Count(ctx context.Context, keyword string) (int64, error) {
+	return r.dao.Count(ctx, keyword)
 }
 
 func (r *TenantRepository) Update(ctx context.Context, t domain.Tenant) error {

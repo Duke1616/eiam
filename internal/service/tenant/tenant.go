@@ -29,7 +29,9 @@ type ITenantService interface {
 	// GetAttachedTenantsWithFilter 分页查看用户所属租户
 	GetAttachedTenantsWithFilter(ctx context.Context, userId, tid, offset, limit int64, keyword string) ([]domain.Tenant, int64, error)
 	// List 分页查看所有租户列表
-	List(ctx context.Context, offset, limit int64) ([]domain.Tenant, int64, error)
+	List(ctx context.Context, offset, limit int64, keyword string) ([]domain.Tenant, int64, error)
+	// ListByIDs 批量查看指定租户
+	ListByIDs(ctx context.Context, ids []int64) ([]domain.Tenant, error)
 	// Update 更新租户基本信息
 	Update(ctx context.Context, t domain.Tenant) error
 	// Delete 删除租户 (通常为逻辑删除)
@@ -237,13 +239,17 @@ func (s *tenantService) GetAttachedTenantsWithFilter(ctx context.Context, userId
 	return s.repo.GetAttachedTenantsWithFilter(ctx, userId, tid, offset, limit, keyword)
 }
 
-func (s *tenantService) List(ctx context.Context, offset, limit int64) ([]domain.Tenant, int64, error) {
-	total, err := s.repo.Count(ctx)
+func (s *tenantService) List(ctx context.Context, offset, limit int64, keyword string) ([]domain.Tenant, int64, error) {
+	total, err := s.repo.Count(ctx, keyword)
 	if err != nil {
 		return nil, 0, err
 	}
-	ts, err := s.repo.FindAll(ctx, offset, limit)
+	ts, err := s.repo.FindAll(ctx, offset, limit, keyword)
 	return ts, total, err
+}
+
+func (s *tenantService) ListByIDs(ctx context.Context, ids []int64) ([]domain.Tenant, error) {
+	return s.repo.FindByIDs(ctx, ids)
 }
 
 func (s *tenantService) Update(ctx context.Context, t domain.Tenant) error {
