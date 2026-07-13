@@ -117,11 +117,18 @@ func (r *etcdRegistry) runRegistrationController(ctx context.Context, ctrl *regi
 			ctrl.mu.RUnlock()
 
 			if err := r.executeLeaderRegistration(ctx, req, manifestKey, hashKey); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				r.l.Error("EIAM SDK 注册控制器执行异常，准备重试",
 					elog.String("service", service),
 					elog.String("source", req.Source),
 					elog.FieldErr(err))
-				time.Sleep(10 * time.Second)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(10 * time.Second):
+				}
 			}
 		}
 	}
@@ -133,8 +140,20 @@ func (r *etcdRegistry) executeLeaderRegistration(ctx context.Context, req SyncRe
 
 	// 1. 乐观预检：如果 Hash 一致且在线清单已存在，则本节点无需抢锁，进入观察模式
 	resp, err := r.client.Get(ctx, hashKey)
-	if err == nil && len(resp.Kvs) > 0 && string(resp.Kvs[0].Value) == currentHash {
-		mResp, _ := r.client.Get(ctx, manifestKey)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
+	}
+	if len(resp.Kvs) > 0 && string(resp.Kvs[0].Value) == currentHash {
+		mResp, err := r.client.Get(ctx, manifestKey)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
 		if len(mResp.Kvs) > 0 {
 			r.l.Info("EIAM SDK 资产版本一致且集群已有 Leader，本节点进入 Standby 模式", elog.String("service", req.Service), elog.String("source", req.Source))
 			// 观察者模式：等待 1 分钟后再检查，或者监听事件（这里简单处理为 Sleep）
@@ -165,7 +184,13 @@ func (r *etcdRegistry) executeLeaderRegistration(ctx context.Context, req SyncRe
 
 	// 4. 二次检查与同步 (双重检查锁模式)
 	// 拿到锁后再次确认 Hash，决定是执行“全量对账”还是仅仅“接管心跳”
-	dbHashResp, _ := r.client.Get(ctx, hashKey)
+	dbHashResp, err := r.client.Get(ctx, hashKey)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
+	}
 	shouldSync := len(dbHashResp.Kvs) == 0 || string(dbHashResp.Kvs[0].Value) != currentHash
 
 	data, _ := json.Marshal(req)

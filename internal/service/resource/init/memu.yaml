@@ -232,7 +232,7 @@
     - name: TaskExecutorNodes
       path: executors
       component: /pages/task/executor/index.vue
-      permission_code: "task:executor:view"
+      permission_code: "task:resource:view"
       meta:
         title: 执行节点
         icon: worker
