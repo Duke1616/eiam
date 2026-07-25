@@ -9,6 +9,7 @@ EIAM 是一个统一身份与访问管理平台，提供用户、租户、部门
 - 认证增强：OIDC 登录、Passkey/WebAuthn、TOTP MFA。
 - 组织管理：部门树、部门成员、用户组、用户组角色。
 - 权限治理：角色、策略、授权关系、菜单权限、API 权限资产发现。
+- PBAC 数据范围：OPA 选择策略，Condition 约束授权上下文，AccessScope 描述业务数据范围。
 - 身份源管理：标准 OIDC、飞书 OIDC、LDAP 用户搜索与同步。
 - 服务接口：Gin HTTP API、gRPC User/Tenant/Department 服务。
 - 数据迁移：支持从旧 MongoDB 数据源迁移部门、用户、身份和成员关系。
@@ -160,6 +161,8 @@ task mock
 # 运行全部测试
 go test ./...
 ```
+
+PBAC 的 `Action`、`Resource`、`Condition`、`AccessScope` 职责和工单策略示例见 [PBAC Condition 与 AccessScope](docs/pbac-data-filter.md)。
 
 ## 数据迁移
 

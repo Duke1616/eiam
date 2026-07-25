@@ -4,6 +4,8 @@ import (
 	"database/sql/driver"
 	"slices"
 	"strings"
+
+	"github.com/Duke1616/eiam/pkg/pbac"
 )
 
 // ===========================================================================
@@ -43,22 +45,22 @@ const (
 // ===========================================================================
 
 // Condition 策略触发条件：基于 Operator 的结构化判定
-type Condition struct {
-	Operator string `json:"Operator"` // 匹配操作符：StringEquals, NumericGreater 等
-	Key      string `json:"Key"`      // 匹配关键字：iam:UserId, sdk:ClientIp 等
-	Value    any    `json:"Value"`    // 匹配目标值：可以是单个值或数组
-}
+type Condition = pbac.Condition
+
+// AccessScope 策略允许访问的业务数据范围。
+type AccessScope = pbac.AccessScope
 
 // ===========================================================================
 // Statement（值对象 + 行为）
 // ===========================================================================
 
-// Statement 权限语句：定义 Action, Resource 和 Condition
+// Statement 权限语句：定义 Action、Resource、Condition 和 AccessScope。
 type Statement struct {
-	Effect    Effect      `json:"Effect"`
-	Action    []string    `json:"Action"`
-	Resource  []string    `json:"Resource"` // 这里应填入 URN 字符串
-	Condition []Condition `json:"Condition,omitempty"`
+	Effect      Effect       `json:"Effect"`
+	Action      []string     `json:"Action"`
+	Resource    []string     `json:"Resource"` // 这里应填入 URN 字符串
+	Condition   *Condition   `json:"Condition,omitempty"`
+	AccessScope *AccessScope `json:"AccessScope,omitempty"`
 }
 
 // MatchesAction 判断该语句的 Action 模式是否命中指定权限码
@@ -172,18 +174,19 @@ type PolicyServiceSummary struct {
 	GrantedCount  int
 	TotalCount    int
 	ResourceScope string
-	Conditions    []Condition
+	Conditions    []*Condition
 	Actions       []GrantedAction
 }
 
 // GrantedAction 策略授予的最小粒度操作（含边界条件）
 type GrantedAction struct {
-	Code      string
-	Name      string
-	Group     string
-	Effect    Effect
-	Resource  []string
-	Condition []Condition
+	Code        string
+	Name        string
+	Group       string
+	Effect      Effect
+	Resource    []string
+	Condition   *Condition
+	AccessScope *AccessScope
 }
 
 // BatchResult 批量操作返回结果统计

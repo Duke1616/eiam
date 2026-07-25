@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
@@ -107,13 +108,14 @@ func (h *Handler) toEntryVOs(nodes []domain.GroupNode) []Entry {
 func (h *Handler) toActionVOs(perms []domain.Permission) []Permission {
 	return slice.Map(perms, func(idx int, p domain.Permission) Permission {
 		return Permission{
-			ID:       p.ID,
-			Service:  p.Service,
-			Group:    p.Group,
-			Code:     p.Code,
-			Name:     p.Name,
-			HasMenu:  p.HasMenu,
-			MenuURNs: p.MenuURNs,
+			ID:                 p.ID,
+			Service:            p.Service,
+			Group:              p.Group,
+			Code:               p.Code,
+			Name:               p.Name,
+			HasMenu:            p.HasMenu,
+			MenuURNs:           p.MenuURNs,
+			AccessScopePresets: p.AccessScopePresets,
 		}
 	})
 }
@@ -145,22 +147,17 @@ func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Resul
 	username := claims.Data["username"]
 
 	// 2. 调用全链路 CheckAPI 逻辑 (物理 Path -> 能力码 -> 逻辑权限判定)
-	allowed, err := h.svc.CheckAPI(newCtx, username, req.Service, req.Method, req.Path)
+	decision, err := h.svc.CheckAPIDecision(newCtx, username, req.Service, req.Method, req.Path)
 	if err != nil {
 		return ginx.Result{
 			Code: 0,
-			Data: AuthorizeResult{
-				Allowed: false,
-				Reason:  fmt.Sprintf("鉴权逻辑校验出错: %v", err),
-			},
+			Data: AuthorizeResult{ReasonCode: pbac.ReasonEvaluationError, Reason: "authorization evaluation failed"},
 		}, nil
 	}
 
 	return ginx.Result{
 		Code: 0,
-		Data: AuthorizeResult{
-			Allowed: allowed,
-		},
+		Data: decision,
 	}, nil
 }
 

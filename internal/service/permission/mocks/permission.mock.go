@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	domain "github.com/Duke1616/eiam/internal/domain"
+	pbac "github.com/Duke1616/eiam/pkg/pbac"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -304,6 +305,37 @@ func (c *MockIPermissionServiceCheckAPICall) Do(f func(context.Context, string, 
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockIPermissionServiceCheckAPICall) DoAndReturn(f func(context.Context, string, string, string, string) (bool, error)) *MockIPermissionServiceCheckAPICall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+func (m *MockIPermissionService) CheckAPIDecision(ctx context.Context, username, serviceName, method, path string) (pbac.Decision, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckAPIDecision", ctx, username, serviceName, method, path)
+	ret0, _ := ret[0].(pbac.Decision)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (mr *MockIPermissionServiceMockRecorder) CheckAPIDecision(ctx, username, serviceName, method, path any) *MockIPermissionServiceCheckAPIDecisionCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckAPIDecision", reflect.TypeOf((*MockIPermissionService)(nil).CheckAPIDecision), ctx, username, serviceName, method, path)
+	return &MockIPermissionServiceCheckAPIDecisionCall{Call: call}
+}
+
+type MockIPermissionServiceCheckAPIDecisionCall struct{ *gomock.Call }
+
+func (c *MockIPermissionServiceCheckAPIDecisionCall) Return(arg0 pbac.Decision, arg1 error) *MockIPermissionServiceCheckAPIDecisionCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+func (c *MockIPermissionServiceCheckAPIDecisionCall) Do(f func(context.Context, string, string, string, string) (pbac.Decision, error)) *MockIPermissionServiceCheckAPIDecisionCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+func (c *MockIPermissionServiceCheckAPIDecisionCall) DoAndReturn(f func(context.Context, string, string, string, string) (pbac.Decision, error)) *MockIPermissionServiceCheckAPIDecisionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

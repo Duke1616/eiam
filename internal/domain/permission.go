@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/samber/lo"
 )
 
@@ -95,18 +96,19 @@ func ParseSubject(s string) Subject {
 // Permission 权限项定义 (逻辑能力包)
 // 这是一个全局概念，用于将多个物理资源 (API/Menu) 聚合为一个逻辑能力标识 (Code)
 type Permission struct {
-	ID       int64    `json:"id"`
-	Service  string   `json:"service"` // 所属服务标识：如 "iam"
-	Source   string   `json:"source"`
-	Code     string   `json:"code"`  // 逻辑唯一标识：如 "iam:user:view"
-	Name     string   `json:"name"`  // 显示名：如 "查看用户"
-	Group    string   `json:"group"` // 所属分组：如 "用户管理"
-	Desc     string   `json:"desc"`  // 业务描述信息
-	Needs    []string `json:"needs"` // 依赖能力项
-	Scope    string   `json:"scope"` // 作用域 (system/tenant)
-	Sort     int      `json:"sort"`  // 注册顺序权重
-	HasMenu  bool     `json:"has_menu"`
-	MenuURNs []string `json:"menu_urns"`
+	ID                 int64                    `json:"id"`
+	Service            string                   `json:"service"` // 所属服务标识：如 "iam"
+	Source             string                   `json:"source"`
+	Code               string                   `json:"code"`  // 逻辑唯一标识：如 "iam:user:view"
+	Name               string                   `json:"name"`  // 显示名：如 "查看用户"
+	Group              string                   `json:"group"` // 所属分组：如 "用户管理"
+	Desc               string                   `json:"desc"`  // 业务描述信息
+	Needs              []string                 `json:"needs"` // 依赖能力项
+	Scope              string                   `json:"scope"` // 作用域 (system/tenant)
+	Sort               int                      `json:"sort"`  // 注册顺序权重
+	HasMenu            bool                     `json:"has_menu"`
+	MenuURNs           []string                 `json:"menu_urns"`
+	AccessScopePresets []pbac.AccessScopePreset `json:"access_scope_presets,omitempty"`
 
 	// Bindings 权限项包含的物理资源映射 (全局通用，不分租户)
 	Bindings []ResourceBinding `json:"bindings"`

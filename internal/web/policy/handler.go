@@ -326,17 +326,23 @@ func (h *Handler) GetPolicyDetail(ctx *ginx.Context) (ginx.Result, error) {
 
 						// 格式化条件
 						condStr := "-"
-						if len(pct.Condition) > 0 {
+						if pct.Condition != nil {
 							b, _ := json.Marshal(pct.Condition)
 							condStr = string(b)
 						}
+						accessScopeStr := "-"
+						if pct.AccessScope != nil {
+							b, _ := json.Marshal(pct.AccessScope)
+							accessScopeStr = string(b)
+						}
 
 						return ActionDetail{
-							Code:      pct.Code,
-							Name:      pct.Name,
-							Group:     pct.Group,
-							Resource:  resStr,
-							Condition: condStr,
+							Code:        pct.Code,
+							Name:        pct.Name,
+							Group:       pct.Group,
+							Resource:    resStr,
+							Condition:   condStr,
+							AccessScope: accessScopeStr,
 						}
 					}),
 				}
@@ -356,16 +362,11 @@ func (h *Handler) toVO(p domain.Policy) Policy {
 		AssignmentCount: p.AssignmentCount,
 		Statement: slice.Map(p.Statement, func(idx int, s domain.Statement) Statement {
 			return Statement{
-				Effect:   string(s.Effect),
-				Action:   s.Action,
-				Resource: s.Resource,
-				Condition: slice.Map(s.Condition, func(idx int, c domain.Condition) Condition {
-					return Condition{
-						Operator: c.Operator,
-						Key:      c.Key,
-						Value:    c.Value,
-					}
-				}),
+				Effect:      string(s.Effect),
+				Action:      s.Action,
+				Resource:    s.Resource,
+				Condition:   s.Condition,
+				AccessScope: s.AccessScope,
 			}
 		}),
 	}
@@ -410,15 +411,10 @@ func (h *Handler) BatchDeletePolicies(ctx *ginx.Context, req BatchDeletePolicyRe
 
 func (h *Handler) toStatementDomain(s Statement) domain.Statement {
 	return domain.Statement{
-		Effect:   domain.Effect(s.Effect),
-		Action:   s.Action,
-		Resource: s.Resource,
-		Condition: slice.Map(s.Condition, func(idx int, c Condition) domain.Condition {
-			return domain.Condition{
-				Operator: c.Operator,
-				Key:      c.Key,
-				Value:    c.Value,
-			}
-		}),
+		Effect:      domain.Effect(s.Effect),
+		Action:      s.Action,
+		Resource:    s.Resource,
+		Condition:   s.Condition,
+		AccessScope: s.AccessScope,
 	}
 }

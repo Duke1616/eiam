@@ -31,6 +31,20 @@ allowed_resources contains res if {
 	not has_deny_action(actions, statements)
 }
 
+# Condition 与 AccessScope 由 Go 求值，但 Action 与 API Resource 的 Statement 选择仍由 OPA 完成。
+matching_statement_refs contains {
+	"policy_index": policy_index,
+	"statement_index": statement_index,
+} if {
+	some policy_index
+	policy := input.policies[policy_index]
+	some statement_index
+	statement := policy.Statement[statement_index]
+	match_pattern(statement.Resource, input.resource)
+	some action in input.actions
+	match_pattern(statement.Action, action)
+}
+
 # --- 3. 准入与拒绝谓词 (抽离以复用) ---
 
 is_allowed(action, statements) if {

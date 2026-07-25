@@ -14,6 +14,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
 	"github.com/Duke1616/eiam/internal/service/role"
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/ecodeclub/ekit/set"
 	"golang.org/x/sync/errgroup"
 
@@ -116,51 +117,70 @@ func (s *permissionService) SearchSubjects(ctx context.Context, keyword string, 
 
 // CheckAPI 针对物理接口访问进行判定
 func (s *permissionService) CheckAPI(ctx context.Context, username string, serviceName, method, path string) (bool, error) {
+	decision, err := s.CheckAPIDecision(ctx, username, serviceName, method, path)
+	return decision.Allowed, err
+}
+
+// CheckAPIDecision 对接口执行授权，并返回与已登记 API profile 绑定的结构化决策。
+func (s *permissionService) CheckAPIDecision(ctx context.Context, username, serviceName, method, path string) (pbac.Decision, error) {
+	var evaluation pbac.EvaluationContext
+	evaluation.Principal.Username = username
+	evaluation.Environment.CurrentTime = time.Now()
 	// 1. 资产发现
 	api, err := s.resourceSvc.FindAPIByPath(ctx, serviceName, method, path)
 	if err != nil {
-		return false, fmt.Errorf("查询接口资产失败: %w", err)
+		return pbac.Decision{}, fmt.Errorf("查询接口资产失败: %w", err)
 	}
 	if api.ID == 0 {
 		// Fail-closed: 未注册资产直接拒绝，不暴露资产缺失细节
-		return false, nil
+		return pbac.Decision{}, nil
 	}
 
 	// 2. 映射发现 (找到该接口绑定的逻辑权限码)
 	urn := api.URN()
 	targetCodes, err := s.permRepo.FindCodesByResource(ctx, urn)
 	if err != nil {
-		return false, fmt.Errorf("查询接口映射错误: %w", err)
+		return pbac.Decision{}, fmt.Errorf("查询接口映射错误: %w", err)
 	}
 
 	// 3. 放行逻辑：未绑定权限代码的资源视为公共资产，仅需登录即可访问
 	if len(targetCodes) == 0 {
-		return true, nil
+		if api.FilterProfile != "" {
+			return pbac.Decision{ReasonCode: pbac.ReasonAssetUnbound, Reason: "AccessScope-aware resource has no action binding"}, nil
+		}
+		return pbac.Decision{Allowed: true}, nil
 	}
 
 	// 4. 边界拦截：普通租户严禁访问系统级权限点
 	if err = s.boundary.ValidateActionScopes(ctx, targetCodes); err != nil {
-		return false, err
+		return pbac.Decision{}, err
 	}
 
 	// 5. 权限依赖展开 (核心逻辑：检查父节点)
 	// 从数据库反向查找哪些权限码依赖了当前接口要求的 targetCodes
 	candidateActions, err := s.expandParentActionsFromDB(ctx, targetCodes)
 	if err != nil {
-		return false, err
+		return pbac.Decision{}, err
 	}
 
 	// 6. 业务鉴权：执行精准的 OPA 策略判定
 	policies, err := s.getEffectivePolicies(ctx, username)
 	if err != nil {
-		return false, err
+		return pbac.Decision{}, err
 	}
 
-	return s.authorizer.Authorize(ctx, authz.AuthInput{
-		Actions:  candidateActions,
-		Resource: urn,
-		Policies: policies,
+	decision, err := s.authorizer.Decide(ctx, authz.AuthInput{
+		Actions:       candidateActions,
+		Resource:      urn,
+		Policies:      policies,
+		Attributes:    evaluation.Attributes(),
+		FilterProfile: api.FilterProfile,
 	})
+	if err != nil {
+		return pbac.Decision{}, err
+	}
+	decision.FilterProfile = api.FilterProfile
+	return decision, nil
 }
 
 // expandParentActionsFromDB 通过数据库反向查询，将目标权限码展开为其所有的“上级权限码”
@@ -191,10 +211,18 @@ func (s *permissionService) CheckPermission(ctx context.Context, username string
 	}
 
 	return s.authorizer.Authorize(ctx, authz.AuthInput{
-		Actions:  []string{action},
-		Resource: resourceURN,
-		Policies: policies,
+		Actions:    []string{action},
+		Resource:   resourceURN,
+		Policies:   policies,
+		Attributes: defaultEvaluationContext(username).Attributes(),
 	})
+}
+
+func defaultEvaluationContext(username string) pbac.EvaluationContext {
+	var evaluation pbac.EvaluationContext
+	evaluation.Principal.Username = username
+	evaluation.Environment.CurrentTime = time.Now()
+	return evaluation
 }
 
 // GetAuthorizedCodes 获取用户拥有的所有逻辑权限代码 (走 OPA 批量裁决)
@@ -228,6 +256,7 @@ func (s *permissionService) GetAuthorizedCodes(ctx context.Context, username str
 		BatchResources:  allCodes,
 		ResourceActions: resourceActions,
 		Policies:        policies,
+		Attributes:      defaultEvaluationContext(username).Attributes(),
 	})
 }
 
@@ -261,6 +290,7 @@ func (s *permissionService) GetAuthorizedMenus(ctx context.Context, username str
 		BatchResources:  menuURNs,
 		ResourceActions: s.buildResourceActionMap(menuURNs, codesMap),
 		Policies:        policies,
+		Attributes:      defaultEvaluationContext(username).Attributes(),
 	})
 	if err != nil {
 		return nil, err
@@ -1257,12 +1287,13 @@ func (s *permissionService) assemblePolicySummary(
 			Actions: lo.Map(aps, func(ap analyzedPerm, _ int) domain.GrantedAction {
 				stmt, _ := p.FindApplicableStatement(ap.perm.Code)
 				return domain.GrantedAction{
-					Code:      ap.perm.Code,
-					Name:      ap.perm.Name,
-					Group:     ap.perm.Group,
-					Effect:    ap.effect,
-					Resource:  stmt.Resource,
-					Condition: stmt.Condition,
+					Code:        ap.perm.Code,
+					Name:        ap.perm.Name,
+					Group:       ap.perm.Group,
+					Effect:      ap.effect,
+					Resource:    stmt.Resource,
+					Condition:   stmt.Condition,
+					AccessScope: stmt.AccessScope,
 				}
 			}),
 		}

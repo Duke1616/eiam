@@ -7,6 +7,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/sqlx"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -126,17 +127,18 @@ func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.M
 
 func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64, error) {
 	return r.dao.InsertAPI(ctx, dao.API{
-		Service: a.Service,
-		Source:  a.Source,
-		Name:    a.Name,
-		Method:  a.Method,
-		Path:    a.Path,
+		Service:       a.Service,
+		Source:        a.Source,
+		Name:          a.Name,
+		Method:        a.Method,
+		Path:          a.Path,
+		FilterProfile: string(a.FilterProfile),
 	})
 }
 
 func (r *ResourceRepository) BatchCreateAPI(ctx context.Context, apis []domain.API) error {
 	daoApis := lo.Map(apis, func(a domain.API, _ int) dao.API {
-		return dao.API{Service: a.Service, Source: a.Source, Name: a.Name, Method: a.Method, Path: a.Path}
+		return dao.API{Service: a.Service, Source: a.Source, Name: a.Name, Method: a.Method, Path: a.Path, FilterProfile: string(a.FilterProfile)}
 	})
 	return r.dao.BatchInsertAPI(ctx, daoApis)
 }
@@ -176,11 +178,12 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service, source strin
 
 	daoApis := lo.Map(apis, func(a domain.API, _ int) dao.API {
 		return dao.API{
-			Service: service,
-			Source:  source,
-			Name:    a.Name,
-			Method:  a.Method,
-			Path:    a.Path,
+			Service:       service,
+			Source:        source,
+			Name:          a.Name,
+			Method:        a.Method,
+			Path:          a.Path,
+			FilterProfile: string(a.FilterProfile),
 		}
 	})
 
@@ -308,13 +311,14 @@ func (r *ResourceRepository) toDomainMenu(m dao.Menu) domain.Menu {
 
 func (r *ResourceRepository) toDomainAPI(a dao.API) domain.API {
 	return domain.API{
-		ID:      a.Id,
-		Service: a.Service,
-		Source:  a.Source,
-		Name:    a.Name,
-		Method:  a.Method,
-		Path:    a.Path,
-		Ctime:   a.Ctime,
-		Utime:   a.Utime,
+		ID:            a.Id,
+		Service:       a.Service,
+		Source:        a.Source,
+		Name:          a.Name,
+		Method:        a.Method,
+		Path:          a.Path,
+		FilterProfile: pbac.FilterProfile(a.FilterProfile),
+		Ctime:         a.Ctime,
+		Utime:         a.Utime,
 	}
 }

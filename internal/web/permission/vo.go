@@ -1,13 +1,16 @@
 package permission
 
+import "github.com/Duke1616/eiam/pkg/pbac"
+
 type Permission struct {
-	ID       int64    `json:"id"`
-	Service  string   `json:"service"`
-	Group    string   `json:"group"`
-	Code     string   `json:"code"`
-	Name     string   `json:"name"`
-	HasMenu  bool     `json:"has_menu"`
-	MenuURNs []string `json:"menu_urns"`
+	ID                 int64                    `json:"id"`
+	Service            string                   `json:"service"`
+	Group              string                   `json:"group"`
+	Code               string                   `json:"code"`
+	Name               string                   `json:"name"`
+	HasMenu            bool                     `json:"has_menu"`
+	MenuURNs           []string                 `json:"menu_urns"`
+	AccessScopePresets []pbac.AccessScopePreset `json:"access_scope_presets,omitempty"`
 }
 
 // Manifest 权限清单，用于前端归一化管理逻辑能力项
@@ -50,10 +53,7 @@ type CheckPolicyReq struct {
 	Method  string `json:"method"`
 }
 
-type AuthorizeResult struct {
-	Allowed bool   `json:"allowed"`
-	Reason  string `json:"reason"`
-}
+type AuthorizeResult = pbac.Decision
 
 type Menu struct {
 	ID        int64  `json:"id"`

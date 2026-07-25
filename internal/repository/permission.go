@@ -68,14 +68,15 @@ func NewPermissionRepository(dao dao.IPermissionDAO) IPermissionRepository {
 
 func (r *PermissionRepository) CreatePermission(ctx context.Context, p domain.Permission) (int64, error) {
 	return r.dao.Insert(ctx, dao.Permission{
-		Service: p.Service,
-		Source:  p.Source,
-		Code:    p.Code,
-		Name:    p.Name,
-		Group:   p.Group,
-		Needs:   p.Needs,
-		Scope:   p.Scope,
-		Sort:    p.Sort,
+		Service:            p.Service,
+		Source:             p.Source,
+		Code:               p.Code,
+		Name:               p.Name,
+		Group:              p.Group,
+		Needs:              p.Needs,
+		Scope:              p.Scope,
+		Sort:               p.Sort,
+		AccessScopePresets: p.AccessScopePresets,
 	})
 }
 
@@ -83,14 +84,15 @@ func (r *PermissionRepository) BatchCreatePermission(ctx context.Context, perms 
 	daoPerms := make([]dao.Permission, 0, len(perms))
 	for _, p := range perms {
 		daoPerms = append(daoPerms, dao.Permission{
-			Service: p.Service,
-			Source:  p.Source,
-			Code:    p.Code,
-			Name:    p.Name,
-			Group:   p.Group,
-			Needs:   p.Needs,
-			Scope:   p.Scope,
-			Sort:    p.Sort,
+			Service:            p.Service,
+			Source:             p.Source,
+			Code:               p.Code,
+			Name:               p.Name,
+			Group:              p.Group,
+			Needs:              p.Needs,
+			Scope:              p.Scope,
+			Sort:               p.Sort,
+			AccessScopePresets: p.AccessScopePresets,
 		})
 	}
 
@@ -122,15 +124,16 @@ func (r *PermissionRepository) ListAllPermissions(ctx context.Context) ([]domain
 
 func (r *PermissionRepository) toDomain(p dao.Permission) domain.Permission {
 	return domain.Permission{
-		ID:      p.Id,
-		Service: p.Service,
-		Source:  p.Source,
-		Code:    p.Code,
-		Name:    p.Name,
-		Group:   p.Group,
-		Needs:   p.Needs,
-		Scope:   p.Scope,
-		Sort:    p.Sort,
+		ID:                 p.Id,
+		Service:            p.Service,
+		Source:             p.Source,
+		Code:               p.Code,
+		Name:               p.Name,
+		Group:              p.Group,
+		Needs:              p.Needs,
+		Scope:              p.Scope,
+		Sort:               p.Sort,
+		AccessScopePresets: p.AccessScopePresets,
 	}
 }
 

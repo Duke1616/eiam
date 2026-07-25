@@ -44,15 +44,16 @@ type MenuMeta struct {
 
 // API 接口资源表 (物理元数据)
 type API struct {
-	Id      int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'接口ID'"`
-	Service string `gorm:"type:varchar(128);not null;uniqueIndex:idx_service_method_path;index:idx_service_source;comment:'所属服务'"`
-	Source  string `gorm:"type:varchar(128);not null;default:'';index:idx_service_source;comment:'资产来源'"`
-	Name    string `gorm:"type:varchar(255);not null;comment:'接口描述名称'"`
-	Method  string `gorm:"type:varchar(16);not null;uniqueIndex:idx_service_method_path;comment:'HTTP动词'"`
-	Path    string `gorm:"type:varchar(255);not null;uniqueIndex:idx_service_method_path;comment:'接口路径'"`
-	Ctime   int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
-	Utime   int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
-	Status  uint8  `gorm:"type:tinyint;not null;default:1;comment:'状态 1-正常 2-孤儿'"`
+	Id            int64  `gorm:"type:bigint;primaryKey;autoIncrement;comment:'接口ID'"`
+	Service       string `gorm:"type:varchar(128);not null;uniqueIndex:idx_service_method_path;index:idx_service_source;comment:'所属服务'"`
+	Source        string `gorm:"type:varchar(128);not null;default:'';index:idx_service_source;comment:'资产来源'"`
+	Name          string `gorm:"type:varchar(255);not null;comment:'接口描述名称'"`
+	Method        string `gorm:"type:varchar(16);not null;uniqueIndex:idx_service_method_path;comment:'HTTP动词'"`
+	Path          string `gorm:"type:varchar(255);not null;uniqueIndex:idx_service_method_path;comment:'接口路径'"`
+	FilterProfile string `gorm:"type:varchar(128);not null;default:'';comment:'PBAC AccessScope 编译契约'"`
+	Ctime         int64  `gorm:"type:bigint;not null;comment:'创建时间'"`
+	Utime         int64  `gorm:"type:bigint;not null;comment:'更新时间'"`
+	Status        uint8  `gorm:"type:tinyint;not null;default:1;comment:'状态 1-正常 2-孤儿'"`
 }
 
 const (
@@ -247,7 +248,7 @@ func (d *ResourceDAO) BatchInsertAPI(ctx context.Context, apis []API) error {
 
 	// 升级为 CreateInBatches 分批保护，阻断超大服务注册下的包溢出
 	return d.getDB(ctx).Clauses(clause.OnConflict{
-		DoUpdates: clause.AssignmentColumns([]string{"source", "name", "utime", "status"}),
+		DoUpdates: clause.AssignmentColumns([]string{"source", "name", "filter_profile", "utime", "status"}),
 	}).CreateInBatches(apis, 100).Error
 }
 

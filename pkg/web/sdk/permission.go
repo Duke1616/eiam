@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -65,10 +66,7 @@ type checkPolicyReq struct {
 	Resource string `json:"resource"` // 逻辑维度：判定哪个资源实例，如 "*" 或 "project:1"
 }
 
-type authorizeResult struct {
-	Allowed bool   `json:"allowed"`
-	Reason  string `json:"reason"`
-}
+type authorizeResult = pbac.Decision
 
 type apiResult[T any] struct {
 	Code int    `json:"code"`
@@ -132,7 +130,12 @@ func (s *SDK) CheckPolicy() gin.HandlerFunc {
 			ctx.AbortWithStatus(http.StatusForbidden)
 			return
 		}
+		if res.Data.FilterProfile != info.FilterProfile {
+			ctx.AbortWithStatus(http.StatusForbidden)
+			return
+		}
 
+		ctx.Request = ctx.Request.WithContext(pbac.WithDecision(ctx.Request.Context(), res.Data))
 		ctx.Next()
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/urn"
 	"github.com/Duke1616/eiam/pkg/utils"
 )
@@ -113,13 +114,14 @@ type MenuMeta struct {
 
 // API 接口资源
 type API struct {
-	ID      int64  `json:"id"`
-	Service string `json:"service"`
-	Source  string `json:"source"`
-	Name    string `json:"name"`
-	Method  string `json:"method"`
-	Path    string `json:"path"`
-	Status  uint8  `json:"status"` // 状态：1-正常，2-孤儿
-	Ctime   int64  `json:"ctime"`
-	Utime   int64  `json:"utime"`
+	ID            int64              `json:"id"`
+	Service       string             `json:"service"`
+	Source        string             `json:"source"`
+	Name          string             `json:"name"`
+	Method        string             `json:"method"`
+	Path          string             `json:"path"`
+	FilterProfile pbac.FilterProfile `json:"filter_profile,omitempty"`
+	Status        uint8              `json:"status"` // 状态：1-正常，2-孤儿
+	Ctime         int64              `json:"ctime"`
+	Utime         int64              `json:"utime"`
 }

@@ -377,16 +377,11 @@ func (h *Handler) toPolicyVO(p domain.Policy) Policy {
 		Code: p.Code,
 		Statement: slice.Map(p.Statement, func(idx int, s domain.Statement) Statement {
 			return Statement{
-				Effect:   string(s.Effect),
-				Action:   s.Action,
-				Resource: s.Resource,
-				Condition: slice.Map(s.Condition, func(idx int, c domain.Condition) Condition {
-					return Condition{
-						Operator: c.Operator,
-						Key:      c.Key,
-						Value:    c.Value,
-					}
-				}),
+				Effect:      string(s.Effect),
+				Action:      s.Action,
+				Resource:    s.Resource,
+				Condition:   s.Condition,
+				AccessScope: s.AccessScope,
 			}
 		}),
 	}
@@ -415,17 +410,23 @@ func (h *Handler) toServiceSummaryVOs(summaries []domain.PolicyServiceSummary) [
 
 				// 格式化条件
 				condStr := "-"
-				if len(pct.Condition) > 0 {
+				if pct.Condition != nil {
 					b, _ := json.Marshal(pct.Condition)
 					condStr = string(b)
 				}
+				accessScopeStr := "-"
+				if pct.AccessScope != nil {
+					b, _ := json.Marshal(pct.AccessScope)
+					accessScopeStr = string(b)
+				}
 
 				return ActionDetail{
-					Code:      pct.Code,
-					Name:      pct.Name,
-					Group:     pct.Group,
-					Resource:  resStr,
-					Condition: condStr,
+					Code:        pct.Code,
+					Name:        pct.Name,
+					Group:       pct.Group,
+					Resource:    resStr,
+					Condition:   condStr,
+					AccessScope: accessScopeStr,
 				}
 			}),
 		}

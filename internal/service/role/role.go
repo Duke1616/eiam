@@ -100,6 +100,9 @@ func (s *roleService) Update(ctx context.Context, r domain.Role) (int64, error) 
 func (s *roleService) UpdateInlinePolicies(ctx context.Context, roleCode string, policies []domain.Policy) error {
 	// 1. 安全校验：防止通过内联策略非法注入系统级权限
 	for _, p := range policies {
+		if err := policy.ValidatePolicyExpressions(p); err != nil {
+			return err
+		}
 		if err := s.boundary.ValidateActionScopes(ctx, p.CollectActions()); err != nil {
 			return err
 		}

@@ -52,6 +52,9 @@ func NewEngine(
 // NOTE: menu 类型的绑定关系由 IngestMenus 统一全量管理，Ingest 只负责绑定
 // API 类型的物理资源，两者职责严格隔离，避免并发时相互覆盖导致菜单绑定丢失。
 func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
+	if err := snap.Validate(); err != nil {
+		return fmt.Errorf("资产快照校验失败: %w", err)
+	}
 	return e.permRepo.Transaction(ctx, func(txCtx context.Context) error {
 		// 1. 物理清空该服务的所有旧逻辑权限和资源映射关系
 		if err := e.permRepo.PhysicalClearService(txCtx, snap.Service, snap.Source); err != nil {

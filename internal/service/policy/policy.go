@@ -2,12 +2,14 @@ package policy
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
+	"github.com/Duke1616/eiam/pkg/pbac"
 )
 
 // IPolicyService 策略管理服务：提供权限策略的生命周期管理与授权绑定逻辑
@@ -74,6 +76,9 @@ func NewPolicyService(repo repository.IPolicyRepository, boundary checker.IBound
 }
 
 func (s *policyService) CreatePolicy(ctx context.Context, p domain.Policy) (int64, error) {
+	if err := ValidatePolicyExpressions(p); err != nil {
+		return 0, err
+	}
 	// 1. 安全校验：防止非法注入系统级权限
 	if err := s.boundary.ValidateActionScopes(ctx, p.CollectActions()); err != nil {
 		return 0, err
@@ -89,12 +94,28 @@ func (s *policyService) CreatePolicy(ctx context.Context, p domain.Policy) (int6
 }
 
 func (s *policyService) UpdatePolicy(ctx context.Context, p domain.Policy) error {
+	if err := ValidatePolicyExpressions(p); err != nil {
+		return err
+	}
 	// 1. 安全校验：防止非法注入系统级权限
 	if err := s.boundary.ValidateActionScopes(ctx, p.CollectActions()); err != nil {
 		return err
 	}
 
 	return s.repo.UpdatePolicy(ctx, p)
+}
+
+// ValidatePolicyExpressions 校验策略中 Condition 与 AccessScope 的结构和属性边界。
+func ValidatePolicyExpressions(policy domain.Policy) error {
+	for i, statement := range policy.Statement {
+		if err := pbac.ValidateCondition(statement.Condition); err != nil {
+			return fmt.Errorf("invalid condition in statement %d: %w", i, err)
+		}
+		if err := pbac.ValidateAccessScope(statement.AccessScope); err != nil {
+			return fmt.Errorf("invalid access scope in statement %d: %w", i, err)
+		}
+	}
+	return nil
 }
 
 func (s *policyService) GetPolicy(ctx context.Context, code string) (domain.Policy, error) {

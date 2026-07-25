@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/pkg/pbac"
 )
 
 // IPermissionService 权限逻辑中心
@@ -14,6 +15,8 @@ type IPermissionService interface {
 
 	// CheckAPI 针对物理接口访问进行判定
 	CheckAPI(ctx context.Context, username string, serviceName, method, path string) (bool, error)
+	// CheckAPIDecision 对物理接口执行鉴权，并返回与该接口 AccessScope profile 绑定的结构化 PBAC 决策。
+	CheckAPIDecision(ctx context.Context, username, serviceName, method, path string) (pbac.Decision, error)
 	// CheckPermission 用户是否拥有在该租户下对具体 URN 的特定 Action 权限
 	CheckPermission(ctx context.Context, username string, action, resourceURN string) (bool, error)
 	// GetAuthorizedMenus 过滤用户拥有的前端菜单

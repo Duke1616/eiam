@@ -1,5 +1,7 @@
 package role
 
+import "github.com/Duke1616/eiam/pkg/pbac"
+
 type CreateRoleRequest struct {
 	Name string `json:"name" binding:"required"`
 	Code string `json:"code" binding:"required"`
@@ -68,17 +70,15 @@ type Policy struct {
 }
 
 type Statement struct {
-	Effect    string      `json:"effect"`
-	Action    []string    `json:"action"`
-	Resource  []string    `json:"resource"`
-	Condition []Condition `json:"condition,omitempty"`
+	Effect      string       `json:"effect"`
+	Action      []string     `json:"action"`
+	Resource    []string     `json:"resource"`
+	Condition   *Condition   `json:"condition,omitempty"`
+	AccessScope *AccessScope `json:"access_scope,omitempty"`
 }
 
-type Condition struct {
-	Operator string `json:"operator"`
-	Key      string `json:"key"`
-	Value    any    `json:"value"`
-}
+type Condition = pbac.Condition
+type AccessScope = pbac.AccessScope
 
 type ServiceSummary struct {
 	ServiceCode   string         `json:"service_code"`
@@ -93,11 +93,12 @@ type ServiceSummary struct {
 }
 
 type ActionDetail struct {
-	Code      string `json:"action"`
-	Name      string `json:"name"`
-	Group     string `json:"group"`
-	Resource  string `json:"resource"`  // 转换为易读格式的字符串
-	Condition string `json:"condition"` // 转换为易读格式的字符串
+	Code        string `json:"action"`
+	Name        string `json:"name"`
+	Group       string `json:"group"`
+	Resource    string `json:"resource"`  // 转换为易读格式的字符串
+	Condition   string `json:"condition"` // 转换为易读格式的字符串
+	AccessScope string `json:"access_scope"`
 }
 
 type RetrieveRole struct {

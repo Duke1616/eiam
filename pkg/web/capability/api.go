@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
@@ -19,25 +20,27 @@ const (
 )
 
 type Permission struct {
-	Service string   `json:"service"`
-	Code    string   `json:"code"`
-	Name    string   `json:"name"`
-	Group   string   `json:"group"`
-	Needs   []string `json:"needs"`
-	NoSync  bool     `json:"no_sync"`
-	Scope   string   `json:"scope"`
-	Sort    int      `json:"sort"`
+	Service            string                   `json:"service"`
+	Code               string                   `json:"code"`
+	Name               string                   `json:"name"`
+	Group              string                   `json:"group"`
+	Needs              []string                 `json:"needs"`
+	NoSync             bool                     `json:"no_sync"`
+	Scope              string                   `json:"scope"`
+	Sort               int                      `json:"sort"`
+	AccessScopePresets []pbac.AccessScopePreset `json:"access_scope_presets,omitempty"`
 }
 
 type ResourceInfo struct {
-	Name             string   `json:"name"`
-	Method           string   `json:"method"`
-	Path             string   `json:"path"`
-	Code             string   `json:"code"`
-	Needs            []string `json:"needs"`
-	Group            string   `json:"group"`
-	Service          string   `json:"service"`
-	AllowCrossTenant bool     `json:"allow_cross_tenant"`
+	Name             string             `json:"name"`
+	Method           string             `json:"method"`
+	Path             string             `json:"path"`
+	Code             string             `json:"code"`
+	Needs            []string           `json:"needs"`
+	Group            string             `json:"group"`
+	Service          string             `json:"service"`
+	AllowCrossTenant bool               `json:"allow_cross_tenant"`
+	FilterProfile    pbac.FilterProfile `json:"filter_profile,omitempty"`
 }
 
 type Menu struct {
@@ -98,6 +101,7 @@ type internalRegistry interface {
 	updatePermissionNoSync(code string, noSync bool)
 	updatePermissionScope(code string, scope string)
 	updatePermissionModule(code string, module string) string
+	updatePermissionAccessScopePresets(code string, presets []pbac.AccessScopePreset)
 }
 
 var (
@@ -222,6 +226,10 @@ func (r *registry) updatePermissionScope(code string, scope string) {
 	r.update(code, func(p *Permission) { p.Scope = scope })
 }
 
+func (r *registry) updatePermissionAccessScopePresets(code string, presets []pbac.AccessScopePreset) {
+	r.update(code, func(p *Permission) { p.AccessScopePresets = presets })
+}
+
 func (r *registry) updatePermissionModule(code string, module string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -260,6 +268,7 @@ type Builder struct {
 	name             string
 	code             string
 	allowCrossTenant bool
+	filterProfile    pbac.FilterProfile
 }
 
 func (b *Builder) Group(group string) *Builder {
@@ -302,6 +311,35 @@ func (b *Builder) AllowCrossTenant() *Builder {
 	return b
 }
 
+// AccessScope 声明当前 API 消费 AccessScope 时使用的固定编译 profile，
+// presets 是由业务服务提供给策略编辑器的可选模板，不影响运行时鉴权语义。
+func (b *Builder) AccessScope(profile pbac.FilterProfile, presets ...pbac.AccessScopePreset) *Builder {
+	if strings.TrimSpace(string(profile)) == "" {
+		panic("capability filter profile must not be empty")
+	}
+	seen := make(map[string]struct{}, len(presets))
+	for i := range presets {
+		preset := &presets[i]
+		preset.Code = strings.TrimSpace(preset.Code)
+		preset.Name = strings.TrimSpace(preset.Name)
+		if preset.Code == "" || preset.Name == "" || preset.Expression == nil {
+			panic("capability AccessScope preset requires code, name and expression")
+		}
+		if _, ok := seen[preset.Code]; ok {
+			panic("duplicate capability AccessScope preset: " + preset.Code)
+		}
+		seen[preset.Code] = struct{}{}
+		if err := pbac.ValidateAccessScope(preset.Expression); err != nil {
+			panic("invalid capability AccessScope preset " + preset.Code + ": " + err.Error())
+		}
+	}
+	b.filterProfile = profile
+	if b.registry != nil {
+		b.registry.updatePermissionAccessScopePresets(b.code, slices.Clone(presets))
+	}
+	return b
+}
+
 func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
 	if b.registry != nil {
@@ -314,6 +352,7 @@ func (b *Builder) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 				Needs:            p.Needs,
 				Group:            p.Group,
 				AllowCrossTenant: b.allowCrossTenant,
+				FilterProfile:    b.filterProfile,
 			}
 			handlerRegistryMu.Unlock()
 		}

@@ -1,7 +1,11 @@
 package ingestion
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 )
 
@@ -25,14 +29,15 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 	perms := make([]domain.Permission, len(req.Permissions))
 	for i, p := range req.Permissions {
 		perms[i] = domain.Permission{
-			Service: req.Service,
-			Source:  req.Source,
-			Code:    p.Code,
-			Name:    p.Name,
-			Group:   p.Group,
-			Needs:   p.Needs,
-			Scope:   p.Scope,
-			Sort:    p.Sort,
+			Service:            req.Service,
+			Source:             req.Source,
+			Code:               p.Code,
+			Name:               p.Name,
+			Group:              p.Group,
+			Needs:              p.Needs,
+			Scope:              p.Scope,
+			Sort:               p.Sort,
+			AccessScopePresets: p.AccessScopePresets,
 		}
 	}
 
@@ -41,11 +46,12 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 	apis := make([]domain.API, len(req.APIs))
 	for i, a := range req.APIs {
 		apis[i] = domain.API{
-			Service: req.Service,
-			Source:  req.Source,
-			Name:    a.Name,
-			Method:  a.Method,
-			Path:    a.Path,
+			Service:       req.Service,
+			Source:        req.Source,
+			Name:          a.Name,
+			Method:        a.Method,
+			Path:          a.Path,
+			FilterProfile: a.FilterProfile,
 		}
 		if a.Code != "" {
 			urn := domain.API{Service: req.Service, Method: a.Method, Path: a.Path}.URN()
@@ -64,6 +70,27 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 		Menus:       nil,
 		Bindings:    bindings,
 	}
+}
+
+// Validate 校验业务服务上报的 AccessScope 展示模板，防止绕过 SDK Builder 直接提交无效元数据。
+func (s Snapshot) Validate() error {
+	for _, permission := range s.Permissions {
+		seen := make(map[string]struct{}, len(permission.AccessScopePresets))
+		for _, preset := range permission.AccessScopePresets {
+			code := strings.TrimSpace(preset.Code)
+			if code == "" || strings.TrimSpace(preset.Name) == "" || preset.Expression == nil {
+				return fmt.Errorf("permission %q has incomplete AccessScope preset", permission.Code)
+			}
+			if _, ok := seen[code]; ok {
+				return fmt.Errorf("permission %q has duplicate AccessScope preset %q", permission.Code, code)
+			}
+			seen[code] = struct{}{}
+			if err := pbac.ValidateAccessScope(preset.Expression); err != nil {
+				return fmt.Errorf("permission %q has invalid AccessScope preset %q: %w", permission.Code, code, err)
+			}
+		}
+	}
+	return nil
 }
 
 // mapMenus 将 capability 层的菜单模型递归转换为 domain 菜单树。
