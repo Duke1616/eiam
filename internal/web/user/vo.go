@@ -1,6 +1,9 @@
 package user
 
-import "github.com/Duke1616/eiam/internal/domain"
+import (
+	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/go-webauthn/webauthn/protocol"
+)
 
 // BaseUserRequest 用户基础信息请求
 type BaseUserRequest struct {
@@ -94,6 +97,16 @@ type PasskeyLoginFinishRequest struct {
 
 type PasskeyRegisterFinishRequest struct {
 	Credential any `json:"credential"`
+}
+
+type PasskeyRegisterStartResponse struct {
+	Options      *protocol.CredentialCreation `json:"options"`
+	SessionToken string                       `json:"session_token"`
+}
+
+type PasskeyLoginStartResponse struct {
+	Options      *protocol.CredentialAssertion `json:"options"`
+	SessionToken string                        `json:"session_token"`
 }
 
 // Tenant 空间展示对象

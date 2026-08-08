@@ -688,9 +688,8 @@ func (h *Handler) PasskeyRegisterStart(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrInternalServer, err
 	}
 
-	return ginx.Result{Data: map[string]any{
-		"options":       options,
-		"session_token": token,
+	return ginx.Result{Data: PasskeyRegisterStartResponse{
+		Options: options, SessionToken: token,
 	}}, nil
 }
 
@@ -754,9 +753,8 @@ func (h *Handler) PasskeyLoginStart(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrInternalServer, err
 	}
 
-	return ginx.Result{Data: map[string]any{
-		"options":       options,
-		"session_token": token,
+	return ginx.Result{Data: PasskeyLoginStartResponse{
+		Options: options, SessionToken: token,
 	}}, nil
 }
 
