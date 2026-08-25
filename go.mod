@@ -3,8 +3,8 @@ module github.com/Duke1616/eiam
 go 1.25.0
 
 require (
-	github.com/Duke1616/ecmdb v1.11.0
-	github.com/Duke1616/etask v0.0.7
+	github.com/Duke1616/ecmdb v1.11.1
+	github.com/Duke1616/etask v1.12.0
 	github.com/RediSearch/redisearch-go/v2 v2.1.1
 	github.com/casbin/casbin/v2 v2.103.0
 	github.com/casbin/gorm-adapter/v3 v3.30.0
