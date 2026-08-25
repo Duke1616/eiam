@@ -32,6 +32,7 @@ func InitSession(cmd redis.Cmdable) session.Provider {
 		Cookie              struct {
 			Domain string `mapstructure:"domain"`
 			Name   string `mapstructure:"name"`
+			Secure *bool  `mapstructure:"secure"`
 		} `mapstructure:"cookie"`
 	}
 	var cfg Config
@@ -55,12 +56,16 @@ func InitSession(cmd redis.Cmdable) session.Provider {
 	}
 
 	const day = time.Hour * 24 * 30
+	secure := true
+	if cfg.Cookie.Secure != nil {
+		secure = *cfg.Cookie.Secure
+	}
 	sp := ginRedis.NewSessionProvider(cmd, cfg.SessionEncryptedKey, day)
 	cookieC := &cookie.TokenCarrier{
 		MaxAge:   int(day.Seconds()),
 		Name:     cfg.Cookie.Name,
 		Path:     "/",
-		Secure:   true,
+		Secure:   secure,
 		HttpOnly: false,
 		Domain:   cfg.Cookie.Domain,
 	}

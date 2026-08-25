@@ -102,6 +102,7 @@ session:
   cookie:
     domain: "localhost"
     name: "eiam-token"
+    secure: true
 
 casbin:
   redis:
@@ -114,7 +115,8 @@ casbin:
 
 - `mysql.dsn` 必须开启 `parseTime=True`，项目会在启动时执行 `AutoMigrate` 和 `migrations/` 下的 Goose SQL 迁移。
 - `session.session_encrypted_key`、`session.cookie.name`、`session.cookie.domain` 不能为空。
-- Cookie carrier 当前设置了 `Secure: true`，本地 HTTP 调试时更推荐使用 Header token。
+- `session.cookie.secure` 默认值为 `true`；生产环境应保持开启并使用 HTTPS。
+- 本地 HTTP 调试可显式配置 `session.cookie.secure: false`，仅适用于不涉及敏感数据的开发环境。
 - gRPC 服务默认读取 `grpc.server.eiam`，并使用 `auth_token` 做 JWT 鉴权配置。
 
 ## 本地启动
