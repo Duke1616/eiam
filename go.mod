@@ -208,3 +208,5 @@ require (
 	modernc.org/sqlite v1.46.1 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/ecodeclub/ginx => github.com/ecodeclub/ginx v0.0.2-0.20250919074712-66377c661570

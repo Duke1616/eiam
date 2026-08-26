@@ -22,7 +22,7 @@ func NewCorsBuilder() *CorsBuilder {
 		allowOrigins:  []string{"*"},
 		allowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		allowHeaders:  []string{ActiveTenantHeaderKey, "Content-Type", "Authorization"},
-		exposeHeaders: []string{"X-Access-Token"},
+		exposeHeaders: []string{"X-Access-Token", "X-Token-Carrier"},
 		maxAge:        12 * time.Hour,
 	}
 }

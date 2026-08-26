@@ -99,6 +99,8 @@ etcd:
 
 session:
   session_encrypted_key: "change-me"
+  # 可选值：cookie（默认）或 token。token 模式使用 Authorization: Bearer。
+  token_carrier: "cookie"
   cookie:
     domain: "localhost"
     name: "eiam-token"
@@ -114,7 +116,8 @@ casbin:
 注意事项：
 
 - `mysql.dsn` 必须开启 `parseTime=True`，项目会在启动时执行 `AutoMigrate` 和 `migrations/` 下的 Goose SQL 迁移。
-- `session.session_encrypted_key`、`session.cookie.name`、`session.cookie.domain` 不能为空。
+- `session.session_encrypted_key` 不能为空；`cookie` 载体下 `session.cookie.name`、`session.cookie.domain` 也不能为空。
+- `session.token_carrier` 默认是 `cookie`；配置为 `token` 时不依赖 Cookie，前端使用 `X-Access-Token` 返回的 Bearer Token。
 - `session.cookie.secure` 默认值为 `true`；生产环境应保持开启并使用 HTTPS。
 - 本地 HTTP 调试可显式配置 `session.cookie.secure: false`，仅适用于不涉及敏感数据的开发环境。
 - gRPC 服务默认读取 `grpc.server.eiam`，并使用 `auth_token` 做 JWT 鉴权配置。

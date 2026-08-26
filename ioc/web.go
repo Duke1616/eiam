@@ -5,7 +5,9 @@ import (
 
 	"github.com/Duke1616/eiam/internal/pkg/middleware"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/web/department"
 	"github.com/Duke1616/eiam/internal/web/discovery"
+	"github.com/Duke1616/eiam/internal/web/group"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
 	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
@@ -13,8 +15,6 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
-	"github.com/Duke1616/eiam/internal/web/department"
-	"github.com/Duke1616/eiam/internal/web/group"
 	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -35,6 +35,10 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	// 开启 ContextWithFallback：使 ctx.Context.Value() 自动 fallback 到 ctx.Request.Context().Value()
 	// 这样 ctxutil.GetTenantID(ctx.Context) 无需 ctx.Set 双通道注入即可正确读取
 	server.Engine.ContextWithFallback = true
+	server.Use(func(ctx *gin.Context) {
+		ctx.Header(TokenCarrierHeader, ConfiguredTokenCarrier().String())
+		ctx.Next()
+	})
 	server.Use(mdls...)
 
 	// 1. 注册公开路由 (无鉴权)
