@@ -14,56 +14,70 @@ EIAM 是面向微服务架构的企业级多租户统一身份与访问控制平
 - 外部身份源：支持企业级 LDAP 用户检索与同步，以及标准 OIDC（含企业飞书）单点登录。
 
 ### 权限与数据范围决策
-- RBAC 角色授权：基于 Casbin 维护用户、用户组与角色的继承图关系。
-- PBAC 数据范围：集成 OPA，结合请求上下文与环境属性动态计算数据访问范围（AccessScope）。
+- 多维度策略绑定：遵循现代 IAM 规范，支持策略直接授予用户（User）、用户组继承（Group）以及角色关联（Role Attached / Inline）。
+- RBAC 继承图计算：基于 Casbin 维护用户、组织组与角色的层级图关系，自动展开生效主体链。
+- PBAC 细粒度与数据范围裁决：基于 OPA 执行统一策略裁决（AWS IAM 语法、显式 Deny 优先、Condition 上下文约束），并动态派生行级数据访问边界（AccessScope）。
 
 ### 资产自发现与契约工具链
 - 权限资产治理：服务启动时自动扫描并同步本地受控权限资产。
 - OpenAPI 3.0 文档：内置静态提取引擎，零注释导出 Swagger 规范并生成内嵌三栏式交互预览页面。
 - 强类型契约代码：自动生成全系统权限点与领域模型常量，提供编译期类型检查。
 
-## 鉴权架构与流转时序
+## 鉴权架构与全链路流转
 
-EIAM 采用 Casbin 与 OPA 双引擎分层防御架构，贯穿“身份认证 -> 角色判决 -> 策略计算 -> 数据隔离”的全链路交互流转如下：
+EIAM 采用 **Casbin（主体层级图计算） + OPA（统一策略与数据范围裁决）** 双引擎架构。系统支持 **用户直绑、组继承、角色关联及角色内联** 四维策略源，并由 OPA 统一执行权限放行与 `AccessScope` 行级数据范围计算。
+
+全链路鉴权决策流转如下：
 
 ```mermaid
-sequenceDiagram
-    participant Client as 客户端 (API / Web)
-    participant Gateway as 认证网关 (Middleware)
-    participant Casbin as RBAC 引擎 (Casbin)
-    participant OPA as PBAC 决策引擎 (OPA)
-    participant Service as 业务层 (Service)
-    participant Storage as 数据持久层 (GORM / DB)
+flowchart LR
+    Client([业务请求]) --> Gateway[API 网关]
 
-    Client->>Gateway: 1. 发起业务请求 (携带 Token / Session)
-    Gateway->>Gateway: 2. 提取凭据并注入双租户上下文 (tenant_id / origin_tenant_id)
+    %% 策略分支
+    Gateway --> User[用户直绑]
+    Gateway --> Casbin[Casbin 继承]
+    Casbin --> Roles[组与角色]
+    User --> Policies[生效策略集]
+    Roles --> Policies
 
-    rect rgb(245, 248, 255)
-    Note over Gateway,Casbin: 第一阶段: RBAC 角色层级图快速判定
-    Gateway->>Casbin: 3. 校验用户角色及接口操作白名单 (User -> Group -> Role)
-    alt 角色无匹配权限
-        Casbin-->>Client: 4a. 403 阻断访问 (Forbidden)
-    else 基础动作命中
-        Casbin->>OPA: 4b. 基础动作放行，流转至细粒度策略决策
-    end
-    end
+    %% 资源分支
+    Gateway --> API[API 资产]
+    API --> Actions[候选 Actions]
 
-    rect rgb(245, 255, 245)
-    Note over Casbin,OPA: 第二阶段: OPA/PBAC 细粒度策略与数据范围约束
-    OPA->>OPA: 5. 评估策略语句 (显式 Deny 优先阻断)
-    OPA->>OPA: 6. 计算 Condition 动态约束并派生 AccessScope (数据访问边界)
-    OPA->>Service: 7. 注入计算完成的 AccessScope
-    end
+    %% OPA 决策
+    Policies --> OPA{OPA 统一决策}
+    Actions --> OPA
 
-    rect rgb(255, 250, 245)
-    Note over Service,Storage: 第三阶段: 多租户隔离与安全持久化
-    Service->>Storage: 8. 装配业务查询 (绑定 AccessScope 过滤条件)
-    Storage->>Storage: 9. GORMx 插件原生拦截无租户 SQL (Fail-Closed)
-    Storage-->>Service: 10. 返回受控范围内的业务数据集
-    end
+    %% 判定与落库
+    OPA -->|拒绝| Deny([403 阻断])
+    OPA -->|通过| Scope[AccessScope 约束]
+    Scope --> Service[业务服务]
+    Service --> DB[(GORM 租户隔离)]
+    DB --> Response([受控响应])
 
-    Service-->>Client: 11. 返回受控业务响应
+    %% 极简主题配色
+    classDef default fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px,color:#1e293b
+    classDef main fill:#f0fdf4,stroke:#16a34a,stroke-width:1.5px,color:#15803d
+    classDef deny fill:#fef2f2,stroke:#dc2626,stroke-width:1.5px,color:#991b1b
+    classDef accent fill:#f0f9ff,stroke:#0284c7,stroke-width:1.5px,color:#0369a1
+
+    class Gateway,Policies,Actions,Service accent
+    class OPA,Scope main
+    class Deny deny
 ```
+
+### 鉴权流转机制说明
+
+1. **接入与上下文**：API 网关完成 Session 登录态校验，注入双租户上下文（数据过滤租户 `tenant_id` 与身份归属租户 `origin_tenant_id`）。
+2. **多主体策略汇聚**：
+   - 用户直接挂载的 Policy；
+   - 通过 Casbin 继承图（`User -> Group -> Role`）解析出的关联组策略、角色关联策略及角色内联策略。
+   - 所有策略汇总去重，生成当前主体全量的 **生效策略集（Effective Policies）**。
+3. **资产与权限展开**：根据请求匹配物理 API 资产，并基于权限依赖树反向展开上级权限码，提取 **候选动作（Candidate Actions）**。
+4. **OPA 统一裁决（PBAC）**：策略集、候选 Actions、资源 URN 与环境上下文统一输入 OPA 引擎：
+   - 显式 Deny 优先阻断；未匹配任何 Allow 时默认隐式拒绝，均返回 **403 Forbidden**；
+   - 命中 Allow 且满足 Condition 条件时放行，并动态求值派生 **AccessScope** 行级数据范围边界。
+5. **业务执行与多租户原生隔离**：业务层消费 AccessScope 转换为参数化 SQL 过滤条件，数据持久层由 GORMx 插件实现底层无租户拦截（Fail-Closed 原生防越权）。
 
 ## 目录结构
 
@@ -158,9 +172,36 @@ task gen
 go test ./...
 ```
 
+> **提示**：若本地未安装 `task` 命令，可直接使用原生 Go 命令替代，例如 `go run ./cmd/permgen`、`go run ./cmd/swaggergen`。
+
+### 跨项目脚手架工具安装 (CLI Tooling)
+
+EIAM 提供的权限契约生成器与 API 文档生成器已解耦为标准 CLI 工具。生态微服务（如 `etask`、`eflow` 等）可直接通过 `go install` 安装到本地使用，无需复制代码：
+
+```bash
+# 1. 安装权限 AST 扫描与强类型契约生成器 (permgen)
+go install github.com/Duke1616/eiam/cmd/permgen@latest
+
+# 2. 安装零注释 OpenAPI 3.0 与交互式预览生成器 (swaggergen)
+go install github.com/Duke1616/eiam/cmd/swaggergen@latest
+
+# 3. (可选) 安装 Taskfile 自动化任务调度工具
+go install github.com/go-task/task/v3/cmd/task@latest
+```
+
+在下游微服务（如 `etask`）项目根目录中直接执行：
+
+```bash
+# 扫描当前微服务的 Handler 路由并导出强类型权限契约代码
+permgen -s ./internal/web
+
+# 导出标准的 OpenAPI 3.0 文档与交互式预览页面
+swaggergen -s ./internal/web -o ./api/docs/swagger.json --html ./api/docs/index.html
+```
+
 ### API 文档与联调
 
-执行 `task gen:swagger` 后生成以下产物：
+执行 `task gen:swagger`（或 `swaggergen`）后生成以下产物：
 - OpenAPI 规范：`api/docs/swagger.json`，可导入 Apifox 或 Postman 进行联调。
 - 交互式文档：在浏览器中直接打开 `api/docs/index.html`，支持在线调试与 Bearer Token 鉴权。
 

@@ -1,0 +1,6 @@
+{
+  "go.buildTags": "wireinject",
+  "gopls": {
+    "build.buildFlags": ["-tags=wireinject"]
+  }
+}
