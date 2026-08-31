@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/pkg/utils"
 )
@@ -67,36 +68,69 @@ func (s *resourceService) ListAllMenus(ctx context.Context) ([]domain.Menu, erro
 
 // ReorderMenu 菜单重排序：实现跨节点拖拽与稀疏索引重新分配
 func (s *resourceService) ReorderMenu(ctx context.Context, id, targetPid, targetPosition int64) error {
-	// 1. 环境上下文：拉取目标组内所有现有菜单
+	// 0. 安全防线：禁止将自己设为自己的父节点
+	if id == targetPid {
+		return errs.ErrMenuSelfParent
+	}
+
+	// 1. 实体状态：获取被拖拽菜单的逻辑关系
+	draggedMenu, err := s.repo.GetMenu(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// 2. 拓扑防环：跨节点移动且目标父节点非根时，必须防止移入自身子孙节点导致形成死环
+	if targetPid > 0 && targetPid != draggedMenu.ParentID {
+		if err := s.checkCycle(ctx, id, targetPid); err != nil {
+			return err
+		}
+	}
+
+	// 3. 环境上下文：拉取目标组内所有现有菜单
 	targetMenus, err := s.repo.ListMenusByParentID(ctx, targetPid)
 	if err != nil {
 		return err
 	}
 
-	// 2. 实体状态：获取并对齐被拖拽菜单的逻辑关系
-	draggedMenu, err := s.repo.GetMenu(ctx, id)
-	if err != nil {
-		return err
-	}
 	draggedMenu.ParentID = targetPid
 
-	// 3. 计算排程：利用通用 Sorter 引擎执行数学空间映射
+	// 4. 计算排程：利用通用 Sorter 引擎执行数学空间映射
 	sorter := utils.NewSorter(func(m domain.Menu, idx int) domain.Menu {
 		m.Sort = int64(idx+1) * utils.DefaultIndexGap
 		m.ParentID = targetPid // NOTE: 确保重平衡时同步修正父子关联
 		return m
 	})
 
-	// 4. 生成计划：判定采取单步偏移 (Fast) 还是全量对齐 (Slow)
+	// 5. 生成计划：判定采取单步偏移 (Fast) 还是全量对齐 (Slow)
 	plan := sorter.PlanReorder(targetMenus, draggedMenu, targetPosition)
 
-	// 5. 执行更新：基于计算出的计划选择最优落库策略
+	// 6. 执行更新：基于计算出的计划选择最优落库策略
 	if plan.NeedRebalance {
 		return s.repo.BatchUpdateMenuSort(ctx, plan.Items)
 	}
 
 	// 快速路径：原子级别更新父节点归属与排序分值
 	return s.repo.UpdateMenuSort(ctx, id, targetPid, plan.NewSortKey)
+}
+
+// checkCycle 向上回溯父节点链路，确保 targetPid 不是 id 自身或其后代节点
+func (s *resourceService) checkCycle(ctx context.Context, id, targetPid int64) error {
+	currentPid := targetPid
+	// 限制最大遍历深度，防止库中既有脏数据造成死循环
+	for depth := 0; depth < 100; depth++ {
+		if currentPid == 0 {
+			return nil
+		}
+		if currentPid == id {
+			return errs.ErrMenuCycleParent
+		}
+		parent, err := s.repo.GetMenu(ctx, currentPid)
+		if err != nil {
+			return err
+		}
+		currentPid = parent.ParentID
+	}
+	return errs.ErrMenuCycleParent
 }
 
 func (s *resourceService) BatchRegisterServices(ctx context.Context, services []domain.Service) error {

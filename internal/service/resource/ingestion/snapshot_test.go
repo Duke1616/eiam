@@ -64,3 +64,21 @@ func TestSnapshotRejectsInvalidAccessScopePreset(t *testing.T) {
 		t.Fatal("expected incomplete AccessScope preset to be rejected")
 	}
 }
+
+func TestFromSyncRequestDeduplicatesBindings(t *testing.T) {
+	snap := FromSyncRequest(capability.SyncRequest{
+		Service: "test-service",
+		Source:  "test-source",
+		Permissions: []capability.Permission{
+			{Code: "test:view", Name: "查看"},
+		},
+		APIs: []capability.ResourceInfo{
+			{Code: "test:view", Method: "GET", Path: "/test/items"},
+			{Code: "test:view", Method: "GET", Path: "/test/items"}, // 重复注册同一路由端点
+		},
+	})
+
+	if len(snap.Bindings["test:view"]) != 1 {
+		t.Fatalf("expected duplicate URNs to be deduplicated, got: %#v", snap.Bindings["test:view"])
+	}
+}

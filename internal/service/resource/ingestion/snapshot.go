@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/samber/lo"
 )
 
 // Snapshot 定义了资源录入的内部统一资产快照。
@@ -26,9 +27,8 @@ type Snapshot struct {
 // 转换过程中一次性完成 domain 模型映射与 binding 关系解析，避免后续重复转换。
 func FromSyncRequest(req capability.SyncRequest) Snapshot {
 	// 1. 转换逻辑权限点
-	perms := make([]domain.Permission, len(req.Permissions))
-	for i, p := range req.Permissions {
-		perms[i] = domain.Permission{
+	perms := lo.Map(req.Permissions, func(p capability.Permission, _ int) domain.Permission {
+		return domain.Permission{
 			Service:            req.Service,
 			Source:             req.Source,
 			Code:               p.Code,
@@ -39,13 +39,16 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 			Sort:               p.Sort,
 			AccessScopePresets: p.AccessScopePresets,
 		}
-	}
+	})
 
 	// 2. 转换物理接口并预解析 API 绑定关系
 	bindings := make(map[string][]string)
-	apis := make([]domain.API, len(req.APIs))
-	for i, a := range req.APIs {
-		apis[i] = domain.API{
+	apis := lo.Map(req.APIs, func(a capability.ResourceInfo, _ int) domain.API {
+		if a.Code != "" {
+			urn := domain.API{Service: req.Service, Method: a.Method, Path: a.Path}.URN()
+			bindings[a.Code] = append(bindings[a.Code], urn)
+		}
+		return domain.API{
 			Service:       req.Service,
 			Source:        req.Source,
 			Name:          a.Name,
@@ -53,10 +56,11 @@ func FromSyncRequest(req capability.SyncRequest) Snapshot {
 			Path:          a.Path,
 			FilterProfile: a.FilterProfile,
 		}
-		if a.Code != "" {
-			urn := domain.API{Service: req.Service, Method: a.Method, Path: a.Path}.URN()
-			bindings[a.Code] = append(bindings[a.Code], urn)
-		}
+	})
+
+	// 3. 对 bindings 执行去重防御，防止微服务重复挂载端点导致 DB 重复插入或主键冲突
+	for code, urns := range bindings {
+		bindings[code] = lo.Uniq(urns)
 	}
 
 	// NOTE: 根据架构设计改造，菜单资产仅在 eiam 仓库中维护，其他微服务通过 SDK 上报的
@@ -91,30 +95,4 @@ func (s Snapshot) Validate() error {
 		}
 	}
 	return nil
-}
-
-// mapMenus 将 capability 层的菜单模型递归转换为 domain 菜单树。
-// 该逻辑从原 reconciler.go 迁移至此，作为转换层的唯一实现。
-func mapMenus(menus []capability.Menu) domain.MenuTree {
-	result := make(domain.MenuTree, len(menus))
-	for i, m := range menus {
-		result[i] = &domain.Menu{
-			Name:           m.Name,
-			Path:           m.Path,
-			Component:      m.Component,
-			Redirect:       m.Redirect,
-			PermissionCode: m.PermissionCode,
-			Sort:           m.Sort,
-			Meta: domain.MenuMeta{
-				Title:       m.Meta.Title,
-				Icon:        m.Meta.Icon,
-				IsHidden:    m.Meta.IsHidden,
-				IsAffix:     m.Meta.IsAffix,
-				IsKeepAlive: m.Meta.IsKeepAlive,
-				Platforms:   m.Meta.Platforms,
-			},
-			Children: mapMenus(m.Children),
-		}
-	}
-	return result
 }

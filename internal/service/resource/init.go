@@ -8,12 +8,13 @@ import (
 	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	"github.com/Duke1616/eiam/pkg/utils"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	"github.com/Duke1616/eiam/pkg/web/capability/syncer"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed init/memu.yaml
+//go:embed init/menu.yaml
 var menuYaml []byte
 
 //go:embed init/service.yaml
@@ -61,7 +62,7 @@ func NewResourceInitializer(engine ingestion.Engine, registry capability.Registr
 
 // SyncDiscoveryAPIs 为 EIAM 本地服务提供基于 SDK Collector 的自发现支持 (SDK 模式)
 func (i *Initializer) SyncDiscoveryAPIs(ctx context.Context, providers []capability.PermissionProvider, router *gin.Engine) error {
-	return capability.NewSyncer(i.registry,
+	return syncer.New(i.registry,
 		capability.WithPermissions(providers...),
 		capability.WithRouter(router),
 	).Sync(ctx)

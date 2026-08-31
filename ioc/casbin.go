@@ -33,8 +33,9 @@ e = some(where (p.eft == allow))
 m = g(r.sub, p.sub, "ANY") && r.obj == p.obj`
 )
 
-func InitCasbin(db *gorm.DB) *casbin.SyncedEnforcer {
-	adapter, err := gormAdapter.NewAdapterByDB(db)
+// InitCasbin 初始化 Casbin SyncedEnforcer
+func InitCasbin(casbinDB *gorm.DB) *casbin.SyncedEnforcer {
+	adapter, err := gormAdapter.NewAdapterByDB(casbinDB)
 	if err != nil {
 		fmt.Printf("警告: 初始化 Casbin Adapter 失败: %v\n", err)
 		return nil

@@ -284,6 +284,56 @@ func TestDecideEvaluatesPrincipalAndTimeConditions(t *testing.T) {
 	}
 }
 
+func TestFastPathShortCircuit(t *testing.T) {
+	authorizer := newTestAuthorizer(t)
+	ctx := context.Background()
+
+	// 1. 测试 Decide 无策略时的零开销短路
+	decision, err := authorizer.Decide(ctx, AuthInput{
+		Actions:  []string{"ticket:view"},
+		Resource: "ticket:api:get:/view",
+		Policies: nil,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error on nil policies: %v", err)
+	}
+	if decision.Allowed || decision.ReasonCode != pbac.ReasonNoMatchingAllow {
+		t.Fatalf("expected implicit deny on empty policies, got %#v", decision)
+	}
+
+	// 2. 测试 Authorize 无策略时的零开销短路
+	allowed, err := authorizer.Authorize(ctx, AuthInput{
+		Actions:  []string{"ticket:view"},
+		Resource: "ticket:api:get:/view",
+		Policies: []domain.Policy{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error on empty policies: %v", err)
+	}
+	if allowed {
+		t.Fatalf("expected false on empty policies")
+	}
+
+	// 3. 测试 AuthorizeBatch 无资源或无策略时的短路
+	batchAllowed, err := authorizer.AuthorizeBatch(ctx, AuthInput{
+		BatchResources: []string{},
+		Policies: []domain.Policy{{
+			Statement: []domain.Statement{{Effect: domain.Allow, Action: []string{"*"}, Resource: []string{"*"}}},
+		}},
+	})
+	if err != nil || len(batchAllowed) != 0 {
+		t.Fatalf("expected empty result on empty batch resources, got %v, err=%v", batchAllowed, err)
+	}
+
+	batchAllowed, err = authorizer.AuthorizeBatch(ctx, AuthInput{
+		BatchResources: []string{"res:1", "res:2"},
+		Policies:       []domain.Policy{},
+	})
+	if err != nil || len(batchAllowed) != 0 {
+		t.Fatalf("expected empty result on empty policies, got %v, err=%v", batchAllowed, err)
+	}
+}
+
 func newTestAuthorizer(t *testing.T) IAuthorizer {
 	t.Helper()
 	authorizer, err := NewOPAAuthorizer(context.Background())

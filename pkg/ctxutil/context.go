@@ -85,6 +85,11 @@ func WithOriginTenantID(ctx context.Context, tid int64) context.Context {
 	return With(ctx, OriginTenantIDKey, tid)
 }
 
+// WithUserAndTenant 一次性注入用户 ID 与租户上下文 (涵盖执行租户与原始身份租户)
+func WithUserAndTenant(ctx context.Context, uid, tid int64) context.Context {
+	return WithOriginTenantID(WithTenantID(WithUserID(ctx, uid), tid), tid)
+}
+
 type privateOnlyKey struct{}
 
 // WithPrivateOnly 标记该 Context 下的查询仅返回私有资产，忽略共享资源

@@ -11,10 +11,11 @@ import (
 	permsvc "github.com/Duke1616/eiam/internal/service/permission"
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/pkg/contract/model"
 	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 type Handler struct {
@@ -40,61 +41,57 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/policy")
 
-	g.POST("/create", h.Capability("创建策略", "add").
+	g.POST("/create", h.Define("创建策略", "add").
 		Needs("iam:permission:manifest").
-		Handle(ginx.B[CreatePolicyReq](h.CreatePolicy)),
+		Bind(ginx.B[CreatePolicyReq](h.CreatePolicy)),
 	)
-	g.POST("/update", h.Capability("修改策略", "edit").
+	g.POST("/update", h.Define("修改策略", "edit").
 		Needs("iam:permission:manifest", "iam:policy:get").
-		Handle(ginx.B[UpdatePolicyReq](h.UpdatePolicy)),
-	)
-	g.POST("/list", h.Capability("策略列表", "view").
-		Handle(ginx.B[ListPolicyReq](h.ListPolicies)),
-	)
-	g.GET("/detail/:code", h.Capability("策略详情", "get").
-		Handle(ginx.W(h.GetPolicyDetail)),
+		Bind(ginx.B[UpdatePolicyReq](h.UpdatePolicy)),
 	)
 
-	// 策略绑定解绑相关操作
-	//g.POST("/attach", h.Capability("绑定策略", "attach").
-	//	Handle(ginx.B[AttachPolicyReq](h.AttachPolicy)),
-	//)
-	g.POST("/detach", h.Capability("解绑策略", "detach").
-		Handle(ginx.B[AttachPolicyReq](h.DetachPolicy)),
+	// 策略列表与详情属于不同细粒度权限
+	viewPolicy := h.Define("策略列表", "view")
+	g.POST("/list", viewPolicy.
+		Bind(ginx.B[ListPolicyReq](h.ListPolicies)),
 	)
-	g.POST("/batch-attach", h.Capability("批量绑定策略", "batch_attach").
+	g.GET("/detail/:code", h.Define("策略详情", "get").
+		Bind(ginx.W(h.GetPolicyDetail)),
+	)
+
+	// 策略解绑与批量绑定
+	g.POST("/detach", h.Define("解绑策略", "detach").
+		Bind(ginx.B[AttachPolicyReq](h.DetachPolicy)),
+	)
+	g.POST("/batch-attach", h.Define("批量绑定策略", "batch_attach").
 		Needs("iam:policy:view", "iam:permission:search_subjects").
-		Handle(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
+		Bind(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
 	)
-	g.POST("/batch-detach", h.Capability("批量解绑策略", "batch_detach").
-		Handle(ginx.B[BatchDetachPolicyReq](h.BatchDetachPolicy)),
-	)
-
-	// 删除策略 (物理删除，需校验引用)
-	g.DELETE("/delete/:code", h.Capability("删除策略", "delete").
-		Handle(ginx.W(h.DeletePolicy)),
-	)
-	g.POST("/batch-delete", h.Capability("批量删除策略", "batch_delete").
-		Handle(ginx.B[BatchDeletePolicyReq](h.BatchDeletePolicies)),
+	g.POST("/batch-detach", h.Define("批量解绑策略", "batch_detach").
+		Bind(ginx.B[BatchDetachPolicyReq](h.BatchDetachPolicy)),
 	)
 
-	// 查询特定用户的关联策略 (管理侧使用)
-	g.POST("/list/attached/user", h.Capability("查询用户策略", "view_user_policies").
-		Module("user").
-		Group("用户管理").
-		Handle(ginx.B[ListUserPoliciesReq](h.GetPoliciesByUserId)),
+	// 删除策略
+	g.DELETE("/delete/:code", h.Define("删除策略", "delete").
+		Bind(ginx.W(h.DeletePolicy)),
 	)
-	// 查询特定角色的关联策略 (管理侧使用)
-	g.POST("/list/attached/role", h.Capability("查询角色策略", "view_role_policies").
-		Module("role").
-		Group("角色管理").
-		Handle(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
+	g.POST("/batch-delete", h.Define("批量删除策略", "batch_delete").
+		Bind(ginx.B[BatchDeletePolicyReq](h.BatchDeletePolicies)),
 	)
-	// 查询特定用户组的关联策略 (管理侧使用)
-	g.POST("/list/attached/group", h.Capability("查询用户组策略", "view_group_policies").
-		Module("group").
-		Group("用户分组").
-		Handle(ginx.B[ListGroupPoliciesReq](h.GetPoliciesByGroupCode)),
+
+	// 查询特定用户的关联策略 (直接使用纯契约 model.User)
+	g.POST("/list/attached/user", h.For(model.User).Define("查询用户策略", "view_user_policies").
+		Bind(ginx.B[ListUserPoliciesReq](h.GetPoliciesByUserId)),
+	)
+
+	// 查询特定角色的关联策略 (直接使用纯契约 model.Role)
+	g.POST("/list/attached/role", h.For(model.Role).Define("查询角色策略", "view_role_policies").
+		Bind(ginx.B[ListRolePoliciesReq](h.GetPoliciesByRoleCode)),
+	)
+
+	// 查询特定用户组的关联策略
+	g.POST("/list/attached/group", viewPolicy.
+		BindNamed("查询用户组策略", ginx.B[ListGroupPoliciesReq](h.GetPoliciesByGroupCode)),
 	)
 }
 
@@ -124,7 +121,7 @@ func (h *Handler) GetPoliciesByUserId(ctx *ginx.Context, req ListUserPoliciesReq
 	return ginx.Result{
 		Data: ListPolicyRes{
 			Total: total,
-			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+			Policies: lo.Map(ps, func(src domain.Policy, _ int) Policy {
 				return h.toVO(src)
 			}),
 		},
@@ -150,7 +147,7 @@ func (h *Handler) GetPoliciesByRoleCode(ctx *ginx.Context, req ListRolePoliciesR
 	return ginx.Result{
 		Data: ListPolicyRes{
 			Total: total,
-			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+			Policies: lo.Map(ps, func(src domain.Policy, _ int) Policy {
 				return h.toVO(src)
 			}),
 		},
@@ -175,7 +172,7 @@ func (h *Handler) GetPoliciesByGroupCode(ctx *ginx.Context, req ListGroupPolicie
 	return ginx.Result{
 		Data: ListPolicyRes{
 			Total: total,
-			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+			Policies: lo.Map(ps, func(src domain.Policy, _ int) Policy {
 				return h.toVO(src)
 			}),
 		},
@@ -188,7 +185,7 @@ func (h *Handler) CreatePolicy(ctx *ginx.Context, req CreatePolicyReq) (ginx.Res
 		Code: req.Code,
 		Desc: req.Desc,
 		Type: domain.PolicyType(req.Type),
-		Statement: slice.Map(req.Statement, func(idx int, s Statement) domain.Statement {
+		Statement: lo.Map(req.Statement, func(s Statement, _ int) domain.Statement {
 			return h.toStatementDomain(s)
 		}),
 	})
@@ -206,7 +203,7 @@ func (h *Handler) UpdatePolicy(ctx *ginx.Context, req UpdatePolicyReq) (ginx.Res
 		Name: req.Name,
 		Code: req.Code,
 		Desc: req.Desc,
-		Statement: slice.Map(req.Statement, func(idx int, s Statement) domain.Statement {
+		Statement: lo.Map(req.Statement, func(s Statement, _ int) domain.Statement {
 			return h.toStatementDomain(s)
 		}),
 	})
@@ -225,7 +222,7 @@ func (h *Handler) ListPolicies(ctx *ginx.Context, req ListPolicyReq) (ginx.Resul
 	return ginx.Result{
 		Data: ListPolicyRes{
 			Total: total,
-			Policies: slice.Map(ps, func(idx int, src domain.Policy) Policy {
+			Policies: lo.Map(ps, func(src domain.Policy, _ int) Policy {
 				return h.toVO(src)
 			}),
 		},
@@ -249,7 +246,7 @@ func (h *Handler) DetachPolicy(ctx *ginx.Context, req AttachPolicyReq) (ginx.Res
 }
 
 func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq) (ginx.Result, error) {
-	subjects := slice.Map(req.Subjects, func(idx int, src SubjectItem) domain.Subject {
+	subjects := lo.Map(req.Subjects, func(src SubjectItem, _ int) domain.Subject {
 		return domain.Subject{Type: src.Type, ID: src.Code}
 	})
 
@@ -268,7 +265,7 @@ func (h *Handler) BatchAttachPolicy(ctx *ginx.Context, req BatchAttachPolicyReq)
 }
 
 func (h *Handler) BatchDetachPolicy(ctx *ginx.Context, req BatchDetachPolicyReq) (ginx.Result, error) {
-	assignments := slice.Map(req.Assignments, func(idx int, a Assignment) domain.SubjectPolicyAssignment {
+	assignments := lo.Map(req.Assignments, func(a Assignment, _ int) domain.SubjectPolicyAssignment {
 		return domain.SubjectPolicyAssignment{SubType: a.SubType, SubCode: a.SubCode, PolicyCode: a.PolicyCode}
 	})
 
@@ -304,7 +301,7 @@ func (h *Handler) GetPolicyDetail(ctx *ginx.Context) (ginx.Result, error) {
 	return ginx.Result{
 		Data: RetriePolicySummaryRes{
 			Policy: h.toVO(p),
-			Services: slice.Map(summary.Services, func(idx int, src domain.PolicyServiceSummary) ServiceSummary {
+			Services: lo.Map(summary.Services, func(src domain.PolicyServiceSummary, _ int) ServiceSummary {
 				return ServiceSummary{
 					ServiceCode:   src.ServiceCode,
 					ServiceName:   src.ServiceName,
@@ -313,42 +310,32 @@ func (h *Handler) GetPolicyDetail(ctx *ginx.Context) (ginx.Result, error) {
 					GrantedCount:  src.GrantedCount,
 					TotalCount:    src.TotalCount,
 					ResourceScope: src.ResourceScope,
-					Condition: func() string {
-						if len(src.Conditions) == 0 {
-							return "-"
-						}
-						b, _ := json.Marshal(src.Conditions)
-						return string(b)
-					}(),
-					Actions: slice.Map(src.Actions, func(idx int, pct domain.GrantedAction) ActionDetail {
-						// 格式化资源
-						resStr := strings.Join(pct.Resource, ", ")
-
-						// 格式化条件
-						condStr := "-"
-						if pct.Condition != nil {
-							b, _ := json.Marshal(pct.Condition)
-							condStr = string(b)
-						}
-						accessScopeStr := "-"
-						if pct.AccessScope != nil {
-							b, _ := json.Marshal(pct.AccessScope)
-							accessScopeStr = string(b)
-						}
-
+					Condition:     marshalOrDash(src.Conditions),
+					Actions: lo.Map(src.Actions, func(pct domain.GrantedAction, _ int) ActionDetail {
 						return ActionDetail{
 							Code:        pct.Code,
 							Name:        pct.Name,
 							Group:       pct.Group,
-							Resource:    resStr,
-							Condition:   condStr,
-							AccessScope: accessScopeStr,
+							Resource:    strings.Join(pct.Resource, ", "),
+							Condition:   marshalOrDash(pct.Condition),
+							AccessScope: marshalOrDash(pct.AccessScope),
 						}
 					}),
 				}
 			}),
 		},
 	}, nil
+}
+
+func marshalOrDash(v any) string {
+	if lo.IsEmpty(v) {
+		return "-"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "-"
+	}
+	return string(b)
 }
 
 func (h *Handler) toVO(p domain.Policy) Policy {
@@ -360,7 +347,7 @@ func (h *Handler) toVO(p domain.Policy) Policy {
 		Type:            uint8(p.Type),
 		Ctime:           p.Ctime,
 		AssignmentCount: p.AssignmentCount,
-		Statement: slice.Map(p.Statement, func(idx int, s domain.Statement) Statement {
+		Statement: lo.Map(p.Statement, func(s domain.Statement, _ int) Statement {
 			return Statement{
 				Effect:      string(s.Effect),
 				Action:      s.Action,

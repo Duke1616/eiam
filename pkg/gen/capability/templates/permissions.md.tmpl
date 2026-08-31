@@ -1,0 +1,24 @@
+# {{ if .Title }}{{ .Title }}{{ else }}全局权限大盘与元数据字典{{ end }}
+
+> 本文档由 `permgen` 基于全仓 AST 静态分析自动生成。请勿手动修改。
+>
+> 💡 **联动包含机制**：当为角色分配某项操作权限时，系统将**自动附带拥有**其“联动包含”中的权限，无需管理员手动重复勾选（例如：勾选“修改用户”会自动附带拥有“用户详情”权限）。
+
+- **受控业务模块数**: {{ len .Modules }}
+- **受控权限点总数**: {{ .TotalActions }}
+
+{{ range .Modules }}
+## 模块: {{ if .Title }}{{ .Title }}{{ else }}{{ .Name }}{{ end }} (`{{ .Name }}`)
+
+- **所属服务**: `{{ .Service }}`
+- **定义源码**: `{{ .File }}`
+
+| 操作名称 | 完整权限码 | 作用域 | 归属类型 | 暴露状态 | 联动包含权限 | 宿主源码位置 |
+|:---|:---|:---|:---|:---|:---|:---|
+{{- range .SortedActions }}
+| {{ .Name }} | `{{ .Code }}` | {{ .Scope.Chinese }} | {{ .KindChinese }} | {{ .SyncStatusChinese }} | {{ if .Needs }}{{ range $i, $need := .Needs }}{{ if $i }}<br>{{ end }}{{ formatNeed $need }}{{ end }}{{ else }}-{{ end }} | `{{ .File }}` 行 {{ .Line }} |
+{{- end }}
+
+---
+
+{{ end }}

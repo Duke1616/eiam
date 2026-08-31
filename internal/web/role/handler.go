@@ -11,11 +11,12 @@ import (
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
 	rolesvc "github.com/Duke1616/eiam/internal/service/role"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
+	"github.com/Duke1616/eiam/pkg/contract/model"
 	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 type Handler struct {
@@ -38,67 +39,62 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/role")
 
 	// 角色管理 (CRUD)
-	g.POST("/create", h.Capability("创建角色", "add").
-		Needs("cmdb:codebook:view").
-		Handle(ginx.B[CreateRoleRequest](h.Create)),
+	g.POST("/create", h.Define("创建角色", "add").
+		Bind(ginx.B[CreateRoleRequest](h.Create)),
 	)
-	g.POST("/update", h.Capability("修改角色", "edit").
-		Handle(ginx.B[UpdateRoleRequest](h.Update)),
+	g.POST("/update", h.Define("修改角色", "edit").
+		Bind(ginx.B[UpdateRoleRequest](h.Update)),
 	)
-	g.POST("/list", h.Capability("角色列表", "view").
-		Handle(ginx.B[ListRoleRequest](h.List)),
+
+	// 角色列表与详情属于不同细粒度权限
+	g.POST("/list", h.Define("角色列表", "view").
+		Bind(ginx.B[ListRoleRequest](h.List)),
 	)
-	g.GET("/detail/:code", h.Capability("角色详情", "get").
-		Handle(ginx.W(h.Detail)),
+	g.GET("/detail/:code", h.Define("角色详情", "get").
+		Bind(ginx.W(h.Detail)),
 	)
-	g.DELETE("/delete/:id", h.Capability("删除角色", "delete").
-		Handle(ginx.W(h.Delete)),
+
+	g.DELETE("/delete/:id", h.Define("删除角色", "delete").
+		Bind(ginx.W(h.Delete)),
 	)
-	g.POST("/batch_delete", h.Capability("批量删除角色", "batch_delete").
-		Handle(ginx.B[BatchDeleteReq](h.BatchDelete)),
+	g.POST("/batch_delete", h.Define("批量删除角色", "batch_delete").
+		Bind(ginx.B[BatchDeleteReq](h.BatchDelete)),
 	)
 
 	// 角色关系授权 (Relation)
-	//g.POST("/assign", h.Capability("角色分配", "assign").
-	//	Handle(ginx.BS[AssignRoleRequest](h.AssignRole)),
-	//)
-
-	g.POST("/batch_assign", h.Capability("批量分配角色", "batch_assign").
+	g.POST("/batch_assign", h.Define("批量分配角色", "batch_assign").
 		Needs("iam:role:view").
-		Handle(ginx.B[BatchAssignRoleRequest](h.BatchAssignRole)),
+		Bind(ginx.B[BatchAssignRoleRequest](h.BatchAssignRole)),
+	)
+	g.POST("/batch_unassign", h.Define("批量移除角色", "batch_unassign").
+		Bind(ginx.B[BatchUnassignRoleRequest](h.BatchUnassignRole)),
+	)
+	g.POST("/unassign", h.Define("移除角色分配", "unassign").
+		Bind(ginx.B[UnassignRoleRequest](h.UnassignRole)),
 	)
 
-	g.POST("/batch_unassign", h.Capability("批量移除角色", "batch_unassign").
-		Handle(ginx.B[BatchUnassignRoleRequest](h.BatchUnassignRole)),
+	g.POST("/analysis/inline", h.Define("分析内联策略", "analysis").
+		Bind(ginx.B[RoleAnalysisReq](h.AnalyzeInlinePolicies)),
 	)
-	g.POST("/unassign", h.Capability("移除角色分配", "unassign").
-		Handle(ginx.B[UnassignRoleRequest](h.UnassignRole)),
-	)
-
-	g.POST("/analysis/inline", h.Capability("分析内联策略", "analysis").
-		Handle(ginx.B[RoleAnalysisReq](h.AnalyzeInlinePolicies)),
-	)
-	g.POST("/add_parent", h.Capability("添加父角色", "add_parent").
+	g.POST("/add_parent", h.Define("添加父角色", "add_parent").
 		Needs("iam:role:view").
-		Handle(ginx.B[RoleInheritanceReq](h.AddParentRole)),
+		Bind(ginx.B[RoleInheritanceReq](h.AddParentRole)),
 	)
-	g.POST("/remove_parent", h.Capability("移除父角色", "remove_parent").
-		Handle(ginx.B[RoleInheritanceReq](h.RemoveParentRole)),
+	g.POST("/remove_parent", h.Define("移除父角色", "remove_parent").
+		Bind(ginx.B[RoleInheritanceReq](h.RemoveParentRole)),
 	)
-	g.POST("/parents", h.Capability("获取父角色", "view_parents").
-		Handle(ginx.B[GetParentRolesReq](h.GetParentRoles)),
+	g.POST("/parents", h.Define("获取父角色", "view_parents").
+		Bind(ginx.B[GetParentRolesReq](h.GetParentRoles)),
 	)
 
 	// 查询当前用户的角色 (供 User Context 使用)
-	g.GET("/mine", h.Capability("查看个人角色", "view_mine").
-		Handle(ginx.BS[any](h.GetMyRoles)),
+	g.GET("/mine", h.Define("查看个人角色", "view_mine").
+		Bind(ginx.BS[any](h.GetMyRoles)),
 	)
 
-	// 查询特定用户的关联角色 (管理侧使用)
-	g.POST("/list/attached/user", h.Capability("查询用户角色", "view_user_roles").
-		Module("user").
-		Group("用户管理").
-		Handle(ginx.B[ListUserRolesRequest](h.GetRolesByUserId)),
+	// 跨领域：查询特定用户的关联角色 (直接使用纯契约 model.User)
+	g.POST("/list/attached/user", h.For(model.User).Define("查询用户角色", "view_user_roles").
+		Bind(ginx.B[ListUserRolesRequest](h.GetRolesByUserId)),
 	)
 }
 
@@ -124,7 +120,7 @@ func (h *Handler) GetRolesByUserId(ctx *ginx.Context, req ListUserRolesRequest) 
 	return ginx.Result{
 		Data: RetrieveRole{
 			Total: total,
-			Roles: slice.Map(roles, func(idx int, src domain.Role) Role {
+			Roles: lo.Map(roles, func(src domain.Role, _ int) Role {
 				return h.toVo(src)
 			}),
 		},
@@ -207,7 +203,7 @@ func (h *Handler) List(ctx *ginx.Context, req ListRoleRequest) (ginx.Result, err
 
 	return ginx.Result{
 		Data: RetrieveRole{
-			Roles: slice.Map(roles, func(idx int, src domain.Role) Role {
+			Roles: lo.Map(roles, func(src domain.Role, _ int) Role {
 				return h.toVo(src)
 			}),
 			Total: total,
@@ -286,7 +282,7 @@ func (h *Handler) GetParentRoles(ctx *ginx.Context, req GetParentRolesReq) (ginx
 	}
 
 	return ginx.Result{
-		Data: slice.Map(infos, func(idx int, src domain.InheritanceInfo) RoleInheritanceInfo {
+		Data: lo.Map(infos, func(src domain.InheritanceInfo, _ int) RoleInheritanceInfo {
 			return RoleInheritanceInfo{
 				Code:        src.Code,
 				IsDirect:    src.IsDirect,
@@ -365,7 +361,7 @@ func (h *Handler) toVo(src domain.Role) Role {
 		Type:  src.Type,
 		Ctime: src.Ctime,
 		Utime: src.Utime,
-		InlinePolicies: slice.Map(src.InlinePolicies, func(idx int, src domain.Policy) Policy {
+		InlinePolicies: lo.Map(src.InlinePolicies, func(src domain.Policy, _ int) Policy {
 			return h.toPolicyVO(src)
 		}),
 	}
@@ -375,7 +371,7 @@ func (h *Handler) toPolicyVO(p domain.Policy) Policy {
 	return Policy{
 		Name: p.Name,
 		Code: p.Code,
-		Statement: slice.Map(p.Statement, func(idx int, s domain.Statement) Statement {
+		Statement: lo.Map(p.Statement, func(s domain.Statement, _ int) Statement {
 			return Statement{
 				Effect:      string(s.Effect),
 				Action:      s.Action,
@@ -388,7 +384,7 @@ func (h *Handler) toPolicyVO(p domain.Policy) Policy {
 }
 
 func (h *Handler) toServiceSummaryVOs(summaries []domain.PolicyServiceSummary) []ServiceSummary {
-	return slice.Map(summaries, func(idx int, src domain.PolicyServiceSummary) ServiceSummary {
+	return lo.Map(summaries, func(src domain.PolicyServiceSummary, _ int) ServiceSummary {
 		return ServiceSummary{
 			ServiceCode:   src.ServiceCode,
 			ServiceName:   src.ServiceName,
@@ -404,7 +400,7 @@ func (h *Handler) toServiceSummaryVOs(summaries []domain.PolicyServiceSummary) [
 				b, _ := json.Marshal(src.Conditions)
 				return string(b)
 			}(),
-			Actions: slice.Map(src.Actions, func(idx int, pct domain.GrantedAction) ActionDetail {
+			Actions: lo.Map(src.Actions, func(pct domain.GrantedAction, _ int) ActionDetail {
 				// 格式化资源
 				resStr := strings.Join(pct.Resource, ", ")
 

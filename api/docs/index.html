@@ -1,0 +1,4509 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>EIAM API Documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 现代化三栏式 API 交互文档引擎 (Scalar) -->
+    <script
+      id="api-reference"
+      type="application/json"
+      data-configuration='{
+        "theme": "elysia",
+        "showSidebar": true,
+        "searchHotKey": "k",
+        "layout": "modern"
+      }'>
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "EIAM API Documentation",
+    "description": "基于 AST 与反射契约混合自适应生成的 OpenAPI 3.0 规范，支持导入 Apifox / Postman 进行全量接口联调。",
+    "version": "1.0.0"
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/department/assign": {
+      "post": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "分配部门成员",
+        "description": "权限标识: assign",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignUsersRequest"
+              },
+              "example": {
+                "dept_id": 1,
+                "user_ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/department/create": {
+      "post": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "创建部门",
+        "description": "权限标识: add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeptRequest"
+              },
+              "example": {
+                "leaders": [
+                  "item1",
+                  "item2"
+                ],
+                "main_leader": "string",
+                "name": "示例名称",
+                "parent_id": 1,
+                "sort": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/department/delete/{id}": {
+      "delete": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "删除部门",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/department/detail/{id}": {
+      "get": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "部门详情",
+        "description": "权限标识: get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/department/list": {
+      "get": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "部门树",
+        "description": "权限标识: view",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/department/members": {
+      "post": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "部门成员列表",
+        "description": "权限标识: members",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListMembersRequest"
+              },
+              "example": {
+                "group_code": "admin",
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/department/remove": {
+      "post": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "移除部门成员",
+        "description": "权限标识: remove",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveUsersRequest"
+              },
+              "example": {
+                "dept_id": 1,
+                "user_ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/department/update": {
+      "post": {
+        "tags": [
+          "部门管理"
+        ],
+        "summary": "修改部门",
+        "description": "权限标识: edit",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeptRequest"
+              },
+              "example": {
+                "id": 1,
+                "leaders": [
+                  "item1",
+                  "item2"
+                ],
+                "main_leader": "string",
+                "name": "示例名称",
+                "parent_id": 1,
+                "sort": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/create": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "创建用户组",
+        "description": "权限标识: add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGroupRequest"
+              },
+              "example": {
+                "code": "admin",
+                "desc": "相关业务描述信息",
+                "name": "示例名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/delete/{id}": {
+      "delete": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "删除用户组",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/detail/{code}": {
+      "get": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "用户组详情",
+        "description": "权限标识: get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "唯一标识编码 Code",
+            "schema": {
+              "type": "string",
+              "example": "admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/list": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "用户组列表",
+        "description": "权限标识: view",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListGroupRequest"
+              },
+              "example": {
+                "limit": 10,
+                "offset": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/list/attached/role": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "查询角色关联分组",
+        "description": "权限标识: view",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListAttachedRoleGroupsRequest"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0,
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/list/attached/user": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "查询用户所属分组",
+        "description": "权限标识: view",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListAttachedUserGroupsRequest"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0,
+                "user_id": 1,
+                "username": "示例名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/members": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "组成员列表",
+        "description": "权限标识: members",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListMembersRequest"
+              },
+              "example": {
+                "group_code": "admin",
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/members/assign": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "分配组成员",
+        "description": "权限标识: assign_members",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignMembersRequest"
+              },
+              "example": {
+                "group_code": "admin",
+                "usernames": [
+                  "admin",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/members/remove": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "移除组成员",
+        "description": "权限标识: remove_members",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveMembersRequest"
+              },
+              "example": {
+                "group_code": "admin",
+                "usernames": [
+                  "admin",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/role/assign": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "用户组分配角色",
+        "description": "权限标识: assign_role",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRoleRequest"
+              },
+              "example": {
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/role/remove": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "用户组解绑角色",
+        "description": "权限标识: remove_role",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveRoleRequest"
+              },
+              "example": {
+                "group_code": "admin",
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/roles/{code}": {
+      "get": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "查看用户组角色",
+        "description": "权限标识: roles",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "唯一标识编码 Code",
+            "schema": {
+              "type": "string",
+              "example": "admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/group/update": {
+      "post": {
+        "tags": [
+          "用户分组"
+        ],
+        "summary": "修改用户组",
+        "description": "权限标识: edit",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGroupRequest"
+              },
+              "example": {
+                "desc": "相关业务描述信息",
+                "id": 1,
+                "name": "示例名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/identity_source/delete/{id}": {
+      "delete": {
+        "tags": [
+          "身份源管理"
+        ],
+        "summary": "删除身份源",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/identity_source/detail/{id}": {
+      "get": {
+        "tags": [
+          "身份源管理"
+        ],
+        "summary": "身份源详情",
+        "description": "权限标识: detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/identity_source/enabled_providers": {
+      "get": {
+        "tags": [
+          "身份源管理"
+        ],
+        "summary": "enabled_providers",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/identity_source/list": {
+      "post": {
+        "tags": [
+          "身份源管理"
+        ],
+        "summary": "身份源列表",
+        "description": "权限标识: view",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/identity_source/save": {
+      "post": {
+        "tags": [
+          "身份源管理"
+        ],
+        "summary": "保存身份源",
+        "description": "权限标识: save",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveIdentitySourceReq"
+              },
+              "example": {
+                "enabled": true,
+                "id": 1,
+                "ldap": "string",
+                "local": "string",
+                "name": "示例名称",
+                "oidc": "string",
+                "passkey": "string",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/identity_source/test": {
+      "post": {
+        "tags": [
+          "身份源管理"
+        ],
+        "summary": "测试身份源连接",
+        "description": "权限标识: test",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveIdentitySourceReq"
+              },
+              "example": {
+                "enabled": true,
+                "id": 1,
+                "ldap": "string",
+                "local": "string",
+                "name": "示例名称",
+                "oidc": "string",
+                "passkey": "string",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/identity_source/toggle/{id}": {
+      "post": {
+        "tags": [
+          "身份源管理"
+        ],
+        "summary": "切换启用状态",
+        "description": "权限标识: toggle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/accept": {
+      "post": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": "accept",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/batch_revoke": {
+      "post": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": "批量撤回邀请",
+        "description": "权限标识: batch_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRevokeInvitationReq"
+              },
+              "example": {
+                "codes": [
+                  "item1",
+                  "item2"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/create": {
+      "post": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": "创建邀请",
+        "description": "权限标识: add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitationReq"
+              },
+              "example": {
+                "expiry_days": 0,
+                "max_uses": 0,
+                "require_approval": true,
+                "role_codes": [
+                  "item1",
+                  "item2"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/list": {
+      "post": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": "邀请列表",
+        "description": "权限标识: view",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Page"
+              },
+              "example": {
+                "limit": 10,
+                "offset": 0,
+                "page": 0,
+                "page_size": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/requests": {
+      "post": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": "申请列表",
+        "description": "权限标识: view_requests",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Page"
+              },
+              "example": {
+                "limit": 10,
+                "offset": 0,
+                "page": 0,
+                "page_size": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/requests/handle": {
+      "post": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": "处理申请",
+        "description": "权限标识: handle_request",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandleJoinRequestReq"
+              },
+              "example": {
+                "approve": true,
+                "id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/revoke/{code}": {
+      "delete": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": "撤回邀请",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "唯一标识编码 Code",
+            "schema": {
+              "type": "string",
+              "example": "admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/invitation/verify/{code}": {
+      "get": {
+        "tags": [
+          "成员治理"
+        ],
+        "summary": ":code",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "唯一标识编码 Code",
+            "schema": {
+              "type": "string",
+              "example": "admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/permission/authorizations": {
+      "post": {
+        "tags": [
+          "权限管理"
+        ],
+        "summary": "授权治理列表",
+        "description": "权限标识: view_authorizations",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationQueryReq"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "obj_type": "string",
+                "offset": 0,
+                "sub_type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/permission/check_login": {
+      "post": {
+        "tags": [
+          "权限管理"
+        ],
+        "summary": "check_login",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/permission/check_policy": {
+      "post": {
+        "tags": [
+          "权限管理"
+        ],
+        "summary": "check_policy",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/permission/manifest": {
+      "get": {
+        "tags": [
+          "权限管理"
+        ],
+        "summary": "权限资产清单",
+        "description": "权限标识: manifest",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/permission/menus": {
+      "get": {
+        "tags": [
+          "权限管理"
+        ],
+        "summary": "menus",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/permission/menus/by_urns": {
+      "post": {
+        "tags": [
+          "权限管理"
+        ],
+        "summary": "批量根据 URN 查询菜单详情",
+        "description": "权限标识: menus_by_urns",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryMenusByURNsReq"
+              },
+              "example": {
+                "urns": [
+                  "item1",
+                  "item2"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/permission/subjects/search": {
+      "post": {
+        "tags": [
+          "权限管理"
+        ],
+        "summary": "搜索授权主体",
+        "description": "权限标识: search_subjects",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchSubjectsReq"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0,
+                "sub_type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/batch-attach": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "批量绑定策略",
+        "description": "权限标识: batch_attach",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchAttachPolicyReq"
+              },
+              "example": {
+                "policy_codes": [
+                  "item1",
+                  "item2"
+                ],
+                "subjects": [
+                  "item1",
+                  "item2"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/batch-delete": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "批量删除策略",
+        "description": "权限标识: batch_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeletePolicyReq"
+              },
+              "example": {
+                "codes": [
+                  "item1",
+                  "item2"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/batch-detach": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "批量解绑策略",
+        "description": "权限标识: batch_detach",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDetachPolicyReq"
+              },
+              "example": {
+                "assignments": [
+                  "item1",
+                  "item2"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/create": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "创建策略",
+        "description": "权限标识: add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePolicyReq"
+              },
+              "example": {
+                "code": "admin",
+                "desc": "相关业务描述信息",
+                "name": "示例名称",
+                "statement": [
+                  "item1",
+                  "item2"
+                ],
+                "type": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/delete/{code}": {
+      "delete": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "删除策略",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "唯一标识编码 Code",
+            "schema": {
+              "type": "string",
+              "example": "admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/detach": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "解绑策略",
+        "description": "权限标识: detach",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachPolicyReq"
+              },
+              "example": {
+                "policy_code": "admin",
+                "sub_code": "admin",
+                "sub_type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/detail/{code}": {
+      "get": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "策略详情",
+        "description": "权限标识: get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "唯一标识编码 Code",
+            "schema": {
+              "type": "string",
+              "example": "admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/list": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "list",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListPolicyReq"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0,
+                "type": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/list/attached/group": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "group",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/list/attached/role": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "查询角色策略",
+        "description": "权限标识: view_role_policies",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListRolePoliciesReq"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0,
+                "role_code": "admin",
+                "type": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/list/attached/user": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "查询用户策略",
+        "description": "权限标识: view_user_policies",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListUserPoliciesReq"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0,
+                "type": 0,
+                "user_id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/policy/update": {
+      "post": {
+        "tags": [
+          "策略管理"
+        ],
+        "summary": "修改策略",
+        "description": "权限标识: edit",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePolicyReq"
+              },
+              "example": {
+                "code": "admin",
+                "desc": "相关业务描述信息",
+                "name": "示例名称",
+                "statement": [
+                  "item1",
+                  "item2"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/add_parent": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "添加父角色",
+        "description": "权限标识: add_parent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleInheritanceReq"
+              },
+              "example": {
+                "parent_role_code": "admin",
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/analysis/inline": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "分析内联策略",
+        "description": "权限标识: analysis",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleAnalysisReq"
+              },
+              "example": {
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/batch_assign": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "批量分配角色",
+        "description": "权限标识: batch_assign",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchAssignRoleRequest"
+              },
+              "example": {
+                "role_codes": [
+                  "item1",
+                  "item2"
+                ],
+                "usernames": [
+                  "admin",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/batch_delete": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "批量删除角色",
+        "description": "权限标识: batch_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteReq"
+              },
+              "example": {
+                "ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/batch_unassign": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "批量移除角色",
+        "description": "权限标识: batch_unassign",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchUnassignRoleRequest"
+              },
+              "example": {
+                "role_codes": [
+                  "item1",
+                  "item2"
+                ],
+                "usernames": [
+                  "admin",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/create": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "创建角色",
+        "description": "权限标识: add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleRequest"
+              },
+              "example": {
+                "code": "admin",
+                "desc": "相关业务描述信息",
+                "name": "示例名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/delete/{id}": {
+      "delete": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "删除角色",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/detail/{code}": {
+      "get": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "角色详情",
+        "description": "权限标识: get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "唯一标识编码 Code",
+            "schema": {
+              "type": "string",
+              "example": "admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/list": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "角色列表",
+        "description": "权限标识: view",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListRoleRequest"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/list/attached/user": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "查询用户角色",
+        "description": "权限标识: view_user_roles",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListUserRolesRequest"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0,
+                "user_id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/mine": {
+      "get": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "查看个人角色",
+        "description": "权限标识: view_mine",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/parents": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "获取父角色",
+        "description": "权限标识: view_parents",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetParentRolesReq"
+              },
+              "example": {
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/remove_parent": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "移除父角色",
+        "description": "权限标识: remove_parent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleInheritanceReq"
+              },
+              "example": {
+                "parent_role_code": "admin",
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/unassign": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "移除角色分配",
+        "description": "权限标识: unassign",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnassignRoleRequest"
+              },
+              "example": {
+                "role_code": "admin",
+                "username": "示例名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/role/update": {
+      "post": {
+        "tags": [
+          "角色管理"
+        ],
+        "summary": "修改角色",
+        "description": "权限标识: edit",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleRequest"
+              },
+              "example": {
+                "code": "admin",
+                "desc": "相关业务描述信息",
+                "id": 1,
+                "name": "示例名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/assign": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "assign",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/batch_assign": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "批量分配租户成员",
+        "description": "权限标识: batch_assign",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchAssignTenantsReq"
+              },
+              "example": {
+                "tenant_ids": [
+                  1,
+                  2,
+                  3
+                ],
+                "user_ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/batch_delete": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "批量删除租户",
+        "description": "权限标识: batch_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteTenantReq"
+              },
+              "example": {
+                "ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/batch_unassign": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "批量移除租户成员",
+        "description": "权限标识: batch_unassign",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchUnassignTenantsReq"
+              },
+              "example": {
+                "tenant_ids": [
+                  1,
+                  2,
+                  3
+                ],
+                "user_ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/create": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "创建租户空间",
+        "description": "权限标识: add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTenantReq"
+              },
+              "example": {
+                "code": "admin",
+                "name": "示例名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/delete/{id}": {
+      "delete": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "删除租户空间",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/detail/{id}": {
+      "get": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "查看租户详情",
+        "description": "权限标识: get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/list": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "全量租户列表",
+        "description": "权限标识: view",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListTenantReq"
+              },
+              "example": {
+                "keyword": "search_key",
+                "limit": 10,
+                "offset": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/list/attached/user": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "user",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/list/by-ids": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "批量查询租户",
+        "description": "权限标识: view_by_ids",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListTenantsByIDsReq"
+              },
+              "example": {
+                "ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/list/mine": {
+      "get": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "查询我的租户列表",
+        "description": "权限标识: view_mine",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/members": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "members",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/switch": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "切换租户空间",
+        "description": "权限标识: switch",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/unassign": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "unassign",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/tenant/update": {
+      "post": {
+        "tags": [
+          "租户管理"
+        ],
+        "summary": "修改租户信息",
+        "description": "权限标识: edit",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantReq"
+              },
+              "example": {
+                "code": "admin",
+                "domain": "string",
+                "id": 1,
+                "name": "示例名称",
+                "status": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/batch_delete": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "批量删除用户",
+        "description": "权限标识: batch_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteReq"
+              },
+              "example": {
+                "ids": [
+                  1,
+                  2,
+                  3
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/bind/confirm": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "confirm",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/create": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "创建用户",
+        "description": "权限标识: add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              },
+              "example": {
+                "confirm_password": "Password123!",
+                "password": "Password123!"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/delete/{id}": {
+      "delete": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "删除用户",
+        "description": "权限标识: delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "唯一数字标识 ID",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/detail": {
+      "get": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "用户详情",
+        "description": "权限标识: get",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/identity/list": {
+      "get": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "list",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/identity/manage": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "治理外部身份",
+        "description": "权限标识: manage_identity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManageIdentitiesRequest"
+              },
+              "example": {
+                "feishu_info": "string",
+                "ldap_info": "string",
+                "user_id": 1,
+                "wechat_info": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/identity/unbind": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "解绑外部身份",
+        "description": "权限标识: unbind_identity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnbindIdentityRequest"
+              },
+              "example": {
+                "identity_id": "string",
+                "provider": "string",
+                "user_id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/ldap/login": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "login",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/ldap/refresh_cache": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "刷新 LDAP 缓存",
+        "description": "权限标识: refresh",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/ldap/search": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "搜索 LDAP",
+        "description": "权限标识: search",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchLdapUser"
+              },
+              "example": {
+                "keywords": "search_key",
+                "limit": 10,
+                "offset": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/ldap/sync": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "同步 LDAP",
+        "description": "权限标识: sync",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncLdapUserReq"
+              },
+              "example": {
+                "users": [
+                  "admin",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/list": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "用户列表",
+        "description": "权限标识: view",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListUserRequest"
+              },
+              "example": {
+                "ids": [
+                  1,
+                  2,
+                  3
+                ],
+                "usernames": [
+                  "admin",
+                  "guest"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/list/attached/role": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "角色关联用户列表",
+        "description": "权限标识: view_role_members",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListRoleUsersRequest"
+              },
+              "example": {
+                "role_code": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/login/mfa/verify": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "verify",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/logout": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "logout",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/mfa/disable": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "disable",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/mfa/totp/bind": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "bind",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/mfa/totp/setup": {
+      "get": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "setup",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/oidc/callback": {
+      "get": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "callback",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/oidc/render": {
+      "get": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "render",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/passkey/login/finish": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "finish",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/passkey/login/start": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "start",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/passkey/register/finish": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "finish",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/passkey/register/start": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "start",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/password/update": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "update",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/profile": {
+      "get": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "profile",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/signup": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "signup",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/system/login": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "login",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/user/update": {
+      "post": {
+        "tags": [
+          "用户管理"
+        ],
+        "summary": "修改用户",
+        "description": "权限标识: edit",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserReq"
+              },
+              "example": {
+                "id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    },
+    "/api/v1/discovery/sync": {
+      "post": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "sync",
+        "responses": {
+          "200": {
+            "description": "请求成功"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "discovery"
+    },
+    {
+      "name": "成员治理"
+    },
+    {
+      "name": "权限管理"
+    },
+    {
+      "name": "用户分组"
+    },
+    {
+      "name": "用户管理"
+    },
+    {
+      "name": "租户管理"
+    },
+    {
+      "name": "策略管理"
+    },
+    {
+      "name": "角色管理"
+    },
+    {
+      "name": "身份源管理"
+    },
+    {
+      "name": "部门管理"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "AssignMembersRequest": {
+        "type": "object",
+        "properties": {
+          "group_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "usernames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "admin",
+              "guest"
+            ]
+          }
+        },
+        "required": [
+          "group_code",
+          "usernames"
+        ],
+        "example": {
+          "group_code": "admin",
+          "usernames": [
+            "admin",
+            "guest"
+          ]
+        }
+      },
+      "AssignRoleRequest": {
+        "type": "object",
+        "properties": {
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          }
+        },
+        "required": [
+          "role_code"
+        ],
+        "example": {
+          "role_code": "admin"
+        }
+      },
+      "AssignUsersRequest": {
+        "type": "object",
+        "properties": {
+          "dept_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "user_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "required": [
+          "dept_id",
+          "user_ids"
+        ],
+        "example": {
+          "dept_id": 1,
+          "user_ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "AttachPolicyReq": {
+        "type": "object",
+        "properties": {
+          "policy_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "sub_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "sub_type": {
+            "type": "string",
+            "example": "string"
+          }
+        },
+        "example": {
+          "policy_code": "admin",
+          "sub_code": "admin",
+          "sub_type": "string"
+        }
+      },
+      "AuthorizationQueryReq": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "obj_type": {
+            "type": "string",
+            "description": "role, policy",
+            "example": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "sub_type": {
+            "type": "string",
+            "description": "user, role, group",
+            "example": "string"
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "obj_type": "string",
+          "offset": 0,
+          "sub_type": "string"
+        }
+      },
+      "BatchAssignRoleRequest": {
+        "type": "object",
+        "properties": {
+          "role_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          },
+          "usernames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "admin",
+              "guest"
+            ]
+          }
+        },
+        "required": [
+          "usernames",
+          "role_codes"
+        ],
+        "example": {
+          "role_codes": [
+            "item1",
+            "item2"
+          ],
+          "usernames": [
+            "admin",
+            "guest"
+          ]
+        }
+      },
+      "BatchAssignTenantsReq": {
+        "type": "object",
+        "properties": {
+          "tenant_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          },
+          "user_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "required": [
+          "user_ids",
+          "tenant_ids"
+        ],
+        "example": {
+          "tenant_ids": [
+            1,
+            2,
+            3
+          ],
+          "user_ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "BatchAttachPolicyReq": {
+        "type": "object",
+        "properties": {
+          "policy_codes": {
+            "type": "array",
+            "description": "PolicyCodes 策略代码列表",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          },
+          "subjects": {
+            "type": "array",
+            "description": "Subjects 主体列表，可同时包含 user、role 和 group",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          }
+        },
+        "example": {
+          "policy_codes": [
+            "item1",
+            "item2"
+          ],
+          "subjects": [
+            "item1",
+            "item2"
+          ]
+        }
+      },
+      "BatchDeletePolicyReq": {
+        "type": "object",
+        "properties": {
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          }
+        },
+        "required": [
+          "codes"
+        ],
+        "example": {
+          "codes": [
+            "item1",
+            "item2"
+          ]
+        }
+      },
+      "BatchDeleteReq": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "example": {
+          "ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "BatchDeleteTenantReq": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "example": {
+          "ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "BatchDetachPolicyReq": {
+        "type": "object",
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          }
+        },
+        "example": {
+          "assignments": [
+            "item1",
+            "item2"
+          ]
+        }
+      },
+      "BatchRevokeInvitationReq": {
+        "type": "object",
+        "properties": {
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          }
+        },
+        "required": [
+          "codes"
+        ],
+        "example": {
+          "codes": [
+            "item1",
+            "item2"
+          ]
+        }
+      },
+      "BatchUnassignRoleRequest": {
+        "type": "object",
+        "properties": {
+          "role_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          },
+          "usernames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "admin",
+              "guest"
+            ]
+          }
+        },
+        "required": [
+          "usernames",
+          "role_codes"
+        ],
+        "example": {
+          "role_codes": [
+            "item1",
+            "item2"
+          ],
+          "usernames": [
+            "admin",
+            "guest"
+          ]
+        }
+      },
+      "BatchUnassignTenantsReq": {
+        "type": "object",
+        "properties": {
+          "tenant_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          },
+          "user_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "required": [
+          "user_ids",
+          "tenant_ids"
+        ],
+        "example": {
+          "tenant_ids": [
+            1,
+            2,
+            3
+          ],
+          "user_ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "CreateDeptRequest": {
+        "type": "object",
+        "properties": {
+          "leaders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          },
+          "main_leader": {
+            "type": "string",
+            "example": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          },
+          "parent_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "sort": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "example": {
+          "leaders": [
+            "item1",
+            "item2"
+          ],
+          "main_leader": "string",
+          "name": "示例名称",
+          "parent_id": 1,
+          "sort": 0
+        }
+      },
+      "CreateGroupRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "desc": {
+            "type": "string",
+            "example": "相关业务描述信息"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          }
+        },
+        "required": [
+          "name",
+          "code"
+        ],
+        "example": {
+          "code": "admin",
+          "desc": "相关业务描述信息",
+          "name": "示例名称"
+        }
+      },
+      "CreateInvitationReq": {
+        "type": "object",
+        "properties": {
+          "expiry_days": {
+            "type": "integer",
+            "description": "前端按天传，后端计算成毫秒",
+            "example": 0
+          },
+          "max_uses": {
+            "type": "integer",
+            "example": 0
+          },
+          "require_approval": {
+            "type": "boolean",
+            "example": true
+          },
+          "role_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          }
+        },
+        "example": {
+          "expiry_days": 0,
+          "max_uses": 0,
+          "require_approval": true,
+          "role_codes": [
+            "item1",
+            "item2"
+          ]
+        }
+      },
+      "CreatePolicyReq": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "desc": {
+            "type": "string",
+            "example": "相关业务描述信息"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          },
+          "statement": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          },
+          "type": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "code": "admin",
+          "desc": "相关业务描述信息",
+          "name": "示例名称",
+          "statement": [
+            "item1",
+            "item2"
+          ],
+          "type": 0
+        }
+      },
+      "CreateRoleRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "desc": {
+            "type": "string",
+            "example": "相关业务描述信息"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          }
+        },
+        "required": [
+          "name",
+          "code"
+        ],
+        "example": {
+          "code": "admin",
+          "desc": "相关业务描述信息",
+          "name": "示例名称"
+        }
+      },
+      "CreateTenantReq": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          }
+        },
+        "required": [
+          "name",
+          "code"
+        ],
+        "example": {
+          "code": "admin",
+          "name": "示例名称"
+        }
+      },
+      "GetParentRolesReq": {
+        "type": "object",
+        "properties": {
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          }
+        },
+        "required": [
+          "role_code"
+        ],
+        "example": {
+          "role_code": "admin"
+        }
+      },
+      "HandleJoinRequestReq": {
+        "type": "object",
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "example": true
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "example": {
+          "approve": true,
+          "id": 1
+        }
+      },
+      "ListAttachedRoleGroupsRequest": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          }
+        },
+        "required": [
+          "role_code"
+        ],
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0,
+          "role_code": "admin"
+        }
+      },
+      "ListAttachedUserGroupsRequest": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "user_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "username": {
+            "type": "string",
+            "example": "示例名称"
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0,
+          "user_id": 1,
+          "username": "示例名称"
+        }
+      },
+      "ListGroupRequest": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "limit": 10,
+          "offset": 0
+        }
+      },
+      "ListMembersRequest": {
+        "type": "object",
+        "properties": {
+          "group_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "required": [
+          "group_code"
+        ],
+        "example": {
+          "group_code": "admin",
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0
+        }
+      },
+      "ListPolicyReq": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "type": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0,
+          "type": 0
+        }
+      },
+      "ListRolePoliciesReq": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "type": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0,
+          "role_code": "admin",
+          "type": 0
+        }
+      },
+      "ListRoleRequest": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0
+        }
+      },
+      "ListRoleUsersRequest": {
+        "type": "object",
+        "properties": {
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          }
+        },
+        "example": {
+          "role_code": "admin"
+        }
+      },
+      "ListTenantReq": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0
+        }
+      },
+      "ListTenantsByIDsReq": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "example": {
+          "ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "ListUserPoliciesReq": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "type": {
+            "type": "integer",
+            "example": 0
+          },
+          "user_id": {
+            "type": "integer",
+            "example": 1
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0,
+          "type": 0,
+          "user_id": 1
+        }
+      },
+      "ListUserRequest": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          },
+          "usernames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "admin",
+              "guest"
+            ]
+          }
+        },
+        "example": {
+          "ids": [
+            1,
+            2,
+            3
+          ],
+          "usernames": [
+            "admin",
+            "guest"
+          ]
+        }
+      },
+      "ListUserRolesRequest": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "user_id": {
+            "type": "integer",
+            "example": 1
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0,
+          "user_id": 1
+        }
+      },
+      "ManageIdentitiesRequest": {
+        "type": "object",
+        "properties": {
+          "feishu_info": {
+            "type": "string",
+            "example": "string"
+          },
+          "ldap_info": {
+            "type": "string",
+            "example": "string"
+          },
+          "user_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "wechat_info": {
+            "type": "string",
+            "example": "string"
+          }
+        },
+        "example": {
+          "feishu_info": "string",
+          "ldap_info": "string",
+          "user_id": 1,
+          "wechat_info": "string"
+        }
+      },
+      "Page": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "page": {
+            "type": "integer",
+            "example": 0
+          },
+          "page_size": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "limit": 10,
+          "offset": 0,
+          "page": 0,
+          "page_size": 0
+        }
+      },
+      "QueryMenusByURNsReq": {
+        "type": "object",
+        "properties": {
+          "urns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          }
+        },
+        "required": [
+          "urns"
+        ],
+        "example": {
+          "urns": [
+            "item1",
+            "item2"
+          ]
+        }
+      },
+      "RemoveMembersRequest": {
+        "type": "object",
+        "properties": {
+          "group_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "usernames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "admin",
+              "guest"
+            ]
+          }
+        },
+        "required": [
+          "group_code",
+          "usernames"
+        ],
+        "example": {
+          "group_code": "admin",
+          "usernames": [
+            "admin",
+            "guest"
+          ]
+        }
+      },
+      "RemoveRoleRequest": {
+        "type": "object",
+        "properties": {
+          "group_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          }
+        },
+        "required": [
+          "group_code",
+          "role_code"
+        ],
+        "example": {
+          "group_code": "admin",
+          "role_code": "admin"
+        }
+      },
+      "RemoveUsersRequest": {
+        "type": "object",
+        "properties": {
+          "dept_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "user_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "required": [
+          "dept_id",
+          "user_ids"
+        ],
+        "example": {
+          "dept_id": 1,
+          "user_ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "RoleAnalysisReq": {
+        "type": "object",
+        "properties": {
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          }
+        },
+        "required": [
+          "role_code"
+        ],
+        "example": {
+          "role_code": "admin"
+        }
+      },
+      "RoleInheritanceReq": {
+        "type": "object",
+        "properties": {
+          "parent_role_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          }
+        },
+        "required": [
+          "role_code",
+          "parent_role_code"
+        ],
+        "example": {
+          "parent_role_code": "admin",
+          "role_code": "admin"
+        }
+      },
+      "SaveIdentitySourceReq": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "example": true
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "ldap": {
+            "type": "string",
+            "description": "LDAP 专有配置",
+            "example": "string"
+          },
+          "local": {
+            "type": "string",
+            "example": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          },
+          "oidc": {
+            "type": "string",
+            "example": "string"
+          },
+          "passkey": {
+            "type": "string",
+            "example": "string"
+          },
+          "type": {
+            "type": "string",
+            "example": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "example": {
+          "enabled": true,
+          "id": 1,
+          "ldap": "string",
+          "local": "string",
+          "name": "示例名称",
+          "oidc": "string",
+          "passkey": "string",
+          "type": "string"
+        }
+      },
+      "SearchLdapUser": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "example": {
+          "keywords": "search_key",
+          "limit": 10,
+          "offset": 0
+        }
+      },
+      "SearchSubjectsReq": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "example": "search_key"
+          },
+          "limit": {
+            "type": "integer",
+            "example": 10
+          },
+          "offset": {
+            "type": "integer",
+            "example": 0
+          },
+          "sub_type": {
+            "type": "string",
+            "example": "string"
+          }
+        },
+        "example": {
+          "keyword": "search_key",
+          "limit": 10,
+          "offset": 0,
+          "sub_type": "string"
+        }
+      },
+      "SignupRequest": {
+        "type": "object",
+        "properties": {
+          "confirm_password": {
+            "type": "string",
+            "example": "Password123!"
+          },
+          "password": {
+            "type": "string",
+            "example": "Password123!"
+          }
+        },
+        "example": {
+          "confirm_password": "Password123!",
+          "password": "Password123!"
+        }
+      },
+      "SyncLdapUserReq": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "admin",
+              "guest"
+            ]
+          }
+        },
+        "example": {
+          "users": [
+            "admin",
+            "guest"
+          ]
+        }
+      },
+      "UnassignRoleRequest": {
+        "type": "object",
+        "properties": {
+          "role_code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "username": {
+            "type": "string",
+            "example": "示例名称"
+          }
+        },
+        "required": [
+          "username",
+          "role_code"
+        ],
+        "example": {
+          "role_code": "admin",
+          "username": "示例名称"
+        }
+      },
+      "UnbindIdentityRequest": {
+        "type": "object",
+        "properties": {
+          "identity_id": {
+            "type": "string",
+            "example": "string"
+          },
+          "provider": {
+            "type": "string",
+            "example": "string"
+          },
+          "user_id": {
+            "type": "integer",
+            "example": 1
+          }
+        },
+        "example": {
+          "identity_id": "string",
+          "provider": "string",
+          "user_id": 1
+        }
+      },
+      "UpdateDeptRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "leaders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          },
+          "main_leader": {
+            "type": "string",
+            "example": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          },
+          "parent_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "sort": {
+            "type": "integer",
+            "example": 0
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "example": {
+          "id": 1,
+          "leaders": [
+            "item1",
+            "item2"
+          ],
+          "main_leader": "string",
+          "name": "示例名称",
+          "parent_id": 1,
+          "sort": 0
+        }
+      },
+      "UpdateGroupRequest": {
+        "type": "object",
+        "properties": {
+          "desc": {
+            "type": "string",
+            "example": "相关业务描述信息"
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "example": {
+          "desc": "相关业务描述信息",
+          "id": 1,
+          "name": "示例名称"
+        }
+      },
+      "UpdatePolicyReq": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "desc": {
+            "type": "string",
+            "example": "相关业务描述信息"
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          },
+          "statement": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "item1",
+              "item2"
+            ]
+          }
+        },
+        "example": {
+          "code": "admin",
+          "desc": "相关业务描述信息",
+          "name": "示例名称",
+          "statement": [
+            "item1",
+            "item2"
+          ]
+        }
+      },
+      "UpdateRoleRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "desc": {
+            "type": "string",
+            "example": "相关业务描述信息"
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          }
+        },
+        "required": [
+          "id",
+          "code"
+        ],
+        "example": {
+          "code": "admin",
+          "desc": "相关业务描述信息",
+          "id": 1,
+          "name": "示例名称"
+        }
+      },
+      "UpdateTenantReq": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "admin"
+          },
+          "domain": {
+            "type": "string",
+            "example": "string"
+          },
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "示例名称"
+          },
+          "status": {
+            "type": "integer",
+            "example": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "code"
+        ],
+        "example": {
+          "code": "admin",
+          "domain": "string",
+          "id": 1,
+          "name": "示例名称",
+          "status": 1
+        }
+      },
+      "UpdateUserReq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1
+          }
+        },
+        "example": {
+          "id": 1
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "请输入登录后获取的 JWT Bearer Token 进行接口调用鉴权"
+      }
+    }
+  }
+}
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>

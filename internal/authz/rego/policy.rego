@@ -17,16 +17,17 @@ allow if {
 # 一次性返回 batch_resources 中所有允许访问的资源 URN 集合
 allowed_resources contains res if {
 	some res in input.batch_resources
-	# 为每个资源动态筛选生效的 Statements
+	# 优先从映射表获取该资源对应的动作候选集，无动作候选时提前短路，避免无效遍历
+	actions := input.resource_actions[res]
+	some action in actions
+
+	# 为该资源动态筛选生效的 Statements
 	statements := [stmt | 
 		some policy in input.policies
 		some stmt in policy.Statement
 		match_pattern(stmt.Resource, res)
 	]
-	
-	# 从映射表获取该资源对应的动作候选人集 (如该菜单关联的所有 Permission Code)
-	actions := input.resource_actions[res]
-	some action in actions
+
 	is_allowed(action, statements)
 	not has_deny_action(actions, statements)
 }

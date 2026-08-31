@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 现代化三栏式 API 交互文档引擎 (Scalar) -->
+    <script
+      id="api-reference"
+      type="application/json"
+      data-configuration='{
+        "theme": "elysia",
+        "showSidebar": true,
+        "searchHotKey": "k",
+        "layout": "modern"
+      }'>
+{{ .SpecJSON }}
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>

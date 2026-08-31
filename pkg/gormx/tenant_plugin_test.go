@@ -115,7 +115,9 @@ func runTenantTests(t *testing.T, defaultModels []any, tests []tenantTestCase, d
 			}
 
 			if tc.after != nil {
-				tc.after(t, db)
+				// after 是全局视角的结果验证，必须显式声明豁免租户隔离
+				verifyCtx := IgnoreTenantContext(context.Background())
+				tc.after(t, db.WithContext(verifyCtx))
 			}
 		})
 	}

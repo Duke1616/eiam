@@ -2,6 +2,7 @@ package gormx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -142,18 +143,21 @@ func (p *TenantPlugin) handleQuery(db *gorm.DB) {
 		return
 	}
 
-	tid := ctxutil.GetTenantID(db.Statement.Context)
-	// 如果无租户上下文 (tid == 0)，豁免隔离限制，支持后台事务/系统迁移任务全局检索
-	if tid == 0 {
-		return
-	}
-
 	// 防重复注入拦截，避免 GORM 内部重用 Statement 时产生重复的条件嵌套
 	if _, ok := db.InstanceGet(INJECTED_KEY); ok {
 		return
 	}
 
+	// 对不含 tenant_id 列的表（如 casbin_rule、services）直接放行，无隔离语义
 	if _, ok := db.Statement.Schema.FieldsByDBName[p.tenantColumn]; !ok {
+		return
+	}
+
+	tid := ctxutil.GetTenantID(db.Statement.Context)
+	// Fail-Closed 零信任防线：仅对有 tenant_id 列的表强制要求有效租户上下文，
+	// 不再静默豁免 tid == 0，彻底消灭因漏挂中间件或 Session 损坏导致的多租户数据越权风险
+	if tid <= 0 {
+		_ = db.AddError(errors.New("多租户安全拦截：未显式声明 IgnoreTenant 且缺失有效租户上下文，请使用 gormx.IgnoreTenantContext(ctx) 显式提权"))
 		return
 	}
 
@@ -200,15 +204,19 @@ func (p *TenantPlugin) handleStrict(db *gorm.DB) {
 		return
 	}
 
-	tid := ctxutil.GetTenantID(db.Statement.Context)
-	// 无租户上下文豁免严格写校验，以支持后台全局事务或脚本操作
-	if tid == 0 {
+	// 对不含 tenant_id 列的表直接放行，无隔离语义
+	if _, ok := db.Statement.Schema.FieldsByDBName[p.tenantColumn]; !ok {
 		return
 	}
 
-	if _, ok := db.Statement.Schema.FieldsByDBName[p.tenantColumn]; ok {
-		db.Where(p.strictSQL, tid.Int64())
+	tid := ctxutil.GetTenantID(db.Statement.Context)
+	// Fail-Closed 零信任防线：仅对有 tenant_id 列的表强制拒绝无租户上下文的写操作，防止纵向/横向越权
+	if tid <= 0 {
+		_ = db.AddError(errors.New("多租户安全拦截：未显式声明 IgnoreTenant 且缺失有效租户上下文，请使用 gormx.IgnoreTenantContext(ctx) 显式提权"))
+		return
 	}
+
+	db.Where(p.strictSQL, tid.Int64())
 }
 
 // getSharedConfig 获取并缓存模型的共享规则，第一次解析时构建查询 SQL 以提升高频查询的拼接效率

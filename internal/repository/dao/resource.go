@@ -113,7 +113,7 @@ type ResourceDAO struct {
 func (d *ResourceDAO) getDB(ctx context.Context) *gorm.DB {
 	tx, ok := ctx.Value(txKey{}).(*gorm.DB)
 	if ok {
-		return tx
+		return tx.WithContext(ctx)
 	}
 	return d.db.WithContext(ctx)
 }

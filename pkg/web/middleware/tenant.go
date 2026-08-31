@@ -64,7 +64,17 @@ func (b *TenancyBuilder) Build() gin.HandlerFunc {
 			currentTid, _ = claims.Get("tenant_id").AsInt64()
 		}
 
-		// 没有任何租户信息，跳过
+		// 2.1 安全防线：如果已通过身份认证，但租户 ID 非法 (<= 0)，坚决拦截，杜绝将 0 注入 Context 引发穿透
+		if uid > 0 && currentTid <= 0 {
+			b.logger.Warn("已登录用户缺失有效租户空间上下文", elog.Int64("uid", uid))
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, ginx.Result{
+				Code: 401002,
+				Msg:  "用户未关联任何有效租户空间，请先选择或加入空间",
+			})
+			return
+		}
+
+		// 没有任何身份或租户信息（如公开未鉴权接口），跳过不予注入
 		if uid == 0 && currentTid == 0 {
 			ctx.Next()
 			return
@@ -77,10 +87,7 @@ func (b *TenancyBuilder) Build() gin.HandlerFunc {
 		//   tenant_id        = 执行租户 (操作谁的数据 → GORM 数据隔离)
 		//   origin_tenant_id = 身份租户 (你是谁 → 鉴权校验)
 		// 注入时两者相同；后续 WithTenantOverride 只覆写 tenant_id，origin_tenant_id 保留会话真实身份
-		newCtx := ctxutil.WithUserID(ctx.Request.Context(), uid)
-		newCtx = ctxutil.WithTenantID(newCtx, currentTid)
-		newCtx = ctxutil.WithOriginTenantID(newCtx, currentTid)
-		ctx.Request = ctx.Request.WithContext(newCtx)
+		ctx.Request = ctx.Request.WithContext(ctxutil.WithUserAndTenant(ctx.Request.Context(), uid, currentTid))
 
 		ctx.Next()
 	}

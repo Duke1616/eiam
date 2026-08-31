@@ -8,7 +8,7 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 )
 
-// SyncPipeline 异步任务流，用于优雅组织初始化任务
+// SyncPipeline 同步串行任务流水线，用于按严格先后依赖顺序组织并执行初始化任务
 type SyncPipeline struct {
 	ctx   context.Context
 	l     *elog.Component

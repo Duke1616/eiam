@@ -12,6 +12,13 @@ var (
 	// ErrRoleSelfInheritance 角色禁止继承自身
 	ErrRoleSelfInheritance = errors.New("角色禁止继承自身")
 
+	// 菜单拓扑层级相关错误
+	ErrMenuSelfParent  = errors.New("菜单禁止将自身设为父节点")
+	ErrMenuCycleParent = errors.New("菜单禁止移入自身的子孙节点（防止循环引用死循环）")
+
+	// 多租户隔离相关错误
+	ErrMissingTenantContext = errors.New("多租户安全拦截：未显式声明 IgnoreTenant 且缺失有效租户上下文")
+
 	ErrUserExist          = errors.New("用户名已存在")
 	ErrInvalidUser        = errors.New("账号或密码错误")
 	ErrProviderNotFound   = errors.New("未找到指定的身份源适配器")

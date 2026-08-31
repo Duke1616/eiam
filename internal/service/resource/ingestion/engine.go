@@ -7,6 +7,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/pkg/gormx"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/samber/lo"
 )
@@ -55,7 +56,11 @@ func (e *engine) Ingest(ctx context.Context, snap Snapshot) error {
 	if err := snap.Validate(); err != nil {
 		return fmt.Errorf("资产快照校验失败: %w", err)
 	}
+	// 系统级资产录入：显式声明豁免租户隔离，以全局物理视角同步资源与权限绑定
+	ctx = gormx.IgnoreTenantContext(ctx)
+
 	return e.permRepo.Transaction(ctx, func(txCtx context.Context) error {
+
 		// 1. 物理清空该服务的所有旧逻辑权限和资源映射关系
 		if err := e.permRepo.PhysicalClearService(txCtx, snap.Service, snap.Source); err != nil {
 			return fmt.Errorf("清空旧权限与映射失败: %w", err)
@@ -123,14 +128,20 @@ func filterAPIBindings(bindings map[string][]string) map[string][]string {
 // IngestMenus 执行本地菜单资产的全量同步（Full-Sync 模式）。
 // 同步菜单元数据的同时，对绑定关系执行先删后插的强一致性对齐。
 func (e *engine) IngestMenus(ctx context.Context, menus domain.MenuTree) error {
+	// 系统级菜单资产同步：显式声明豁免租户隔离，对齐物理菜单与全局绑定
+	ctx = gormx.IgnoreTenantContext(ctx)
+
 	flatList := menus.Flatten()
 
-	// 1. 提取菜单与权限码的绑定关系
+	// 1. 提取菜单与权限码的绑定关系并进行去重防御
 	bindings := make(map[string][]string)
 	for _, m := range flatList {
 		if m.PermissionCode != "" {
 			bindings[m.PermissionCode] = append(bindings[m.PermissionCode], m.URN())
 		}
+	}
+	for code, urns := range bindings {
+		bindings[code] = lo.Uniq(urns)
 	}
 
 	// 2. 同步菜单资产

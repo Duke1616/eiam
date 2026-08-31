@@ -18,6 +18,14 @@ tasks:
     desc: 代码生成
     cmds:
       - buf generate api/proto
+  gen:perm:
+    desc: 运行 AST 权限扫描与代码/文档生成
+    cmds:
+      - go run ./cmd/permgen
+  gen:swagger:
+    desc: 运行独立 OpenAPI/Swagger 接口文档与交互页面生成
+    cmds:
+      - go run ./cmd/swaggergen
   mock:
     desc: 生成 Mock 代码
     cmds:

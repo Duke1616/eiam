@@ -4,12 +4,12 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/samber/lo"
 )
 
 //go:embed rego/policy.rego
@@ -93,6 +93,15 @@ func (o *OPAAuthorizer) Authorize(ctx context.Context, input AuthInput) (bool, e
 
 // Decide 保留 OPA 对 Action 和 Resource 的匹配职责，在 Go 中求值 Condition 并解析 AccessScope。
 func (o *OPAAuthorizer) Decide(ctx context.Context, input AuthInput) (pbac.Decision, error) {
+	// 零信任短路保护：无策略文档时默认隐式拒绝，无需调用 OPA 引擎
+	if len(input.Policies) == 0 {
+		return pbac.Decision{
+			Allowed:    false,
+			ReasonCode: pbac.ReasonNoMatchingAllow,
+			Reason:     "no matching allow statement",
+		}, nil
+	}
+
 	if !requiresExtendedEvaluation(input.Policies) {
 		allowed, err := o.authorizeOPA(ctx, input)
 		return pbac.Decision{Allowed: allowed, FilterProfile: input.FilterProfile}, err
@@ -157,24 +166,16 @@ func (o *OPAAuthorizer) authorizeOPA(ctx context.Context, input AuthInput) (bool
 	if err != nil {
 		return false, fmt.Errorf("failed to evaluate OPA policy: %w", err)
 	}
-
-	if len(results) == 0 {
-		return false, nil
-	}
-
-	allow, ok := results[0].Expressions[0].Value.(bool)
-	return ok && allow, nil
+	// 利用 OPA 原生提供的 ResultSet.Allowed() 安全提取单一布尔判定结果
+	return results.Allowed(), nil
 }
 
 func requiresExtendedEvaluation(policies []domain.Policy) bool {
-	for _, policy := range policies {
-		for _, statement := range policy.Statement {
-			if statement.Condition != nil || statement.AccessScope != nil {
-				return true
-			}
-		}
-	}
-	return false
+	return lo.SomeBy(policies, func(policy domain.Policy) bool {
+		return lo.SomeBy(policy.Statement, func(statement domain.Statement) bool {
+			return statement.Condition != nil || statement.AccessScope != nil
+		})
+	})
 }
 
 func (o *OPAAuthorizer) matchingStatements(ctx context.Context, input AuthInput) ([]domain.Statement, error) {
@@ -182,42 +183,61 @@ func (o *OPAAuthorizer) matchingStatements(ctx context.Context, input AuthInput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to match OPA statements: %w", err)
 	}
-	if len(results) == 0 {
+	raw, ok := extractSlice(results)
+	if !ok || len(raw) == 0 {
 		return nil, nil
 	}
-	raw, ok := results[0].Expressions[0].Value.([]interface{})
-	if !ok {
-		return nil, errors.New("OPA statement matching returned an invalid result")
-	}
-	statements := make([]domain.Statement, 0, len(raw))
-	for _, value := range raw {
+	return lo.MapErr(raw, func(value any, _ int) (domain.Statement, error) {
 		ref, err := decodeStatementRef(value)
 		if err != nil {
-			return nil, err
+			return domain.Statement{}, err
 		}
 		if ref.PolicyIndex < 0 || ref.PolicyIndex >= len(input.Policies) ||
 			ref.StatementIndex < 0 || ref.StatementIndex >= len(input.Policies[ref.PolicyIndex].Statement) {
-			return nil, fmt.Errorf("OPA statement reference is out of range: %#v", ref)
+			return domain.Statement{}, fmt.Errorf("OPA statement reference is out of range: %#v", ref)
 		}
-		statements = append(statements, input.Policies[ref.PolicyIndex].Statement[ref.StatementIndex])
-	}
-	return statements, nil
+		return input.Policies[ref.PolicyIndex].Statement[ref.StatementIndex], nil
+	})
 }
 
 func decodeStatementRef(value any) (statementRef, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return statementRef{}, fmt.Errorf("encode OPA statement reference: %w", err)
+	m, ok := value.(map[string]any)
+	if !ok {
+		return statementRef{}, fmt.Errorf("invalid statement ref: expected map, got %T", value)
 	}
-	var ref statementRef
-	if err = json.Unmarshal(data, &ref); err != nil {
-		return statementRef{}, fmt.Errorf("decode OPA statement reference: %w", err)
+
+	pIdx, ok1 := toInt(m["policy_index"])
+	sIdx, ok2 := toInt(m["statement_index"])
+	if !ok1 || !ok2 {
+		return statementRef{}, fmt.Errorf("invalid statement ref indices: %#v", m)
 	}
-	return ref, nil
+
+	return statementRef{PolicyIndex: pIdx, StatementIndex: sIdx}, nil
+}
+
+func toInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	case json.Number:
+		i, err := n.Int64()
+		return int(i), err == nil
+	default:
+		return 0, false
+	}
 }
 
 // AuthorizeBatch 批量执行 OPA 鉴权，返回允许访问的 URN 集合
 func (o *OPAAuthorizer) AuthorizeBatch(ctx context.Context, input AuthInput) ([]string, error) {
+	// 快速短路：资源列表为空或无策略文档时直接返回空列表，免除 OPA 引擎编译与计算开销
+	if len(input.BatchResources) == 0 || len(input.Policies) == 0 {
+		return []string{}, nil
+	}
+
 	if requiresExtendedEvaluation(input.Policies) {
 		allowed := make([]string, 0, len(input.BatchResources))
 		for _, resource := range input.BatchResources {
@@ -241,23 +261,26 @@ func (o *OPAAuthorizer) AuthorizeBatch(ctx context.Context, input AuthInput) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate OPA batch policy: %w", err)
 	}
+	return extractStringSlice(results), nil
+}
 
-	if len(results) == 0 {
-		return []string{}, nil
+// extractSlice 安全提取 OPA 查询结果中的元素切片，避免深层链式索引与空指针风险
+func extractSlice(rs rego.ResultSet) ([]any, bool) {
+	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
+		return nil, false
 	}
+	s, ok := rs[0].Expressions[0].Value.([]any)
+	return s, ok
+}
 
-	// OPA 集合查询结果通常是一个接口类型的切片，其值是 URN 字符串
-	rawRes, ok := results[0].Expressions[0].Value.([]interface{})
-	if !ok {
-		return []string{}, nil
+// extractStringSlice 安全提取 OPA 集合查询结果中的字符串切片
+func extractStringSlice(rs rego.ResultSet) []string {
+	raw, ok := extractSlice(rs)
+	if !ok || len(raw) == 0 {
+		return []string{}
 	}
-
-	res := make([]string, 0, len(rawRes))
-	for _, raw := range rawRes {
-		if s, ok := raw.(string); ok {
-			res = append(res, s)
-		}
-	}
-
-	return res, nil
+	return lo.FilterMap(raw, func(v any, _ int) (string, bool) {
+		s, ok := v.(string)
+		return s, ok
+	})
 }
