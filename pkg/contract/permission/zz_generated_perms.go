@@ -149,6 +149,7 @@ var Role = struct {
 	View             string // 角色列表 [租户级]
 	ViewMine         string // 查看个人角色 [租户级]
 	ViewParents      string // 获取父角色 [租户级]
+	ViewRoleGroups   string // 查询角色关联分组 [租户级 · 跨域: group]
 	ViewRoleMembers  string // 角色关联用户列表 [租户级 · 跨域: user]
 	ViewRolePolicies string // 查询角色策略 [租户级 · 跨域: policy]
 }{
@@ -167,45 +168,44 @@ var Role = struct {
 	View:             "iam:role:view",
 	ViewMine:         "iam:role:view_mine",
 	ViewParents:      "iam:role:view_parents",
+	ViewRoleGroups:   "iam:role:view_role_groups",
 	ViewRoleMembers:  "iam:role:view_role_members",
 	ViewRolePolicies: "iam:role:view_role_policies",
 }
 
 // Tenant 租户管理
 var Tenant = struct {
-	Module          string
-	Add             string // 创建租户空间 [系统级]
-	Assign          string // 分配租户成员 [租户级]
-	BatchAssign     string // 批量分配租户成员 [租户级]
-	BatchDelete     string // 批量删除租户 [系统级]
-	BatchUnassign   string // 批量移除租户成员 [租户级]
-	Delete          string // 删除租户空间 [系统级]
-	Edit            string // 修改租户信息 [系统级]
-	Get             string // 查看租户详情 [系统级]
-	Switch          string // 切换租户空间 [租户级 · 静默]
-	Unassign        string // 移除租户成员 [租户级]
-	View            string // 全量租户列表 [系统级]
-	ViewByIds       string // 批量查询租户 [系统级 · 静默]
-	ViewMembers     string // 查看租户成员 [租户级]
-	ViewMine        string // 查询我的租户列表 [租户级 · 静默]
-	ViewUserTenants string // 查询用户所属租户 [租户级]
+	Module        string
+	Add           string // 创建租户空间 [系统级]
+	Assign        string // 分配租户成员 [系统级]
+	BatchAssign   string // 批量分配租户成员 [系统级]
+	BatchDelete   string // 批量删除租户 [系统级]
+	BatchUnassign string // 批量移除租户成员 [系统级]
+	Delete        string // 删除租户空间 [系统级]
+	Edit          string // 修改租户信息 [系统级]
+	Get           string // 查看租户详情 [系统级]
+	Switch        string // 切换租户空间 [租户级 · 静默]
+	Unassign      string // 移除租户成员 [系统级]
+	View          string // 全量租户列表 [系统级]
+	ViewByIds     string // 批量查询租户 [系统级]
+	ViewMembers   string // 查看租户成员 [租户级]
+	ViewMine      string // 查询我的租户列表 [租户级 · 静默]
 }{
-	Module:          "iam:tenant",
-	Add:             "iam:tenant:add",
-	Assign:          "iam:tenant:assign",
-	BatchAssign:     "iam:tenant:batch_assign",
-	BatchDelete:     "iam:tenant:batch_delete",
-	BatchUnassign:   "iam:tenant:batch_unassign",
-	Delete:          "iam:tenant:delete",
-	Edit:            "iam:tenant:edit",
-	Get:             "iam:tenant:get",
-	Switch:          "iam:tenant:switch",
-	Unassign:        "iam:tenant:unassign",
-	View:            "iam:tenant:view",
-	ViewByIds:       "iam:tenant:view_by_ids",
-	ViewMembers:     "iam:tenant:view_members",
-	ViewMine:        "iam:tenant:view_mine",
-	ViewUserTenants: "iam:tenant:view_user_tenants",
+	Module:        "iam:tenant",
+	Add:           "iam:tenant:add",
+	Assign:        "iam:tenant:assign",
+	BatchAssign:   "iam:tenant:batch_assign",
+	BatchDelete:   "iam:tenant:batch_delete",
+	BatchUnassign: "iam:tenant:batch_unassign",
+	Delete:        "iam:tenant:delete",
+	Edit:          "iam:tenant:edit",
+	Get:           "iam:tenant:get",
+	Switch:        "iam:tenant:switch",
+	Unassign:      "iam:tenant:unassign",
+	View:          "iam:tenant:view",
+	ViewByIds:     "iam:tenant:view_by_ids",
+	ViewMembers:   "iam:tenant:view_members",
+	ViewMine:      "iam:tenant:view_mine",
 }
 
 // User 用户管理
@@ -222,8 +222,10 @@ var User = struct {
 	ManageIdentity   string // 治理外部身份 [租户级]
 	UnbindIdentity   string // 解绑外部身份 [租户级]
 	View             string // 用户列表 [租户级]
+	ViewUserGroups   string // 查询用户所属分组 [租户级 · 跨域: group]
 	ViewUserPolicies string // 查询用户策略 [租户级 · 跨域: policy]
 	ViewUserRoles    string // 查询用户角色 [租户级 · 跨域: role]
+	ViewUserTenants  string // 查询用户所属租户 [租户级 · 跨域: tenant]
 }{
 	Module:           "iam:user",
 	Add:              "iam:user:add",
@@ -237,6 +239,8 @@ var User = struct {
 	ManageIdentity:   "iam:user:manage_identity",
 	UnbindIdentity:   "iam:user:unbind_identity",
 	View:             "iam:user:view",
+	ViewUserGroups:   "iam:user:view_user_groups",
 	ViewUserPolicies: "iam:user:view_user_policies",
 	ViewUserRoles:    "iam:user:view_user_roles",
+	ViewUserTenants:  "iam:user:view_user_tenants",
 }

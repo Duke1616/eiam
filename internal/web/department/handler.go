@@ -5,10 +5,11 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	depts_vc "github.com/Duke1616/eiam/internal/service/department"
+	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 type Handler struct {
@@ -26,29 +27,31 @@ func NewHandler(svc depts_vc.IDepartmentService) *Handler {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/department")
 
-	g.POST("/create", h.Capability("创建部门", "add").
-		Handle(ginx.B[CreateDeptRequest](h.Create)),
+	g.POST("/create", h.Define("创建部门", "add").
+		Bind(ginx.B[CreateDeptRequest](h.Create)),
 	)
-	g.POST("/update", h.Capability("修改部门", "edit").
-		Handle(ginx.B[UpdateDeptRequest](h.Update)),
+	g.POST("/update", h.Define("修改部门", "edit").
+		Needs(permission.Department.Get).
+		Bind(ginx.B[UpdateDeptRequest](h.Update)),
 	)
-	g.DELETE("/delete/:id", h.Capability("删除部门", "delete").
-		Handle(ginx.W(h.Delete)),
+	g.DELETE("/delete/:id", h.Define("删除部门", "delete").
+		Bind(ginx.W(h.Delete)),
 	)
-	g.GET("/list", h.Capability("部门树", "view").
-		Handle(ginx.W(h.List)),
+	g.GET("/list", h.Define("部门树", "view").
+		Bind(ginx.W(h.List)),
 	)
-	g.GET("/detail/:id", h.Capability("部门详情", "get").
-		Handle(ginx.W(h.Detail)),
+	g.GET("/detail/:id", h.Define("部门详情", "get").
+		Bind(ginx.W(h.Detail)),
 	)
-	g.POST("/assign", h.Capability("分配部门成员", "assign").
-		Handle(ginx.B[AssignUsersRequest](h.AssignUsers)),
+	g.POST("/assign", h.Define("分配部门成员", "assign").
+		Needs(permission.User.View).
+		Bind(ginx.B[AssignUsersRequest](h.AssignUsers)),
 	)
-	g.POST("/remove", h.Capability("移除部门成员", "remove").
-		Handle(ginx.B[RemoveUsersRequest](h.RemoveUsers)),
+	g.POST("/remove", h.Define("移除部门成员", "remove").
+		Bind(ginx.B[RemoveUsersRequest](h.RemoveUsers)),
 	)
-	g.POST("/members", h.Capability("部门成员列表", "members").
-		Handle(ginx.B[ListMembersRequest](h.ListMembers)),
+	g.POST("/members", h.Define("部门成员列表", "members").
+		Bind(ginx.B[ListMembersRequest](h.ListMembers)),
 	)
 }
 
@@ -103,7 +106,7 @@ func (h *Handler) List(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrListDeptFailed, err
 	}
 
-	res := slice.Map(tree, func(idx int, src *domain.DepartmentNode) *DepartmentNode {
+	res := lo.Map(tree, func(src *domain.DepartmentNode, _ int) *DepartmentNode {
 		return h.toNodeVo(src)
 	})
 
@@ -157,7 +160,7 @@ func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersRequest) (ginx.R
 		return ErrListDeptMembersFailed, err
 	}
 
-	res := slice.Map(users, func(idx int, src domain.User) User {
+	res := lo.Map(users, func(src domain.User, _ int) User {
 		return h.toUserVo(src)
 	})
 

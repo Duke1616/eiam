@@ -29,23 +29,23 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/identity_source")
 
-	g.POST("/save", h.Capability("保存身份源", "save").
-		Handle(ginx.B[SaveIdentitySourceReq](h.Save)),
+	g.POST("/save", h.Define("保存身份源", "save").
+		Bind(ginx.B[SaveIdentitySourceReq](h.Save)),
 	)
-	g.POST("/list", h.Capability("身份源列表", "view").
-		Handle(ginx.W(h.List)),
+	g.POST("/list", h.Define("身份源列表", "view").
+		Bind(ginx.W(h.List)),
 	)
-	g.DELETE("/delete/:id", h.Capability("删除身份源", "delete").
-		Handle(ginx.W(h.Delete)),
+	g.DELETE("/delete/:id", h.Define("删除身份源", "delete").
+		Bind(ginx.W(h.Delete)),
 	)
-	g.GET("/detail/:id", h.Capability("身份源详情", "detail").
-		Handle(ginx.W(h.Detail)),
+	g.GET("/detail/:id", h.Define("身份源详情", "detail").
+		Bind(ginx.W(h.Detail)),
 	)
-	g.POST("/test", h.Capability("测试身份源连接", "test").
-		Handle(ginx.B[SaveIdentitySourceReq](h.Test)),
+	g.POST("/test", h.Define("测试身份源连接", "test").
+		Bind(ginx.B[SaveIdentitySourceReq](h.Test)),
 	)
-	g.POST("/toggle/:id", h.Capability("切换启用状态", "toggle").
-		Handle(ginx.W(h.ToggleEnabled)),
+	g.POST("/toggle/:id", h.Define("切换启用状态", "toggle").
+		Bind(ginx.W(h.ToggleEnabled)),
 	)
 }
 

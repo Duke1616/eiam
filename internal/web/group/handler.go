@@ -2,21 +2,23 @@ package group
 
 import (
 	"github.com/Duke1616/eiam/internal/domain"
-	group_vc "github.com/Duke1616/eiam/internal/service/group"
-	role_vc "github.com/Duke1616/eiam/internal/service/role"
+	"github.com/Duke1616/eiam/internal/service/group"
+	"github.com/Duke1616/eiam/internal/service/role"
+	"github.com/Duke1616/eiam/pkg/contract/model"
+	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 type Handler struct {
 	capability.IRegistry
-	svc     group_vc.IGroupService
-	roleSvc role_vc.IRoleService
+	svc     group.IGroupService
+	roleSvc role.IRoleService
 }
 
-func NewHandler(svc group_vc.IGroupService, roleSvc role_vc.IRoleService) *Handler {
+func NewHandler(svc group.IGroupService, roleSvc role.IRoleService) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "group", "用户分组"),
 		svc:       svc,
@@ -27,44 +29,47 @@ func NewHandler(svc group_vc.IGroupService, roleSvc role_vc.IRoleService) *Handl
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/group")
 
-	g.POST("/create", h.Capability("创建用户组", "add").
-		Handle(ginx.B[CreateGroupRequest](h.Create)),
+	g.POST("/create", h.Define("创建用户组", "add").
+		Bind(ginx.B[CreateGroupRequest](h.Create)),
 	)
-	g.POST("/update", h.Capability("修改用户组", "edit").
-		Handle(ginx.B[UpdateGroupRequest](h.Update)),
+	g.POST("/update", h.Define("修改用户组", "edit").
+		Needs(permission.Group.Get).
+		Bind(ginx.B[UpdateGroupRequest](h.Update)),
 	)
-	g.DELETE("/delete/:id", h.Capability("删除用户组", "delete").
-		Handle(ginx.W(h.Delete)),
+	g.DELETE("/delete/:id", h.Define("删除用户组", "delete").
+		Bind(ginx.W(h.Delete)),
 	)
-	g.POST("/list", h.Capability("用户组列表", "view").
-		Handle(ginx.B[ListGroupRequest](h.List)),
+	g.POST("/list", h.Define("用户组列表", "view").
+		Bind(ginx.B[ListGroupRequest](h.List)),
 	)
-	g.GET("/detail/:code", h.Capability("用户组详情", "get").
-		Handle(ginx.W(h.Detail)),
+	g.GET("/detail/:code", h.Define("用户组详情", "get").
+		Bind(ginx.W(h.Detail)),
 	)
-	g.POST("/members/assign", h.Capability("分配组成员", "assign_members").
-		Handle(ginx.B[AssignMembersRequest](h.AssignMembers)),
+	g.POST("/members/assign", h.Define("分配组成员", "assign_members").
+		Needs(permission.User.View, permission.Group.View).
+		Bind(ginx.B[AssignMembersRequest](h.AssignMembers)),
 	)
-	g.POST("/members/remove", h.Capability("移除组成员", "remove_members").
-		Handle(ginx.B[RemoveMembersRequest](h.RemoveMembers)),
+	g.POST("/members/remove", h.Define("移除组成员", "remove_members").
+		Bind(ginx.B[RemoveMembersRequest](h.RemoveMembers)),
 	)
-	g.POST("/members", h.Capability("组成员列表", "members").
-		Handle(ginx.B[ListMembersRequest](h.ListMembers)),
+	g.POST("/members", h.Define("组成员列表", "members").
+		Bind(ginx.B[ListMembersRequest](h.ListMembers)),
 	)
-	g.POST("/list/attached/user", h.Capability("查询用户所属分组", "view").
-		Handle(ginx.B[ListAttachedUserGroupsRequest](h.ListAttachedUserGroups)),
+	g.POST("/list/attached/user", h.For(model.User).Define("查询用户所属分组", "view_user_groups").
+		Bind(ginx.B[ListAttachedUserGroupsRequest](h.ListAttachedUserGroups)),
 	)
-	g.POST("/list/attached/role", h.Capability("查询角色关联分组", "view").
-		Handle(ginx.B[ListAttachedRoleGroupsRequest](h.ListAttachedRoleGroups)),
+	g.POST("/list/attached/role", h.For(model.Role).Define("查询角色关联分组", "view_role_groups").
+		Bind(ginx.B[ListAttachedRoleGroupsRequest](h.ListAttachedRoleGroups)),
 	)
-	g.POST("/role/assign", h.Capability("用户组分配角色", "assign_role").
-		Handle(ginx.B[AssignRoleRequest](h.AssignRole)),
+	g.POST("/role/assign", h.Define("用户组分配角色", "assign_role").
+		Needs(permission.Role.View, permission.Group.View).
+		Bind(ginx.B[AssignRoleRequest](h.AssignRole)),
 	)
-	g.POST("/role/remove", h.Capability("用户组解绑角色", "remove_role").
-		Handle(ginx.B[RemoveRoleRequest](h.RemoveRole)),
+	g.POST("/role/remove", h.Define("用户组解绑角色", "remove_role").
+		Bind(ginx.B[RemoveRoleRequest](h.RemoveRole)),
 	)
-	g.GET("/roles/:code", h.Capability("查看用户组角色", "roles").
-		Handle(ginx.W(h.ListRoles)),
+	g.GET("/roles/:code", h.Define("查看用户组角色", "roles").
+		Bind(ginx.W(h.ListRoles)),
 	)
 }
 
@@ -111,7 +116,7 @@ func (h *Handler) List(ctx *ginx.Context, req ListGroupRequest) (ginx.Result, er
 		return ErrListGroupFailed, err
 	}
 
-	res := slice.Map(groups, func(idx int, src domain.Group) Group {
+	res := lo.Map(groups, func(src domain.Group, _ int) Group {
 		return h.toGroupVo(src)
 	})
 
@@ -164,7 +169,7 @@ func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersRequest) (ginx.R
 		return ErrListGroupMembersFailed, err
 	}
 
-	res := slice.Map(users, func(idx int, src domain.User) User {
+	res := lo.Map(users, func(src domain.User, _ int) User {
 		return h.toUserVo(src)
 	})
 
@@ -182,7 +187,7 @@ func (h *Handler) ListAttachedUserGroups(ctx *ginx.Context, req ListAttachedUser
 		return ErrListAttachedGroupsFailed, err
 	}
 
-	res := slice.Map(groups, func(idx int, src domain.Group) Group {
+	res := lo.Map(groups, func(src domain.Group, _ int) Group {
 		return h.toGroupVo(src)
 	})
 
@@ -200,7 +205,7 @@ func (h *Handler) ListAttachedRoleGroups(ctx *ginx.Context, req ListAttachedRole
 		return ErrListAttachedGroupsFailed, err
 	}
 
-	res := slice.Map(groups, func(idx int, src domain.Group) Group {
+	res := lo.Map(groups, func(src domain.Group, _ int) Group {
 		return h.toGroupVo(src)
 	})
 
@@ -252,7 +257,7 @@ func (h *Handler) ListRoles(ctx *ginx.Context) (ginx.Result, error) {
 	}
 
 	return ginx.Result{
-		Data: slice.Map(roles, func(idx int, src domain.Role) Role {
+		Data: lo.Map(roles, func(src domain.Role, _ int) Role {
 			return h.toRoleVo(src)
 		}),
 	}, nil

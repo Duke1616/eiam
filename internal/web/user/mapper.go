@@ -2,7 +2,7 @@ package user
 
 import (
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/ecodeclub/ekit/slice"
+	"github.com/samber/lo"
 )
 
 func (req SignupRequest) ToDomain() domain.User {
@@ -21,7 +21,7 @@ func (req SignupRequest) ToDomain() domain.User {
 }
 
 func ToUserVO(u domain.User) User {
-	identities := slice.Map(u.Identities, func(idx int, src domain.UserIdentity) Identity {
+	identities := lo.Map(u.Identities, func(src domain.UserIdentity, _ int) Identity {
 		return Identity{
 			Provider:   src.Provider,
 			LdapInfo:   LdapInfo{DN: src.LdapInfo.DN},
@@ -58,7 +58,7 @@ func ToUserVO(u domain.User) User {
 }
 
 func ToTenantVOs(ts []domain.Tenant) []Tenant {
-	return slice.Map(ts, func(idx int, src domain.Tenant) Tenant {
+	return lo.Map(ts, func(src domain.Tenant, _ int) Tenant {
 		return Tenant{
 			ID:     src.ID,
 			Name:   src.Name,
@@ -84,7 +84,7 @@ func (req UpdateUserReq) ToDomain() domain.User {
 }
 
 func (u User) ToDomain() domain.User {
-	identities := slice.Map(u.Identities, func(idx int, src Identity) domain.UserIdentity {
+	identities := lo.Map(u.Identities, func(src Identity, _ int) domain.UserIdentity {
 		return domain.UserIdentity{
 			Provider:   src.Provider,
 			LdapInfo:   domain.LdapInfo{DN: src.LdapInfo.DN},

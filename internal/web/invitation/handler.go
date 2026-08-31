@@ -7,6 +7,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/service/invitation"
+	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx"
@@ -42,26 +43,26 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/invitation")
 
-	g.POST("/create", h.Capability("创建邀请", "add").
-		Needs("iam:role:view").
-		Handle(middleware.BTO[CreateInvitationReq](h.CreateInvitation)),
+	g.POST("/create", h.Define("创建邀请", "add").
+		Needs(permission.Role.View).
+		Bind(middleware.BTO[CreateInvitationReq](h.CreateInvitation)),
 	)
-	g.POST("/list", h.Capability("邀请列表", "view").
-		Handle(middleware.BTO[Page](h.ListInvitations)),
+	g.POST("/list", h.Define("邀请列表", "view").
+		Bind(middleware.BTO[Page](h.ListInvitations)),
 	)
-	g.DELETE("/revoke/:code", h.Capability("撤回邀请", "delete").
-		Handle(ginx.W(h.RevokeInvitation)),
+	g.DELETE("/revoke/:code", h.Define("撤回邀请", "delete").
+		Bind(ginx.W(h.RevokeInvitation)),
 	)
-	g.POST("/batch_revoke", h.Capability("批量撤回邀请", "batch_delete").
-		Handle(ginx.B[BatchRevokeInvitationReq](h.BatchRevoke)),
+	g.POST("/batch_revoke", h.Define("批量撤回邀请", "batch_delete").
+		Bind(ginx.B[BatchRevokeInvitationReq](h.BatchRevoke)),
 	)
 
 	// 申请管理
-	g.POST("/requests", h.Capability("申请列表", "view_requests").
-		Handle(middleware.BTO[Page](h.ListJoinRequests)),
+	g.POST("/requests", h.Define("申请列表", "view_requests").
+		Bind(middleware.BTO[Page](h.ListJoinRequests)),
 	)
-	g.POST("/requests/handle", h.Capability("处理申请", "handle_request").
-		Handle(ginx.B[HandleJoinRequestReq](h.HandleJoinRequest)),
+	g.POST("/requests/handle", h.Define("处理申请", "handle_request").
+		Bind(ginx.B[HandleJoinRequestReq](h.HandleJoinRequest)),
 	)
 }
 

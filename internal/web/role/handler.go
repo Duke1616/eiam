@@ -12,6 +12,7 @@ import (
 	rolesvc "github.com/Duke1616/eiam/internal/service/role"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/contract/model"
+	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
@@ -43,6 +44,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Bind(ginx.B[CreateRoleRequest](h.Create)),
 	)
 	g.POST("/update", h.Define("修改角色", "edit").
+		Needs(permission.Role.Get).
 		Bind(ginx.B[UpdateRoleRequest](h.Update)),
 	)
 
@@ -63,7 +65,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 
 	// 角色关系授权 (Relation)
 	g.POST("/batch_assign", h.Define("批量分配角色", "batch_assign").
-		Needs("iam:role:view").
+		Needs(permission.Role.View, permission.User.View).
 		Bind(ginx.B[BatchAssignRoleRequest](h.BatchAssignRole)),
 	)
 	g.POST("/batch_unassign", h.Define("批量移除角色", "batch_unassign").
@@ -77,7 +79,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Bind(ginx.B[RoleAnalysisReq](h.AnalyzeInlinePolicies)),
 	)
 	g.POST("/add_parent", h.Define("添加父角色", "add_parent").
-		Needs("iam:role:view").
+		Needs(permission.Role.View).
 		Bind(ginx.B[RoleInheritanceReq](h.AddParentRole)),
 	)
 	g.POST("/remove_parent", h.Define("移除父角色", "remove_parent").

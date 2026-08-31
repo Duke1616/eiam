@@ -12,6 +12,7 @@ import (
 	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/pkg/contract/model"
+	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
@@ -42,11 +43,11 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/policy")
 
 	g.POST("/create", h.Define("创建策略", "add").
-		Needs("iam:permission:manifest").
+		Needs(permission.Permission.Manifest).
 		Bind(ginx.B[CreatePolicyReq](h.CreatePolicy)),
 	)
 	g.POST("/update", h.Define("修改策略", "edit").
-		Needs("iam:permission:manifest", "iam:policy:get").
+		Needs(permission.Permission.Manifest, permission.Policy.Get).
 		Bind(ginx.B[UpdatePolicyReq](h.UpdatePolicy)),
 	)
 
@@ -64,7 +65,7 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Bind(ginx.B[AttachPolicyReq](h.DetachPolicy)),
 	)
 	g.POST("/batch-attach", h.Define("批量绑定策略", "batch_attach").
-		Needs("iam:policy:view", "iam:permission:search_subjects").
+		Needs(permission.Policy.View, permission.Permission.SearchSubjects).
 		Bind(ginx.B[BatchAttachPolicyReq](h.BatchAttachPolicy)),
 	)
 	g.POST("/batch-detach", h.Define("批量解绑策略", "batch_detach").

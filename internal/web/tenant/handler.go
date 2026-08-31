@@ -5,26 +5,28 @@ import (
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/internal/service/permission"
+	permsvc "github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/tenant"
+	"github.com/Duke1616/eiam/pkg/contract/model"
+	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 type Handler struct {
 	capability.IRegistry
 	svc     tenant.ITenantService
-	permSvc permission.IPermissionService
+	permSvc permsvc.IPermissionService
 	sess    session.Provider
 }
 
-func NewHandler(svc tenant.ITenantService, permSvc permission.IPermissionService, sess session.Provider) *Handler {
+func NewHandler(svc tenant.ITenantService, permSvc permsvc.IPermissionService, sess session.Provider) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "tenant", "租户管理").
 			DefaultScope(capability.ScopeSystem),
@@ -41,15 +43,16 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 	g := server.Group("/api/tenant")
 	// 获取我所属的所有租户列表 (用于下拉框展示)
 	// 该接口为基础身份能力，不参与权限系统同步
-	g.GET("/list/mine", h.Capability("查询我的租户列表", "view_mine").
+	g.GET("/list/mine", h.Define("查询我的租户列表", "view_mine").
 		Scope(capability.ScopeTenant).NoSync().
-		Handle(ginx.W(h.ListMyTenants)),
+		Bind(ginx.W(h.ListMyTenants)),
 	)
 
 	// 【核心：租户上下文切换】
 	// 跨租户切换需要特殊放行中间件拦截
-	g.POST("/switch", h.Capability("切换租户空间", "switch").
-		AllowCrossTenant().Scope(capability.ScopeTenant).NoSync().
+	g.POST("/switch", h.Define("切换租户空间", "switch").
+		Scope(capability.ScopeTenant).NoSync().
+		Route(capability.WithCrossTenant()).
 		Handle(middleware.WTS(h.SwitchTenant)),
 	)
 }
@@ -57,61 +60,57 @@ func (h *Handler) IdentityRoutes(server *gin.Engine) {
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/tenant")
 	// 租户空间创建
-	g.POST("/create", h.Capability("创建租户空间", "add").
-		Handle(ginx.BS[CreateTenantReq](h.CreateTenant)),
+	g.POST("/create", h.Define("创建租户空间", "add").
+		Bind(ginx.BS[CreateTenantReq](h.CreateTenant)),
 	)
 
 	// 租户管理 (全量列表/更新/删除/详情)
-	g.POST("/list", h.Capability("全量租户列表", "view").
-		Handle(ginx.B[ListTenantReq](h.ListTenants)),
+	g.POST("/list", h.Define("全量租户列表", "view").
+		Bind(ginx.B[ListTenantReq](h.ListTenants)),
 	)
-	g.POST("/list/by-ids", h.Capability("批量查询租户", "view_by_ids").
-		NoSync().
-		Handle(ginx.B[ListTenantsByIDsReq](h.ListTenantsByIDs)),
+	g.POST("/list/by-ids", h.Define("批量查询租户", "view_by_ids").
+		Bind(ginx.B[ListTenantsByIDsReq](h.ListTenantsByIDs)),
 	)
-	g.POST("/update", h.Capability("修改租户信息", "edit").
-		Handle(ginx.B[UpdateTenantReq](h.UpdateTenant)),
+	g.POST("/update", h.Define("修改租户信息", "edit").
+		Needs(permission.Tenant.Get).
+		Bind(ginx.B[UpdateTenantReq](h.UpdateTenant)),
 	)
-	g.DELETE("/delete/:id", h.Capability("删除租户空间", "delete").
-		Handle(ginx.W(h.DeleteTenant)),
+	g.DELETE("/delete/:id", h.Define("删除租户空间", "delete").
+		Bind(ginx.W(h.DeleteTenant)),
 	)
-	g.POST("/batch_delete", h.Capability("批量删除租户", "batch_delete").
-		Handle(ginx.B[BatchDeleteTenantReq](h.BatchDeleteTenants)),
+	g.POST("/batch_delete", h.Define("批量删除租户", "batch_delete").
+		Bind(ginx.B[BatchDeleteTenantReq](h.BatchDeleteTenants)),
 	)
-	g.GET("/detail/:id", h.Capability("查看租户详情", "get").
-		Handle(ginx.W(h.Detail)),
+	g.GET("/detail/:id", h.Define("查看租户详情", "get").
+		Bind(ginx.W(h.Detail)),
 	)
 
 	// 查看租户成员
-	g.POST("/members", middleware.WithTenantOverride(h.Capability("查看租户成员", "view_members").
+	g.POST("/members", middleware.WithTenantOverride(h.Define("查看租户成员", "view_members").
 		Scope(capability.ScopeTenant).
-		Handle(ginx.B[ListMembersReq](h.ListMembers))),
+		Bind(ginx.B[ListMembersReq](h.ListMembers))),
 	)
 
 	// 租户成员管理，只有系统租户才可以直接分配，否则通过邀请
-	g.POST("/assign", middleware.WithTenantOverride(h.Capability("分配租户成员", "assign").
-		Scope(capability.ScopeTenant).
-		Handle(ginx.B[AssignUserReq](h.AssignUser))),
+	g.POST("/assign", middleware.WithTenantOverride(h.Define("分配租户成员", "assign").
+		Needs(permission.User.View).
+		Bind(ginx.B[AssignUserReq](h.AssignUser))),
 	)
-	g.POST("/unassign", middleware.WithTenantOverride(h.Capability("移除租户成员", "unassign").
-		Scope(capability.ScopeTenant).
-		Handle(ginx.B[RemoveMemberReq](h.RemoveMember))),
+	g.POST("/unassign", middleware.WithTenantOverride(h.Define("移除租户成员", "unassign").
+		Bind(ginx.B[RemoveMemberReq](h.RemoveMember))),
 	)
-	g.POST("/batch_assign", h.Capability("批量分配租户成员", "batch_assign").
-		Scope(capability.ScopeTenant).
-		Handle(ginx.B[BatchAssignTenantsReq](h.BatchAssignTenants)),
+	g.POST("/batch_assign", middleware.WithTenantOverride(h.Define("批量分配租户成员", "batch_assign").
+		Needs(permission.User.View).
+		Bind(ginx.B[BatchAssignTenantsReq](h.BatchAssignTenants))),
 	)
-	g.POST("/batch_unassign", h.Capability("批量移除租户成员", "batch_unassign").
-		Scope(capability.ScopeTenant).
-		Handle(ginx.B[BatchUnassignTenantsReq](h.BatchUnassignTenants)),
+	g.POST("/batch_unassign", middleware.WithTenantOverride(h.Define("批量移除租户成员", "batch_unassign").
+		Bind(ginx.B[BatchUnassignTenantsReq](h.BatchUnassignTenants))),
 	)
 
 	// 查询特定用户的关联租户 (管理侧使用)
-	g.POST("/list/attached/user", middleware.WithTenantOverride(h.Capability("查询用户所属租户", "view_user_tenants").
+	g.POST("/list/attached/user", middleware.WithTenantOverride(h.For(model.User).Define("查询用户所属租户", "view_user_tenants").
 		Scope(capability.ScopeTenant).
-		Module("user").
-		Group("用户管理").
-		Handle(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId))),
+		Bind(ginx.BS[ListUserTenantsReq](h.GetTenantsByUserId))),
 	)
 }
 
@@ -124,7 +123,7 @@ func (h *Handler) ListMembers(ctx *ginx.Context, req ListMembersReq) (ginx.Resul
 	return ginx.Result{
 		Data: ListMembersRes{
 			Total: total,
-			Members: slice.Map(users, func(idx int, u domain.User) MemberVO {
+			Members: lo.Map(users, func(u domain.User, _ int) MemberVO {
 				return MemberVO{
 					ID:          u.ID,
 					Username:    u.Username,
@@ -156,6 +155,17 @@ func (h *Handler) BatchAssignTenants(ctx *ginx.Context, req BatchAssignTenantsRe
 	// 安全校验：禁止多对多同时批量操作，防止产生笛卡尔积导致数据爆炸
 	if len(req.UserIDs) > 1 && len(req.TenantIDs) > 1 {
 		return ErrTenantDimensionInvalid, nil
+	}
+
+	// 租户越权防护：非系统租户管理员只能操作当前所在的租户
+	originTid := ctxutil.GetOriginTenantID(ctx.Request.Context()).Int64()
+	currentTid := ctxutil.GetTenantID(ctx.Request.Context()).Int64()
+	if originTid != ctxutil.SystemTenantID {
+		for _, tid := range req.TenantIDs {
+			if tid != currentTid {
+				return ErrTenantAccess, fmt.Errorf("检测到跨租户越权操作，非系统管理员只能为当前租户分配成员")
+			}
+		}
 	}
 
 	err := h.svc.BatchAssignTenants(ctx.Request.Context(), req.UserIDs, req.TenantIDs)
@@ -406,6 +416,17 @@ func (h *Handler) BatchUnassignTenants(ctx *ginx.Context, req BatchUnassignTenan
 	// 安全校验：禁止多对多同时批量操作
 	if len(req.UserIDs) > 1 && len(req.TenantIDs) > 1 {
 		return ErrTenantDimensionInvalid, nil
+	}
+
+	// 租户越权防护：非系统租户管理员只能操作当前所在的租户
+	originTid := ctxutil.GetOriginTenantID(ctx.Request.Context()).Int64()
+	currentTid := ctxutil.GetTenantID(ctx.Request.Context()).Int64()
+	if originTid != ctxutil.SystemTenantID {
+		for _, tid := range req.TenantIDs {
+			if tid != currentTid {
+				return ErrTenantAccess, fmt.Errorf("检测到跨租户越权操作，非系统管理员只能解绑当前租户的成员")
+			}
+		}
 	}
 
 	err := h.svc.BatchUnassignTenants(ctx.Request.Context(), req.UserIDs, req.TenantIDs)

@@ -6,14 +6,15 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
+	permcontract "github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/web/capability"
-	"github.com/ecodeclub/ekit/slice"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 )
 
 type Handler struct {
@@ -48,25 +49,25 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/permission")
 
 	// 元数据管理：查询权限资产清单
-	g.GET("/manifest", h.Capability("权限资产清单", "manifest").
-		Needs("iam:permission:menus_by_urns").
-		Handle(ginx.W(h.GetPermissionManifest)),
+	g.GET("/manifest", h.Define("权限资产清单", "manifest").
+		Needs(permcontract.Permission.MenusByUrns).
+		Bind(ginx.W(h.GetPermissionManifest)),
 	)
 
 	// 授权治理：查询全量授权关系列表
-	g.POST("/authorizations", h.Capability("授权治理列表", "view_authorizations").
-		Handle(ginx.B[AuthorizationQueryReq](h.ListAuthorizations)),
+	g.POST("/authorizations", h.Define("授权治理列表", "view_authorizations").
+		Bind(ginx.B[AuthorizationQueryReq](h.ListAuthorizations)),
 	)
 
 	// 授权治理：查询可授权主体 (用户/角色)
-	g.POST("/subjects/search", h.Capability("搜索授权主体", "search_subjects").
-		Handle(ginx.B[SearchSubjectsReq](h.SearchSubjects)),
+	g.POST("/subjects/search", h.Define("搜索授权主体", "search_subjects").
+		Bind(ginx.B[SearchSubjectsReq](h.SearchSubjects)),
 	)
 
 	// 批量根据 URN 查询菜单详情
-	g.POST("/menus/by_urns", h.Capability("批量根据 URN 查询菜单详情", "menus_by_urns").
+	g.POST("/menus/by_urns", h.Define("批量根据 URN 查询菜单详情", "menus_by_urns").
 		NoSync().
-		Handle(ginx.B[QueryMenusByURNsReq](h.ListMenusByURNs)),
+		Bind(ginx.B[QueryMenusByURNsReq](h.ListMenusByURNs)),
 	)
 }
 
@@ -81,7 +82,7 @@ func (h *Handler) GetPermissionManifest(ctx *ginx.Context) (ginx.Result, error) 
 	return ginx.Result{
 		Data: Manifest{
 			Actions: h.toActionVOs(reg.Permissions),
-			Services: slice.Map(reg.Services, func(idx int, src domain.ServiceNode) ServicePermissionEntry {
+			Services: lo.Map(reg.Services, func(src domain.ServiceNode, _ int) ServicePermissionEntry {
 				return ServicePermissionEntry{
 					Code:    src.Code,
 					Name:    src.Name,
@@ -96,7 +97,7 @@ func (h *Handler) toEntryVOs(nodes []domain.GroupNode) []Entry {
 	if len(nodes) == 0 {
 		return nil
 	}
-	return slice.Map(nodes, func(idx int, g domain.GroupNode) Entry {
+	return lo.Map(nodes, func(g domain.GroupNode, _ int) Entry {
 		return Entry{
 			Name:     g.Name,
 			Actions:  g.Actions,
@@ -106,7 +107,7 @@ func (h *Handler) toEntryVOs(nodes []domain.GroupNode) []Entry {
 }
 
 func (h *Handler) toActionVOs(perms []domain.Permission) []Permission {
-	return slice.Map(perms, func(idx int, p domain.Permission) Permission {
+	return lo.Map(perms, func(p domain.Permission, _ int) Permission {
 		return Permission{
 			ID:                 p.ID,
 			Service:            p.Service,
@@ -217,7 +218,7 @@ func (h *Handler) ListMenusByURNs(ctx *ginx.Context, req QueryMenusByURNsReq) (g
 
 func (h *Handler) toMenuVOs(menus domain.MenuTree) []Menu {
 	// ... (代码逻辑保持不变)
-	return slice.Map(menus, func(idx int, m *domain.Menu) Menu {
+	return lo.Map(menus, func(m *domain.Menu, _ int) Menu {
 		return Menu{
 			ID:        m.ID,
 			ParentID:  m.ParentID,
@@ -260,7 +261,7 @@ func (h *Handler) ListAuthorizations(ctx *ginx.Context, req AuthorizationQueryRe
 	return ginx.Result{
 		Data: AuthorizationResp{
 			Total: total,
-			Authorizations: slice.Map(auths, func(idx int, src domain.Authorization) Authorization {
+			Authorizations: lo.Map(auths, func(src domain.Authorization, _ int) Authorization {
 				return Authorization{
 					ID:          src.ID,
 					Subject:     src.Subject.ID,
@@ -287,7 +288,7 @@ func (h *Handler) SearchSubjects(ctx *ginx.Context, req SearchSubjectsReq) (ginx
 	return ginx.Result{
 		Data: SearchSubjectsResp{
 			Total: total,
-			Subjects: slice.Map(subjects, func(idx int, src domain.Subject) Subject {
+			Subjects: lo.Map(subjects, func(src domain.Subject, _ int) Subject {
 				return Subject{
 					Type: src.Type,
 					Id:   src.ID,

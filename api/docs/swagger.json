@@ -355,7 +355,7 @@
           "用户分组"
         ],
         "summary": "查询角色关联分组",
-        "description": "权限标识: view",
+        "description": "权限标识: view_role_groups",
         "requestBody": {
           "required": true,
           "content": {
@@ -385,7 +385,7 @@
           "用户分组"
         ],
         "summary": "查询用户所属分组",
-        "description": "权限标识: view",
+        "description": "权限标识: view_user_groups",
         "requestBody": {
           "required": true,
           "content": {
@@ -1929,30 +1929,7 @@
         "tags": [
           "租户管理"
         ],
-        "summary": "批量分配租户成员",
-        "description": "权限标识: batch_assign",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BatchAssignTenantsReq"
-              },
-              "example": {
-                "tenant_ids": [
-                  1,
-                  2,
-                  3
-                ],
-                "user_ids": [
-                  1,
-                  2,
-                  3
-                ]
-              }
-            }
-          }
-        },
+        "summary": "batch_assign",
         "responses": {
           "200": {
             "description": "请求成功"
@@ -1996,30 +1973,7 @@
         "tags": [
           "租户管理"
         ],
-        "summary": "批量移除租户成员",
-        "description": "权限标识: batch_unassign",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BatchUnassignTenantsReq"
-              },
-              "example": {
-                "tenant_ids": [
-                  1,
-                  2,
-                  3
-                ],
-                "user_ids": [
-                  1,
-                  2,
-                  3
-                ]
-              }
-            }
-          }
-        },
+        "summary": "batch_unassign",
         "responses": {
           "200": {
             "description": "请求成功"
@@ -3039,49 +2993,6 @@
           ]
         }
       },
-      "BatchAssignTenantsReq": {
-        "type": "object",
-        "properties": {
-          "tenant_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer"
-            },
-            "example": [
-              1,
-              2,
-              3
-            ]
-          },
-          "user_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer"
-            },
-            "example": [
-              1,
-              2,
-              3
-            ]
-          }
-        },
-        "required": [
-          "user_ids",
-          "tenant_ids"
-        ],
-        "example": {
-          "tenant_ids": [
-            1,
-            2,
-            3
-          ],
-          "user_ids": [
-            1,
-            2,
-            3
-          ]
-        }
-      },
       "BatchAttachPolicyReq": {
         "type": "object",
         "properties": {
@@ -3276,49 +3187,6 @@
           "usernames": [
             "admin",
             "guest"
-          ]
-        }
-      },
-      "BatchUnassignTenantsReq": {
-        "type": "object",
-        "properties": {
-          "tenant_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer"
-            },
-            "example": [
-              1,
-              2,
-              3
-            ]
-          },
-          "user_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer"
-            },
-            "example": [
-              1,
-              2,
-              3
-            ]
-          }
-        },
-        "required": [
-          "user_ids",
-          "tenant_ids"
-        ],
-        "example": {
-          "tenant_ids": [
-            1,
-            2,
-            3
-          ],
-          "user_ids": [
-            1,
-            2,
-            3
           ]
         }
       },

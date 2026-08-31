@@ -467,7 +467,7 @@
     platforms: ["iam"]
   children:
     - name: DepartmentManager
-      permission_code: "org:department:view"
+      permission_code: "iam:department:view"
       path: /iam/organization/department
       component: /pages/iam/department/index.vue
       meta:
