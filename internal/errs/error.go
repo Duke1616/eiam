@@ -54,4 +54,5 @@ var (
 	// 租户密钥相关错误
 	ErrTenantKeyDisabled = errors.New("租户凭证已被禁用")
 	ErrInvalidTenantKey  = errors.New("凭证密钥不正确")
+	ErrInvalidToken      = errors.New("无效的通信令牌")
 )

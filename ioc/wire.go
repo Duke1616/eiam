@@ -69,6 +69,7 @@ func InitApp() (*App, error) {
 		InitLdapUserCache,
 		cache.NewIdentitySourceCache,
 		cache.NewUserCache,
+		cache.NewDiscoveryCache,
 
 		// DAOs
 		dao.NewUserDAO,
@@ -110,6 +111,7 @@ func InitApp() (*App, error) {
 		ingestion.NewEngine,
 		permission.NewPermissionService,
 		discovery.NewWorker,
+		discovery.NewDiscoveryService,
 		checker.NewBoundaryChecker,
 		policysvc.NewPolicyService,
 		invitationsvc.NewInvitationService,

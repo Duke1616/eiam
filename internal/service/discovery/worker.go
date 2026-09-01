@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/service/resource"
-	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/meoying/dlock-go"
+	"github.com/samber/lo"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -21,23 +22,23 @@ const (
 	lockExpiration = 30 * time.Second
 )
 
-// Worker 资产发现调度器，负责监听 Etcd 状态并驱动统一录入引擎
+// Worker 资产发现调度器，负责监听 Etcd 状态并驱动资产统一录入引擎
 type Worker struct {
 	client  *clientv3.Client
-	engine  ingestion.Engine
+	discSvc IDiscoveryService
 	init    resource.IInitializer
 	l       *elog.Component
 	dClient dlock.Client
 }
 
 // NewWorker 构建一个新的调度器实例
-func NewWorker(client *clientv3.Client, engine ingestion.Engine, init resource.IInitializer, dClient dlock.Client) *Worker {
+func NewWorker(client *clientv3.Client, discSvc IDiscoveryService, init resource.IInitializer, dClient dlock.Client) *Worker {
 	return &Worker{
 		client:  client,
-		engine:  engine,
+		discSvc: discSvc,
 		init:    init,
 		dClient: dClient,
-		l:       elog.DefaultLogger,
+		l:       elog.DefaultLogger.With(elog.FieldComponent("discovery-worker")),
 	}
 }
 
@@ -73,13 +74,36 @@ func (w *Worker) tryExecuteTask(ctx context.Context) error {
 	}
 
 	if err = lock.Lock(ctx); err != nil {
-		// NOTE: 如果锁被人持有，说明集群中已有 Leader，当前实例切换为 Standby 模式，不作为异常处理
+		// 如果锁被人持有，说明集群中已有 Leader，当前实例切换为 Standby 模式，不作为异常处理
 		if strings.Contains(err.Error(), "锁被人持有") {
 			w.l.Info("资产对账锁已被占用，当前实例处于待命状态 (Standby)")
 			return nil
 		}
 		return err
 	}
+
+	// 创建可取消的上下文，用于在 runReconcileJob 结束或出错时及时停止续约协程
+	workCtx, cancelWork := context.WithCancel(ctx)
+	defer cancelWork()
+
+	// 启动后台分布式锁心跳续期协程，周期性刷新锁租约，防止长周期 Watch 导致锁自动过期引发并发撕裂
+	renewTicker := time.NewTicker(lockExpiration / 3)
+	defer renewTicker.Stop()
+
+	go func() {
+		for {
+			select {
+			case <-workCtx.Done():
+				return
+			case <-renewTicker.C:
+				// 定期通过加锁操作刷新租约，保持 Leader 地位
+				if refreshErr := lock.Lock(workCtx); refreshErr != nil {
+					w.l.Warn("Discovery Worker 租约续期失败", elog.FieldErr(refreshErr))
+				}
+			}
+		}
+	}()
+
 	defer func() {
 		_ = lock.Unlock(context.Background())
 	}()
@@ -87,7 +111,7 @@ func (w *Worker) tryExecuteTask(ctx context.Context) error {
 	w.l.Info("成功抢占分布式锁，对账调度器进入工作状态")
 
 	// 2. 执行核心对账工作 (该方法是阻塞的)
-	return w.runReconcileJob(ctx)
+	return w.runReconcileJob(workCtx)
 }
 
 // runReconcileJob 核心对账监听逻辑
@@ -127,24 +151,24 @@ func (w *Worker) scanInitialManifests(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, kv := range resp.Kvs {
+	lo.ForEach(resp.Kvs, func(kv *mvccpb.KeyValue, _ int) {
 		w.process(ctx, kv.Value)
-	}
+	})
 	return nil
 }
 
 func (w *Worker) handleWatchEvents(ctx context.Context, events []*clientv3.Event) {
-	for _, event := range events {
+	lo.ForEach(events, func(event *clientv3.Event, _ int) {
 		switch event.Type {
 		case clientv3.EventTypePut:
 			w.process(ctx, event.Kv.Value)
 		case clientv3.EventTypeDelete:
 			w.l.Info("检测到服务资产离线", elog.String("key", string(event.Kv.Key)))
 		}
-	}
+	})
 }
 
-// process 解析快照并驱动统一录入引擎执行同步
+// process 解析快照并驱动统一录入引擎执行同步 (委托 IDiscoveryService 保证去重与并发互斥)
 func (w *Worker) process(ctx context.Context, data []byte) {
 	if len(data) == 0 {
 		return
@@ -156,8 +180,7 @@ func (w *Worker) process(ctx context.Context, data []byte) {
 		return
 	}
 
-	snap := ingestion.FromSyncRequest(req)
-	if err := w.engine.Ingest(ctx, snap); err != nil {
+	if _, err := w.discSvc.Sync(ctx, req); err != nil {
 		w.l.Error("驱动资产录入失败",
 			elog.String("service", req.Service),
 			elog.FieldErr(err))

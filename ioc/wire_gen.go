@@ -12,7 +12,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/department"
-	discovery2 "github.com/Duke1616/eiam/internal/service/discovery"
+	"github.com/Duke1616/eiam/internal/service/discovery"
 	"github.com/Duke1616/eiam/internal/service/group"
 	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
@@ -26,7 +26,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/service/user/passkey"
 	department2 "github.com/Duke1616/eiam/internal/web/department"
-	"github.com/Duke1616/eiam/internal/web/discovery"
+	discovery2 "github.com/Duke1616/eiam/internal/web/discovery"
 	group2 "github.com/Duke1616/eiam/internal/web/group"
 	"github.com/Duke1616/eiam/internal/web/identity_source"
 	invitation2 "github.com/Duke1616/eiam/internal/web/invitation"
@@ -69,7 +69,9 @@ func InitApp() (*App, error) {
 	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService, iBoundaryChecker, syncedEnforcer)
 	iTenantKeyDAO := dao.NewTenantKeyDAO(db)
 	iTenantKeyRepository := repository.NewTenantKeyRepository(iTenantKeyDAO)
-	iTenantKeyService := tenant.NewTenantKeyService(iTenantKeyRepository)
+	iServiceDAO := dao.NewServiceDAO(db)
+	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
+	iTenantKeyService := tenant.NewTenantKeyService(iTenantKeyRepository, iServiceRepository)
 	iTenantService := tenant.NewTenantService(iTenantRepository, iUserRepository, iRoleService, syncedEnforcer, iTenantKeyService)
 	iIdentitySourceDAO := dao.NewIdentitySourceDAO(db)
 	iIdentitySourceCache := cache.NewIdentitySourceCache(cmdable)
@@ -88,8 +90,6 @@ func InitApp() (*App, error) {
 	iSubjectRegistry := InitSearchSubjectProviders(iRoleService, iUserService, iGroupService)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)
-	iServiceDAO := dao.NewServiceDAO(db)
-	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
 	iResourceService := resource.NewResourceService(iResourceRepository, iServiceRepository)
 	iAuthorizer := InitOPA()
 	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer, iBoundaryChecker, iTenantRepository)
@@ -110,7 +110,9 @@ func InitApp() (*App, error) {
 	invitationHandler := invitation2.NewHandler(iInvitationService, provider)
 	clientv3Client := InitEtcd()
 	reporter := InitCapabilityRegistry(clientv3Client)
-	discoveryHandler := discovery.NewHandler(reporter)
+	iDiscoveryCache := cache.NewDiscoveryCache(cmdable)
+	iDiscoveryService := discovery.NewDiscoveryService(reporter, iDiscoveryCache)
+	discoveryHandler := discovery2.NewHandler(iDiscoveryService, iTenantKeyService)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, tenancyBuilder, iPermissionService)
 	registry := InitRegistry(clientv3Client)
@@ -122,7 +124,7 @@ func InitApp() (*App, error) {
 	iInitializer := resource.NewResourceInitializer(engine, reporter)
 	v3 := InitProviders()
 	dlockClient := InitDLock(cmdable)
-	worker := discovery2.NewWorker(clientv3Client, engine, iInitializer, dlockClient)
+	worker := discovery.NewWorker(clientv3Client, iDiscoveryService, iInitializer, dlockClient)
 	v4 := InitTasks(worker)
 	app := &App{
 		Web:       component,
