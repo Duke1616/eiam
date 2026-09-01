@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Duke1616/eiam/internal/service/discovery"
-	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
@@ -17,16 +16,16 @@ import (
 const ctxAuthorizedServiceKey = "_discovery_authorized_service"
 
 type Handler struct {
-	svc          discovery.IDiscoveryService
-	tenantKeySvc tenant.ITenantKeyService
-	logger       *elog.Component
+	svc      discovery.IDiscoveryService
+	tokenSvc discovery.ITokenService
+	logger   *elog.Component
 }
 
-func NewHandler(svc discovery.IDiscoveryService, tenantKeySvc tenant.ITenantKeyService) *Handler {
+func NewHandler(svc discovery.IDiscoveryService, tokenSvc discovery.ITokenService) *Handler {
 	return &Handler{
-		svc:          svc,
-		tenantKeySvc: tenantKeySvc,
-		logger:       elog.DefaultLogger.With(elog.FieldComponent("discovery-handler")),
+		svc:      svc,
+		tokenSvc: tokenSvc,
+		logger:   elog.DefaultLogger.With(elog.FieldComponent("discovery-handler")),
 	}
 }
 
@@ -47,7 +46,7 @@ func (h *Handler) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		serviceName, err := h.tenantKeySvc.VerifyDiscoveryToken(c.Request.Context(), strings.TrimSpace(token))
+		serviceName, err := h.tokenSvc.VerifyToken(c.Request.Context(), strings.TrimSpace(token))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrInvalidToken)
 			return

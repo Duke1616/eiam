@@ -30,14 +30,16 @@ func newGenCommand() *cobra.Command {
 该 Token 仅允许对应微服务上报并对账其自身的物理接口和权限资产，有效防止跨服务误篡改。
 微服务标识必须在 EIAM 服务目录中已登记，否则拒绝生成。`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// NOTE: 依赖通过 ioc.InitTenantKeyService 注入，CMD 层不直接操作 DAO/Repo
-			tkSvc := ioc.InitTenantKeyService()
+			// NOTE: 通过 Wire 原生编排的专属 Injector 获取轻量服务实例，无胶水组装代码
+			tokenSvc, err := ioc.InitTokenService()
+			if err != nil {
+				return fmt.Errorf("初始化令牌服务失败: %w", err)
+			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			// 业务逻辑（含服务合法性校验）统一在 Service 层完成
-			token, err := tkSvc.GenerateDiscoveryToken(ctx, serviceName)
+			token, err := tokenSvc.GenerateToken(ctx, serviceName)
 			if err != nil {
 				return fmt.Errorf("生成令牌失败: %w", err)
 			}

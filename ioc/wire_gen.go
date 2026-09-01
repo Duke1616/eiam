@@ -69,9 +69,7 @@ func InitApp() (*App, error) {
 	iRoleService := role.NewRoleService(iRoleRepository, iPolicyService, iBoundaryChecker, syncedEnforcer)
 	iTenantKeyDAO := dao.NewTenantKeyDAO(db)
 	iTenantKeyRepository := repository.NewTenantKeyRepository(iTenantKeyDAO)
-	iServiceDAO := dao.NewServiceDAO(db)
-	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
-	iTenantKeyService := tenant.NewTenantKeyService(iTenantKeyRepository, iServiceRepository)
+	iTenantKeyService := tenant.NewTenantKeyService(iTenantKeyRepository)
 	iTenantService := tenant.NewTenantService(iTenantRepository, iUserRepository, iRoleService, syncedEnforcer, iTenantKeyService)
 	iIdentitySourceDAO := dao.NewIdentitySourceDAO(db)
 	iIdentitySourceCache := cache.NewIdentitySourceCache(cmdable)
@@ -90,6 +88,8 @@ func InitApp() (*App, error) {
 	iSubjectRegistry := InitSearchSubjectProviders(iRoleService, iUserService, iGroupService)
 	iResourceDAO := dao.NewResourceDAO(db)
 	iResourceRepository := repository.NewResourceRepository(iResourceDAO)
+	iServiceDAO := dao.NewServiceDAO(db)
+	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
 	iResourceService := resource.NewResourceService(iResourceRepository, iServiceRepository)
 	iAuthorizer := InitOPA()
 	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer, iBoundaryChecker, iTenantRepository)
@@ -112,7 +112,8 @@ func InitApp() (*App, error) {
 	reporter := InitCapabilityRegistry(clientv3Client)
 	iDiscoveryCache := cache.NewDiscoveryCache(cmdable)
 	iDiscoveryService := discovery.NewDiscoveryService(reporter, iDiscoveryCache)
-	discoveryHandler := discovery2.NewHandler(iDiscoveryService, iTenantKeyService)
+	iTokenService := discovery.NewTokenService(iTenantKeyRepository, iServiceRepository)
+	discoveryHandler := discovery2.NewHandler(iDiscoveryService, iTokenService)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, tenancyBuilder, iPermissionService)
 	registry := InitRegistry(clientv3Client)
@@ -134,6 +135,17 @@ func InitApp() (*App, error) {
 		Tasks:     v4,
 	}
 	return app, nil
+}
+
+// InitTokenService 为 CLI Token 生成命令提供专用的轻量级依赖注入树 (Wire 原生自动编排，仅需 DB 依赖)
+func InitTokenService() (discovery.ITokenService, error) {
+	db := InitDBWithoutMigrate()
+	iTenantKeyDAO := dao.NewTenantKeyDAO(db)
+	iTenantKeyRepository := repository.NewTenantKeyRepository(iTenantKeyDAO)
+	iServiceDAO := dao.NewServiceDAO(db)
+	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
+	iTokenService := discovery.NewTokenService(iTenantKeyRepository, iServiceRepository)
+	return iTokenService, nil
 }
 
 // wire.go:

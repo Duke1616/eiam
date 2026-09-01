@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -20,6 +19,7 @@ import (
 type mockDiscoveryService struct {
 	syncCount int
 	lastHash  string
+	tokens    map[string]string // token -> serviceName
 }
 
 func (m *mockDiscoveryService) Sync(ctx context.Context, req capability.SyncRequest) (bool, error) {
@@ -32,31 +32,13 @@ func (m *mockDiscoveryService) Sync(ctx context.Context, req capability.SyncRequ
 	return true, nil
 }
 
-type mockTenantKeyService struct {
-	tokens map[string]string // token -> serviceName
-}
-
-func (m *mockTenantKeyService) GenerateKey(ctx context.Context, tenantID int64, description string) (domain.TenantKey, error) {
-	return domain.TenantKey{}, nil
-}
-func (m *mockTenantKeyService) GetTenantIDByAccessKey(ctx context.Context, ak string) (int64, error) {
-	return 0, nil
-}
-func (m *mockTenantKeyService) VerifyKey(ctx context.Context, ak, sk string) (int64, error) {
-	return 0, nil
-}
-func (m *mockTenantKeyService) ListKeysByTenantID(ctx context.Context, tenantID int64) ([]domain.TenantKey, error) {
-	return nil, nil
-}
-func (m *mockTenantKeyService) UpdateKeyStatus(ctx context.Context, id int64, status int) error {
-	return nil
-}
-func (m *mockTenantKeyService) GenerateDiscoveryToken(ctx context.Context, serviceName string) (string, error) {
+func (m *mockDiscoveryService) GenerateToken(ctx context.Context, serviceName string) (string, error) {
 	tok := "eiam_sct_test_" + serviceName
 	m.tokens[tok] = serviceName
 	return tok, nil
 }
-func (m *mockTenantKeyService) VerifyDiscoveryToken(ctx context.Context, token string) (string, error) {
+
+func (m *mockDiscoveryService) VerifyToken(ctx context.Context, token string) (string, error) {
 	svc, ok := m.tokens[token]
 	if !ok {
 		return "", errors.New("invalid token")
@@ -70,9 +52,8 @@ func TestDiscoveryHandler_AuthAndHashCache(t *testing.T) {
 	t.Run("未开启认证 (默认): 无 Token 也可一键拉起放行", func(t *testing.T) {
 		viper.Set("discovery.auth_enabled", false)
 
-		mockSvc := &mockDiscoveryService{}
-		mockTk := &mockTenantKeyService{tokens: make(map[string]string)}
-		hdl := NewHandler(mockSvc, mockTk)
+		mockSvc := &mockDiscoveryService{tokens: make(map[string]string)}
+		hdl := NewHandler(mockSvc, mockSvc)
 
 		engine := gin.New()
 		hdl.PublicRoutes(engine)
@@ -92,9 +73,8 @@ func TestDiscoveryHandler_AuthAndHashCache(t *testing.T) {
 		viper.Set("discovery.auth_enabled", true)
 		defer viper.Set("discovery.auth_enabled", false)
 
-		mockSvc := &mockDiscoveryService{}
-		mockTk := &mockTenantKeyService{tokens: make(map[string]string)}
-		hdl := NewHandler(mockSvc, mockTk)
+		mockSvc := &mockDiscoveryService{tokens: make(map[string]string)}
+		hdl := NewHandler(mockSvc, mockSvc)
 
 		engine := gin.New()
 		hdl.PublicRoutes(engine)
@@ -114,11 +94,11 @@ func TestDiscoveryHandler_AuthAndHashCache(t *testing.T) {
 		viper.Set("discovery.auth_enabled", true)
 		defer viper.Set("discovery.auth_enabled", false)
 
-		mockSvc := &mockDiscoveryService{}
-		mockTk := &mockTenantKeyService{tokens: map[string]string{
-			"eiam_sct_ecmdb_valid": "ecmdb",
-		}}
-		hdl := NewHandler(mockSvc, mockTk)
+		mockSvc := &mockDiscoveryService{tokens: make(map[string]string)}
+		token, err := mockSvc.GenerateToken(context.Background(), "ecmdb")
+		require.NoError(t, err)
+
+		hdl := NewHandler(mockSvc, mockSvc)
 
 		engine := gin.New()
 		hdl.PublicRoutes(engine)
@@ -126,42 +106,45 @@ func TestDiscoveryHandler_AuthAndHashCache(t *testing.T) {
 		reqBody, _ := json.Marshal(capability.SyncRequest{Service: "ecmdb"})
 		req, _ := http.NewRequest(http.MethodPost, "/api/v1/discovery/sync", bytes.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer eiam_sct_ecmdb_valid")
-
-		w := httptest.NewRecorder()
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, 1, mockSvc.syncCount)
-		assert.Contains(t, w.Body.String(), "资产同步指令已接收")
-	})
-
-	t.Run("开启认证后，Token 绑定的服务与上报服务不匹配被拦截 (防越权)", func(t *testing.T) {
-		viper.Set("discovery.auth_enabled", true)
-		defer viper.Set("discovery.auth_enabled", false)
-
-		mockSvc := &mockDiscoveryService{}
-		mockTk := &mockTenantKeyService{tokens: map[string]string{
-			"eiam_sct_ecmdb_valid": "ecmdb",
-		}}
-		hdl := NewHandler(mockSvc, mockTk)
-
-		engine := gin.New()
-		hdl.PublicRoutes(engine)
-
-		// 拿 ecmdb 的 Token 去上报 etask 资产
-		reqBody, _ := json.Marshal(capability.SyncRequest{Service: "etask"})
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/discovery/sync", bytes.NewReader(reqBody))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer eiam_sct_ecmdb_valid")
+		req.Header.Set("Authorization", "Bearer "+token)
 
 		w := httptest.NewRecorder()
 		engine.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), "通信令牌与上报服务标识不匹配")
-		assert.Equal(t, 0, mockSvc.syncCount)
+		assert.Equal(t, 1, mockSvc.syncCount)
+	})
+
+	t.Run("开启认证后，携带其他服务的 Token 尝试上报属于跨服务越权，应被拦截", func(t *testing.T) {
+		viper.Set("discovery.auth_enabled", true)
+		defer viper.Set("discovery.auth_enabled", false)
+
+		mockSvc := &mockDiscoveryService{tokens: make(map[string]string)}
+		// 为 order-service 生成了 token
+		orderToken, err := mockSvc.GenerateToken(context.Background(), "order-service")
+		require.NoError(t, err)
+
+		hdl := NewHandler(mockSvc, mockSvc)
+
+		engine := gin.New()
+		hdl.PublicRoutes(engine)
+
+		// 企图使用 order-service 的 token 上报 payment-service 的资产
+		reqBody, _ := json.Marshal(capability.SyncRequest{Service: "payment-service"})
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/discovery/sync", bytes.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+orderToken)
+
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		// 检查返回自定义业务码 4060004 (ErrServiceMismatch)
+		var resp struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.Equal(t, 4060004, resp.Code)
+		assert.Equal(t, 0, mockSvc.syncCount) // 核心资产对账并未发生
 	})
 }
-
-

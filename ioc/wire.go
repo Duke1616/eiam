@@ -112,6 +112,7 @@ func InitApp() (*App, error) {
 		permission.NewPermissionService,
 		discovery.NewWorker,
 		discovery.NewDiscoveryService,
+		discovery.NewTokenService,
 		checker.NewBoundaryChecker,
 		policysvc.NewPolicyService,
 		invitationsvc.NewInvitationService,
@@ -153,3 +154,18 @@ func InitApp() (*App, error) {
 	)
 	return nil, nil
 }
+
+// InitTokenService 为 CLI Token 生成命令提供专用的轻量级依赖注入树 (Wire 原生自动编排，仅需 DB 依赖)
+func InitTokenService() (discovery.ITokenService, error) {
+	wire.Build(
+		InitDBWithoutMigrate,
+		dao.NewTenantKeyDAO,
+		dao.NewServiceDAO,
+		repository.NewTenantKeyRepository,
+		repository.NewServiceRepository,
+		discovery.NewTokenService,
+	)
+	return nil, nil
+}
+
+

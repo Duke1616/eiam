@@ -23,7 +23,10 @@ type discoveryService struct {
 }
 
 // NewDiscoveryService 构建资产发现业务服务
-func NewDiscoveryService(registry capability.Registry, cache cache.IDiscoveryCache) IDiscoveryService {
+func NewDiscoveryService(
+	registry capability.Registry,
+	cache cache.IDiscoveryCache,
+) IDiscoveryService {
 	return &discoveryService{
 		registry: registry,
 		cache:    cache,
@@ -32,7 +35,7 @@ func NewDiscoveryService(registry capability.Registry, cache cache.IDiscoveryCac
 }
 
 // Sync 执行分布式资产同步业务编排：
-// 1. 分布式 Hash 缓存比对：多节点全局共享，命中则秒级短路；
+// 1. 跨节点分布式 Hash 缓存比对：多节点全局共享，命中则秒级短路；
 // 2. 分布式并发控制：同服务多 Pod 同时启动时，通过带 owner 的分布式锁防止数据库死锁与并发写入风暴；
 // 3. 驱动底层 Registry 录入引擎并刷新分布式 Hash。
 func (s *discoveryService) Sync(ctx context.Context, req capability.SyncRequest) (bool, error) {
