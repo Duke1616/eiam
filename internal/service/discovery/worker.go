@@ -180,7 +180,7 @@ func (w *Worker) process(ctx context.Context, data []byte) {
 		return
 	}
 
-	if _, err := w.discSvc.Sync(ctx, req); err != nil {
+	if err := w.init.SyncSDKDiscovery(ctx, req); err != nil {
 		w.l.Error("驱动资产录入失败",
 			elog.String("service", req.Service),
 			elog.FieldErr(err))
