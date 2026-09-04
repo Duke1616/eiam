@@ -1,6 +1,7 @@
 package capability
 
 import (
+	goParser "go/parser"
 	"os"
 	"path/filepath"
 	"testing"
@@ -129,3 +130,58 @@ func TestValidatorDanglingAndCycle(t *testing.T) {
 	require.NotEmpty(t, cycleIssues)
 	assert.Contains(t, cycleIssues[0].Message, "循环依赖闭环")
 }
+
+func TestExtractPermRef(t *testing.T) {
+	testCases := []struct {
+		name       string
+		curService string
+		exprCode   string
+		want       string
+	}{
+		{
+			name:       "跨服务 etaskperm.Runner.Ids -> task:runner:ids",
+			curService: "iam",
+			exprCode:   "etaskperm.Runner.Ids",
+			want:       "task:runner:ids",
+		},
+		{
+			name:       "跨服务原生 taskperm.Runner.Ids -> task:runner:ids",
+			curService: "iam",
+			exprCode:   "taskperm.Runner.Ids",
+			want:       "task:runner:ids",
+		},
+		{
+			name:       "跨服务 eflow 别名 eflowperm.Ticket.Approve -> ticket:ticket:approve",
+			curService: "iam",
+			exprCode:   "eflowperm.Ticket.Approve",
+			want:       "ticket:ticket:approve",
+		},
+		{
+			name:       "跨服务 ecmdbperm.Host.List -> cmdb:host:list",
+			curService: "iam",
+			exprCode:   "ecmdbperm.Host.List",
+			want:       "cmdb:host:list",
+		},
+		{
+			name:       "本服务内部引用 permission.User.Get -> iam:user:get",
+			curService: "iam",
+			exprCode:   "permission.User.Get",
+			want:       "iam:user:get",
+		},
+		{
+			name:       "前缀假阳性防误伤 (不以规范后缀结尾不识别为微服务)",
+			curService: "iam",
+			exprCode:   "taskbar.User.Get",
+			want:       "iam:user:get",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := goParser.ParseExpr(tc.exprCode)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, ExtractPermRef(tc.curService, expr))
+		})
+	}
+}
+

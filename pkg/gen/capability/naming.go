@@ -13,7 +13,8 @@ func ToPascalCase(s string) string {
 		if p == "" {
 			continue
 		}
-		sb.WriteString(strings.ToUpper(p[:1]) + p[1:])
+		sb.WriteString(strings.ToUpper(p[:1]))
+		sb.WriteString(p[1:])
 	}
 	return sb.String()
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 
+	"github.com/Duke1616/eiam/assets"
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
 	"github.com/Duke1616/eiam/pkg/utils"
@@ -13,12 +14,6 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 	"gopkg.in/yaml.v3"
 )
-
-//go:embed init/menu.yaml
-var menuYaml []byte
-
-//go:embed init/service.yaml
-var serviceYaml []byte
 
 // IInitializer 负责中心化权限决策中心（EIAM）的资产同步接口。
 // 支持“本地自发现”与“远端 SDK 协议上报”两种归一化的对等发现逻辑。
@@ -75,7 +70,7 @@ func (i *Initializer) SyncSDKDiscovery(ctx context.Context, req capability.SyncR
 
 func (i *Initializer) SyncServices(ctx context.Context) error {
 	// 1. 加载内置服务目录元数据 (泛型加载)
-	services, err := loadYAML[[]domain.Service](serviceYaml)
+	services, err := loadYAML[[]domain.Service](assets.ServiceYAML)
 	if err != nil {
 		return err
 	}
@@ -86,7 +81,7 @@ func (i *Initializer) SyncServices(ctx context.Context) error {
 
 func (i *Initializer) SyncMenus(ctx context.Context) error {
 	// 1. 加载内置菜单元数据 (泛型加载)
-	menus, err := loadYAML[domain.MenuTree](menuYaml)
+	menus, err := loadYAML[domain.MenuTree](assets.MenuYAML)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,9 @@
 - code: ticket
   name: 工单管理
   description: 负责各类业务流程审批与工单流转
+  aliases:
+    - eflow
+    - flow
 - code: task
   name: 任务调度
   description: 负责自动化调度与异步任务执行

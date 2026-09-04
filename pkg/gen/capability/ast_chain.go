@@ -121,20 +121,28 @@ func ExtractModelArg(expr ast.Expr) string {
 	return ""
 }
 
-// ExtractPermRef 提取 perm.User.Get 或 perm.Role.View 等强类型引用的完整权限码
+// ExtractPermRef 提取 perm.User.Get 或 etaskperm.Runner.Ids 等强类型引用的完整权限码
 func ExtractPermRef(service string, expr ast.Expr) string {
+	// 结构要求形如: <pkg>.<module>.<action>，对应双层嵌套 SelectorExpr
 	sel, ok := expr.(*ast.SelectorExpr)
 	if !ok {
 		return ""
 	}
-	action := ToSnakeCase(sel.Sel.Name)
-
-	if parentSel, ok := sel.X.(*ast.SelectorExpr); ok {
-		// 如 perm.User.Get -> module = "user"
-		module := ToSnakeCase(parentSel.Sel.Name)
-		return fmt.Sprintf("%s:%s:%s", service, module, action)
+	parentSel, ok := sel.X.(*ast.SelectorExpr)
+	if !ok {
+		return ""
 	}
-	return ""
+
+	// 智能识别外部微服务包名前缀
+	if ident, ok := parentSel.X.(*ast.Ident); ok {
+		if matched := matchService(ident.Name); matched != "" {
+			service = matched
+		}
+	}
+
+	module := ToSnakeCase(parentSel.Sel.Name)
+	action := ToSnakeCase(sel.Sel.Name)
+	return fmt.Sprintf("%s:%s:%s", service, module, action)
 }
 
 // ExtractScope 安全提取 Scope 作用域 (ScopeSystem / ScopeTenant)
