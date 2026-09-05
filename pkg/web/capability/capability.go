@@ -70,6 +70,14 @@ func (c *Capability) NoSync() *Capability {
 	return c
 }
 
+// NoAudit 标记当前能力免操作审计 (如登录、租户切换等已有认证审计或系统内部接口)
+func (c *Capability) NoAudit() *Capability {
+	c.reg.store.mu.Lock()
+	defer c.reg.store.mu.Unlock()
+	c.perm.NoAudit = true
+	return c
+}
+
 // Scope 设置能力生效的边界作用域（ScopeTenant 或 ScopeSystem）
 func (c *Capability) Scope(scope string) *Capability {
 	c.reg.store.mu.Lock()
@@ -152,16 +160,26 @@ func WithCrossTenant() RouteOption {
 	return func(rb *RouteBinding) { rb.allowCrossTenant = true }
 }
 
+func WithNoAudit() RouteOption {
+	return func(rb *RouteBinding) { rb.noAudit = true }
+}
+
 // RouteBinding 物理路由与逻辑能力包的关联器
 type RouteBinding struct {
 	cap              *Capability
 	apiName          string
 	allowCrossTenant bool
+	noAudit          bool
 	filterProfile    pbac.FilterProfile
 }
 
 func (rb *RouteBinding) AllowCrossTenant() *RouteBinding {
 	rb.allowCrossTenant = true
+	return rb
+}
+
+func (rb *RouteBinding) NoAudit() *RouteBinding {
+	rb.noAudit = true
 	return rb
 }
 
@@ -175,12 +193,14 @@ func (rb *RouteBinding) Handle(h gin.HandlerFunc) gin.HandlerFunc {
 	ptr := reflect.ValueOf(h).Pointer()
 
 	rb.cap.reg.store.mu.RLock()
+	noAudit := rb.noAudit || rb.cap.perm.NoAudit
 	info := ResourceInfo{
 		Service:          rb.cap.perm.Service,
 		Name:             rb.apiName,
 		Code:             rb.cap.perm.Code,
 		Needs:            slices.Clone(rb.cap.perm.Needs),
 		Group:            rb.cap.perm.Group,
+		NoAudit:          noAudit,
 		AllowCrossTenant: rb.allowCrossTenant,
 		FilterProfile:    rb.filterProfile,
 	}

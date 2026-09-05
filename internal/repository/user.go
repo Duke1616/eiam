@@ -16,6 +16,8 @@ import (
 )
 
 // IUserRepository 用户仓储接口
+//
+//go:generate mockgen -package=repomocks -destination=./mocks/user.mock.go github.com/Duke1616/eiam/internal/repository IUserRepository
 type IUserRepository interface {
 	// Create 创建新用户
 	Create(ctx context.Context, u domain.User) (int64, error)

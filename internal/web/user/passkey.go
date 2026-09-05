@@ -12,12 +12,7 @@ import (
 )
 
 // PasskeyRegisterStart 获取 Passkey 注册挑战 (Challenge)
-func (h *Handler) PasskeyRegisterStart(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := session.Get(ctx)
-	if err != nil {
-		return ErrInternalServer, err
-	}
-
+func (h *Handler) PasskeyRegisterStart(ctx *ginx.Context, sess session.Session) (ginx.Result, error) {
 	u, err := h.userSvc.GetById(ctx.Request.Context(), sess.Claims().Uid)
 	if err != nil {
 		return ErrInternalServer, err
@@ -40,12 +35,7 @@ func (h *Handler) PasskeyRegisterStart(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 // PasskeyRegisterFinish 验证并完成 Passkey 绑定
-func (h *Handler) PasskeyRegisterFinish(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := session.Get(ctx)
-	if err != nil {
-		return ErrInternalServer, err
-	}
-
+func (h *Handler) PasskeyRegisterFinish(ctx *ginx.Context, sess session.Session) (ginx.Result, error) {
 	u, err := h.userSvc.GetById(ctx.Request.Context(), sess.Claims().Uid)
 	if err != nil {
 		return ErrInternalServer, err
@@ -113,7 +103,7 @@ func (h *Handler) PasskeyLoginFinish(ctx *ginx.Context) (ginx.Result, error) {
 
 	sessionData, err := h.userSvc.GetPasskeyState(ctx.Request.Context(), token)
 	if err != nil {
-		return ErrInternalServer, fmt.Errorf("登录会话已过期或不存在")
+		return ErrPasskeyExpired, fmt.Errorf("登录会话已过期或不存在")
 	}
 
 	parsedResponse, err := protocol.ParseCredentialRequestResponse(ctx.Request)
@@ -123,12 +113,12 @@ func (h *Handler) PasskeyLoginFinish(ctx *ginx.Context) (ginx.Result, error) {
 
 	u, err := h.passkeySvc.FinishLogin(ctx.Request.Context(), sessionData, parsedResponse)
 	if err != nil {
-		return ErrUnauthorized, err
+		return ErrPasskeyVerifyFail, err
 	}
 
-	result, err := h.userSvc.LoginWithoutPassword(ctx.Request.Context(), u.ID, false)
+	result, err := h.coordinator.Authenticate(ctx.Request.Context(), domain.PASSKEY.String(), u.ID)
 	if err != nil {
-		return ErrInternalServer, err
+		return MapLoginError(err), err
 	}
 
 	return h.handleLoginResult(ctx, result)

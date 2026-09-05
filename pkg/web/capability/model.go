@@ -38,6 +38,7 @@ type Permission struct {
 	Group              string                   `json:"group"`
 	Needs              []string                 `json:"needs"`
 	NoSync             bool                     `json:"no_sync"`
+	NoAudit            bool                     `json:"no_audit"`
 	Scope              string                   `json:"scope"`
 	Sort               int                      `json:"sort"`
 	AccessScopePresets []pbac.AccessScopePreset `json:"access_scope_presets,omitempty"`
@@ -52,6 +53,7 @@ type ResourceInfo struct {
 	Needs            []string           `json:"needs"`
 	Group            string             `json:"group"`
 	Service          string             `json:"service"`
+	NoAudit          bool               `json:"no_audit"`
 	AllowCrossTenant bool               `json:"allow_cross_tenant"`
 	FilterProfile    pbac.FilterProfile `json:"filter_profile,omitempty"`
 }

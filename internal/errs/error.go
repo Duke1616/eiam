@@ -55,4 +55,8 @@ var (
 	ErrTenantKeyDisabled = errors.New("租户凭证已被禁用")
 	ErrInvalidTenantKey  = errors.New("凭证密钥不正确")
 	ErrInvalidToken      = errors.New("无效的通信令牌")
+
+	// MFA 多因素认证相关错误
+	ErrMfaAttemptsExhausted = errors.New("MFA 验证失败次数过多")
+	ErrMfaTokenNotFound     = errors.New("MFA 令牌已过期或无效")
 )

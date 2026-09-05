@@ -7,10 +7,12 @@
 package ioc
 
 import (
+	"github.com/Duke1616/eiam/internal/event/audit"
 	"github.com/Duke1616/eiam/internal/grpc"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
+	audit2 "github.com/Duke1616/eiam/internal/service/audit"
 	"github.com/Duke1616/eiam/internal/service/department"
 	"github.com/Duke1616/eiam/internal/service/discovery"
 	"github.com/Duke1616/eiam/internal/service/group"
@@ -25,6 +27,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/user"
 	"github.com/Duke1616/eiam/internal/service/user/ldap"
 	"github.com/Duke1616/eiam/internal/service/user/passkey"
+	audit3 "github.com/Duke1616/eiam/internal/web/audit"
 	department2 "github.com/Duke1616/eiam/internal/web/department"
 	discovery2 "github.com/Duke1616/eiam/internal/web/discovery"
 	group2 "github.com/Duke1616/eiam/internal/web/group"
@@ -36,8 +39,6 @@ import (
 	tenant2 "github.com/Duke1616/eiam/internal/web/tenant"
 	user2 "github.com/Duke1616/eiam/internal/web/user"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
-	"github.com/RediSearch/redisearch-go/v2/redisearch"
-	"github.com/google/wire"
 )
 
 import (
@@ -46,6 +47,7 @@ import (
 
 // Injectors from wire.go:
 
+// InitApp 统一编排并装配完整企业级 EIAM 应用服务实例
 func InitApp() (*App, error) {
 	cmdable := InitRedis()
 	provider := InitSession(cmdable)
@@ -76,11 +78,13 @@ func InitApp() (*App, error) {
 	iIdentitySourceRepository := repository.NewIdentitySourceRepository(iIdentitySourceDAO, iIdentitySourceCache)
 	cryptoManager := InitCryptoManager()
 	iService := InitIdentitySourceService(iIdentitySourceRepository, cryptoManager)
+	iUserService := user.NewUserService(iUserRepository, iTenantService, iService, cryptoManager)
+	iAuditProducer := audit.NewProducer(cmdable)
 	v2 := InitCredentialProviders(iService)
-	iUserService := user.NewUserService(iUserRepository, iTenantService, iService, v2, cryptoManager)
+	iAuthCoordinator := user.NewAuthCoordinator(iUserRepository, iTenantService, iService, cryptoManager, iAuditProducer, v2)
 	client := InitRedisSearch()
 	redisearchLdapUserCache := InitLdapUserCache(client)
-	ldapService := ldap.NewLdapService(iUserRepository, iTenantService, iService, redisearchLdapUserCache)
+	iLdapService := ldap.NewLdapService(iUserRepository, iTenantService, iService, redisearchLdapUserCache)
 	iPasskeyService := passkey.NewPasskeyService(iUserRepository, iService)
 	iGroupDAO := dao.NewGroupDAO(db)
 	iGroupRepository := repository.NewGroupRepository(iGroupDAO, iUserRepository)
@@ -93,10 +97,12 @@ func InitApp() (*App, error) {
 	iResourceService := resource.NewResourceService(iResourceRepository, iServiceRepository)
 	iAuthorizer := InitOPA()
 	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer, iBoundaryChecker, iTenantRepository)
-	handler := user2.NewUserHandler(iUserService, iTenantService, ldapService, iService, iPasskeyService, iPermissionService, provider)
+	handler := user2.NewUserHandler(iUserService, iAuthCoordinator, iTenantService, iLdapService, iService, iPasskeyService, iPermissionService)
 	policyHandler := policy2.NewHandler(iPolicyService, iUserService, iPermissionService)
-	tenantHandler := tenant2.NewHandler(iTenantService, iPermissionService, provider)
-	permissionHandler := permission2.NewHandler(iPermissionService, provider)
+	tenantHandler := tenant2.NewHandler(iTenantService, iPermissionService)
+	auditConfig := InitAuditConfig()
+	iAuditMatcher := InitAuditMatcher(auditConfig)
+	permissionHandler := permission2.NewHandler(iPermissionService, iAuditMatcher)
 	roleHandler := role2.NewHandler(iRoleService, iPermissionService, iUserService)
 	iDepartmentDAO := dao.NewDepartmentDAO(db)
 	iDepartmentRepository := repository.NewDepartmentRepository(iDepartmentDAO, iUserRepository)
@@ -114,8 +120,12 @@ func InitApp() (*App, error) {
 	iDiscoveryService := discovery.NewDiscoveryService(reporter, iDiscoveryCache)
 	iTokenService := discovery.NewTokenService(iTenantKeyRepository, iServiceRepository)
 	discoveryHandler := discovery2.NewHandler(iDiscoveryService, iTokenService)
+	iAuditDAO := dao.NewAuditDAO(db)
+	iAuditRepository := repository.NewAuditRepository(iAuditDAO)
+	iAuditService := audit2.NewService(iAuditRepository)
+	auditHandler := audit3.NewHandler(iAuditService, iAuditProducer)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, tenancyBuilder, iPermissionService)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, auditHandler, tenancyBuilder, iPermissionService, iAuditProducer)
 	registry := InitRegistry(clientv3Client)
 	userServiceServer := grpc.NewUserServer(iUserService, iPermissionService)
 	tenantServiceServer := grpc.NewTenantServiceServer(iTenantKeyService)
@@ -126,7 +136,8 @@ func InitApp() (*App, error) {
 	v3 := InitProviders()
 	dlockClient := InitDLock(cmdable)
 	worker := discovery.NewWorker(clientv3Client, iDiscoveryService, iInitializer, dlockClient)
-	v4 := InitTasks(worker)
+	consumer := audit.NewConsumer(cmdable, iAuditRepository)
+	v4 := InitTasks(worker, consumer)
 	app := &App{
 		Web:       component,
 		Server:    server,
@@ -146,29 +157,4 @@ func InitTokenService() (discovery.ITokenService, error) {
 	iServiceRepository := repository.NewServiceRepository(iServiceDAO)
 	iTokenService := discovery.NewTokenService(iTenantKeyRepository, iServiceRepository)
 	return iTokenService, nil
-}
-
-// wire.go:
-
-var BaseSet = wire.NewSet(
-	InitDB,
-	InitRedis,
-	InitSession,
-	InitCasbin,
-	InitListener,
-	InitOPA,
-	InitEtcd,
-	InitDLock,
-	InitRegistry,
-	InitCapabilityRegistry,
-
-	InitRedisSearch,
-	InitCredentialProviders,
-
-	InitServiceConfig,
-	InitCryptoManager,
-)
-
-func InitLdapUserCache(conn *redisearch.Client) cache.RedisearchLdapUserCache {
-	return cache.NewRedisearchLdapUserCache(conn)
 }

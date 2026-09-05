@@ -41,6 +41,45 @@ func (m *MockIRoleService) EXPECT() *MockIRoleServiceMockRecorder {
 	return m.recorder
 }
 
+// BatchDelete mocks base method.
+func (m *MockIRoleService) BatchDelete(ctx context.Context, ids []int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDelete", ctx, ids)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BatchDelete indicates an expected call of BatchDelete.
+func (mr *MockIRoleServiceMockRecorder) BatchDelete(ctx, ids any) *MockIRoleServiceBatchDeleteCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDelete", reflect.TypeOf((*MockIRoleService)(nil).BatchDelete), ctx, ids)
+	return &MockIRoleServiceBatchDeleteCall{Call: call}
+}
+
+// MockIRoleServiceBatchDeleteCall wrap *gomock.Call
+type MockIRoleServiceBatchDeleteCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockIRoleServiceBatchDeleteCall) Return(arg0 int64, arg1 error) *MockIRoleServiceBatchDeleteCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockIRoleServiceBatchDeleteCall) Do(f func(context.Context, []int64) (int64, error)) *MockIRoleServiceBatchDeleteCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockIRoleServiceBatchDeleteCall) DoAndReturn(f func(context.Context, []int64) (int64, error)) *MockIRoleServiceBatchDeleteCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // CountByKeyword mocks base method.
 func (m *MockIRoleService) CountByKeyword(ctx context.Context, keyword string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -192,6 +231,45 @@ func (c *MockIRoleServiceGetByCodeCall) Do(f func(context.Context, string) (doma
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockIRoleServiceGetByCodeCall) DoAndReturn(f func(context.Context, string) (domain.Role, error)) *MockIRoleServiceGetByCodeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetByIDs mocks base method.
+func (m *MockIRoleService) GetByIDs(ctx context.Context, ids []int64) ([]domain.Role, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByIDs", ctx, ids)
+	ret0, _ := ret[0].([]domain.Role)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByIDs indicates an expected call of GetByIDs.
+func (mr *MockIRoleServiceMockRecorder) GetByIDs(ctx, ids any) *MockIRoleServiceGetByIDsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockIRoleService)(nil).GetByIDs), ctx, ids)
+	return &MockIRoleServiceGetByIDsCall{Call: call}
+}
+
+// MockIRoleServiceGetByIDsCall wrap *gomock.Call
+type MockIRoleServiceGetByIDsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockIRoleServiceGetByIDsCall) Return(arg0 []domain.Role, arg1 error) *MockIRoleServiceGetByIDsCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockIRoleServiceGetByIDsCall) Do(f func(context.Context, []int64) ([]domain.Role, error)) *MockIRoleServiceGetByIDsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockIRoleServiceGetByIDsCall) DoAndReturn(f func(context.Context, []int64) ([]domain.Role, error)) *MockIRoleServiceGetByIDsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

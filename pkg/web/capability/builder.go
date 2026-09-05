@@ -36,6 +36,12 @@ func (b *Builder) NoSync() *Builder {
 	return b
 }
 
+func (b *Builder) NoAudit() *Builder {
+	b.cap.NoAudit()
+	b.rb.NoAudit()
+	return b
+}
+
 func (b *Builder) Scope(scope string) *Builder {
 	b.cap.Scope(scope)
 	return b

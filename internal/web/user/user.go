@@ -12,12 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := session.Get(ctx)
-	if err != nil || sess == nil {
-		return ErrUnauthenticated, err
-	}
-
+func (h *Handler) Profile(ctx *ginx.Context, sess session.Session) (ginx.Result, error) {
 	uid := sess.Claims().Uid
 	var (
 		eg      errgroup.Group
@@ -27,16 +22,18 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 
 	// 并发获取用户信息和租户列表
 	eg.Go(func() error {
+		var err error
 		u, err = h.userSvc.GetById(ctx.Request.Context(), uid)
 		return err
 	})
 
 	eg.Go(func() error {
+		var err error
 		tenants, err = h.tenantSvc.GetTenantsByUserId(ctx.Request.Context(), uid)
 		return err
 	})
 
-	if err = eg.Wait(); err != nil {
+	if err := eg.Wait(); err != nil {
 		return ErrUserNotFound, err
 	}
 
@@ -46,31 +43,26 @@ func (h *Handler) Profile(ctx *ginx.Context) (ginx.Result, error) {
 
 	return ginx.Result{
 		Data: RetrieveUser{
-			User:            ToUserVO(u),
-			Tenants:         ToTenantVOs(tenants),
-			CurrentTenantID: tenantID,
-			IsAdmin:         domain.HasAdminRole(roles),
-			Permissions:     permissions,
+			User:             ToUserVO(u),
+			Tenants:          ToTenantVOs(tenants),
+			CurrentTenantID:  tenantID,
+			MustSelectTenant: tenantID <= 0 && len(tenants) > 1,
+			IsAdmin:          lo.Contains(roles, "admin"),
+			Permissions:      permissions,
 		},
 	}, nil
 }
 
 func (h *Handler) Create(ctx *ginx.Context, req SignupRequest) (ginx.Result, error) {
-	if req.Password != req.ConfirmPassword {
-		return ErrPasswordMismatch, nil
-	}
-
 	id, err := h.userSvc.Signup(ctx.Request.Context(), req.ToDomain())
 	if err != nil {
 		return ErrSignupFailed, err
 	}
 
-	// 如果是非系统租户管理员创建，则自动将该用户关联至当前租户
 	tid := ctxutil.GetTenantID(ctx).Int64()
-	if tid != ctxutil.SystemTenantID {
-		err = h.tenantSvc.AssignUser(ctx.Request.Context(), id)
-		if err != nil {
-			h.logger.Error("管理员创建用户后自动分配租户失败",
+	if tid > 0 {
+		if err = h.tenantSvc.AssignUser(ctx.Request.Context(), id); err != nil {
+			h.logger.Error("自动加入企业空间失败",
 				elog.Int64("uid", id),
 				elog.Int64("tid", tid),
 				elog.FieldErr(err),
@@ -84,17 +76,12 @@ func (h *Handler) Create(ctx *ginx.Context, req SignupRequest) (ginx.Result, err
 	}, nil
 }
 
-func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest) (ginx.Result, error) {
+func (h *Handler) UpdatePassword(ctx *ginx.Context, req UpdatePasswordRequest, sess session.Session) (ginx.Result, error) {
 	if req.NewPassword != req.ConfirmPassword {
 		return ErrPasswordMismatch, nil
 	}
 
-	sess, err := session.Get(ctx)
-	if err != nil || sess == nil {
-		return ErrUnauthenticated, err
-	}
-
-	err = h.userSvc.UpdatePassword(ctx.Request.Context(), sess.Claims().Uid, req.OldPassword, req.NewPassword)
+	err := h.userSvc.UpdatePassword(ctx.Request.Context(), sess.Claims().Uid, req.OldPassword, req.NewPassword)
 	if err != nil {
 		return ErrUnauthorized, err
 	}

@@ -7,7 +7,7 @@ import (
 	"github.com/Duke1616/eiam/assets"
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
-	"github.com/Duke1616/eiam/pkg/utils"
+	"github.com/Duke1616/eiam/pkg/sorter"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/Duke1616/eiam/pkg/web/capability/syncer"
 	"github.com/gin-gonic/gin"
@@ -39,8 +39,6 @@ type Initializer struct {
 	engine   ingestion.Engine
 	registry capability.Registry
 	logger   *elog.Component
-
-	sorter *utils.Sorter[*domain.Menu, *domain.Menu]
 }
 
 func NewResourceInitializer(engine ingestion.Engine, registry capability.Registry) IInitializer {
@@ -48,10 +46,6 @@ func NewResourceInitializer(engine ingestion.Engine, registry capability.Registr
 		engine:   engine,
 		registry: registry,
 		logger:   elog.DefaultLogger.With(elog.FieldComponent("resource-initializer")),
-		sorter: utils.NewSorter(func(m *domain.Menu, idx int) *domain.Menu {
-			m.Sort = int64((idx + 1) * utils.DefaultIndexGap)
-			return m
-		}),
 	}
 }
 
@@ -86,9 +80,11 @@ func (i *Initializer) SyncMenus(ctx context.Context) error {
 		return err
 	}
 
-	// 2. 打平结构、血缘自映射
-	i.sorter.RebalanceHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
+	// 2. 打平结构、血缘自映射并按稀疏步长重平衡分配 Sort 权重
+	sorter.RebalanceHierarchical(menus, func(m *domain.Menu) []*domain.Menu {
 		return m.Children
+	}, func(m *domain.Menu, sortKey int64) {
+		m.Sort = sortKey
 	})
 
 	// 3. 委托给统一录入引擎执行落盘与绑定

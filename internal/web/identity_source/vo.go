@@ -28,6 +28,7 @@ type LDAPVO struct {
 	MailAttribute        string `json:"mail_attribute"`
 	DisplayNameAttribute string `json:"display_name_attribute"`
 	TitleAttribute       string `json:"title_attribute"`
+	PhoneAttribute       string `json:"phone_attribute"`
 
 	// 过滤条件
 	UserFilter     string `json:"user_filter"`

@@ -2,7 +2,6 @@ package user
 
 import (
 	"context"
-	"errors"
 	"unicode"
 
 	"github.com/Duke1616/ecmdb/pkg/cryptox"
@@ -20,10 +19,6 @@ import (
 
 type IUserService interface {
 	Signup(ctx context.Context, u domain.User) (int64, error)
-	// Login 认证成功后，同步返回封装好的 LoginResult
-	Login(ctx context.Context, provider, username, password string) (domain.LoginResult, error)
-	// LoginWithoutPassword 用于 Passkey/OIDC 等已经完成身份验证的场景，直接执行登录后置逻辑
-	LoginWithoutPassword(ctx context.Context, uid int64, requireMfa bool) (domain.LoginResult, error)
 
 	// GetById 根据 ID 获取用户信息
 	GetById(ctx context.Context, id int64) (domain.User, error)
@@ -69,8 +64,6 @@ type IUserService interface {
 	ListIdentitiesByUserID(ctx context.Context, userID int64, provider string) ([]domain.UserIdentity, error)
 	// ManageIdentities 批量治理/管理用户的外部身份绑定关系
 	ManageIdentities(ctx context.Context, uid int64, identities []domain.UserIdentity) error
-	// LoginWithExternal 处理外部身份源登录 (JIT 开户)
-	LoginWithExternal(ctx context.Context, ident domain.OidcIdentity, requireMfa bool) (domain.LoginResult, error)
 	// GenerateBindToken 生成临时绑定令牌并存入缓存
 	GenerateBindToken(ctx context.Context, ident domain.OidcIdentity) (string, error)
 	// ConsumeBindToken 消费令牌并执行绑定
@@ -85,21 +78,18 @@ type IUserService interface {
 	VerifyAndEnableTOTP(ctx context.Context, userID int64, code, secret string) error
 	// DisableMFA 关闭 MFA
 	DisableMFA(ctx context.Context, userID int64) error
-	// VerifyLoginMFA 登录时的 MFA 校验
-	VerifyLoginMFA(ctx context.Context, token, code string) (domain.LoginResult, error)
 }
 
 var (
-	ErrMfaAttemptsExhausted = errors.New("MFA 验证失败次数过多")
-	ErrMfaTokenNotFound     = errors.New("MFA 令牌已过期或无效")
+	ErrMfaAttemptsExhausted = errs.ErrMfaAttemptsExhausted
+	ErrMfaTokenNotFound     = errs.ErrMfaTokenNotFound
 )
 
 type userService struct {
-	repo                repository.IUserRepository
-	tenantSvc           tenant.ITenantService
-	idsSvc              idsource.IService
-	credentialProviders map[string]domain.CredentialProvider
-	cm                  *cryptox.CryptoManager
+	repo      repository.IUserRepository
+	tenantSvc tenant.ITenantService
+	idsSvc    idsource.IService
+	cm        *cryptox.CryptoManager
 }
 
 func (s *userService) GetByUsernames(ctx context.Context, usernames []string) ([]domain.User, error) {
@@ -111,17 +101,12 @@ func (s *userService) GetByIDs(ctx context.Context, ids []int64) ([]domain.User,
 }
 
 func NewUserService(r repository.IUserRepository, tenantSvc tenant.ITenantService,
-	idsSvc idsource.IService, ps []domain.CredentialProvider, cm *cryptox.CryptoManager) IUserService {
-	registry := make(map[string]domain.CredentialProvider, len(ps))
-	for _, p := range ps {
-		registry[p.Name()] = p
-	}
+	idsSvc idsource.IService, cm *cryptox.CryptoManager) IUserService {
 	return &userService{
-		repo:                r,
-		tenantSvc:           tenantSvc,
-		idsSvc:              idsSvc,
-		credentialProviders: registry,
-		cm:                  cm,
+		repo:      r,
+		tenantSvc: tenantSvc,
+		idsSvc:    idsSvc,
+		cm:        cm,
 	}
 }
 
@@ -223,19 +208,19 @@ func (s *userService) List(ctx context.Context, offset, limit int64, keyword str
 		users []domain.User
 		total int64
 	)
-	eg, _ := errgroup.WithContext(ctx)
+	eg, gctx := errgroup.WithContext(ctx)
 
 	// 1. 并发查询用户列表
 	eg.Go(func() error {
 		var err error
-		users, err = s.repo.List(ctx, offset, limit, keyword)
+		users, err = s.repo.List(gctx, offset, limit, keyword)
 		return err
 	})
 
 	// 2. 并发查询总数
 	eg.Go(func() error {
 		var err error
-		total, err = s.repo.Count(ctx, keyword)
+		total, err = s.repo.Count(gctx, keyword)
 		return err
 	})
 
@@ -315,21 +300,21 @@ func (s *userService) validatePassword(ctx context.Context, password string) err
 		return nil
 	}
 
-	// 3. 执行基础合规性检查（手动规则）
+	// 3. 密码复杂度校验
 	if len(password) < localCfg.MinLength {
 		return errs.ErrPasswordWeak
 	}
 
 	var hasDigit, hasUpper, hasLower, hasSymbol bool
-	for _, char := range password {
+	for _, r := range password {
 		switch {
-		case unicode.IsDigit(char):
+		case unicode.IsDigit(r):
 			hasDigit = true
-		case unicode.IsUpper(char):
+		case unicode.IsUpper(r):
 			hasUpper = true
-		case unicode.IsLower(char):
+		case unicode.IsLower(r):
 			hasLower = true
-		case unicode.IsPunct(char) || unicode.IsSymbol(char):
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
 			hasSymbol = true
 		}
 	}
@@ -346,23 +331,16 @@ func (s *userService) validatePassword(ctx context.Context, password string) err
 
 // getLocalConfig 获取已启用的本地口令策略配置
 // NOTE: 抽取为独立方法，避免 loginLocal 和 validatePassword 重复查全量身份源列表
-// TODO: 后续可增加内存缓存，避免每次都查数据库
 func (s *userService) getLocalConfig(ctx context.Context) (domain.LocalConfig, bool) {
+	if s.idsSvc == nil {
+		return domain.LocalConfig{}, false
+	}
 	source, err := s.idsSvc.FindEnabled(ctx, domain.LOCAL)
 	if err != nil {
 		return domain.LocalConfig{}, false
 	}
 
 	return source.LocalConfig, true
-}
-
-func (s *userService) getOIDCConfig(ctx context.Context, provider string) (domain.OIDCConfig, bool) {
-	source, err := s.idsSvc.FindEnabled(ctx, domain.OIDC, provider)
-	if err != nil {
-		return domain.OIDCConfig{}, false
-	}
-
-	return source.OIDCConfig, true
 }
 
 func (s *userService) GenerateBindToken(ctx context.Context, ident domain.OidcIdentity) (string, error) {

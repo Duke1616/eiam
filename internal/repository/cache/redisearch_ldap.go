@@ -53,9 +53,10 @@ func (cache *redisearchLdapUserCache) Document(ctx context.Context, tid int64, u
 			Set("display_name", user.Profile.Nickname).
 			Set("title", user.Profile.JobTitle).
 			Set("email", user.Email).
+			Set("phone", user.Profile.Phone).
 			Set("updated_at", syncTime)
 
-		if ident, ok := user.GetPrimaryIdentity("ldap"); ok {
+		if ident, ok := user.GetPrimaryIdentity(domain.LDAP.String()); ok {
 			doc.Set("dn", ident.LdapInfo.DN)
 		}
 
@@ -157,7 +158,7 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 
 	query := redisearch.NewQuery(raw).
 		Limit(offset, limit).
-		SetReturnFields("username", "display_name", "title", "email", "dn")
+		SetReturnFields("username", "display_name", "title", "email", "phone", "dn")
 
 	docs, total, err := cache.conn.Search(query)
 	if err != nil {
@@ -167,18 +168,20 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 	users := make([]domain.User, 0, len(docs))
 	for _, doc := range docs {
 		u := domain.User{
-			Username: doc.Properties["username"].(string),
-			Email:    doc.Properties["email"].(string),
+			Username: getPropString(doc.Properties, "username"),
+			Email:    getPropString(doc.Properties, "email"),
 			Profile: domain.UserProfile{
-				Nickname: doc.Properties["display_name"].(string),
-				JobTitle: doc.Properties["title"].(string),
+				Nickname: getPropString(doc.Properties, "display_name"),
+				JobTitle: getPropString(doc.Properties, "title"),
+				Phone:    getPropString(doc.Properties, "phone"),
 			},
 		}
 
-		if dn, ok := doc.Properties["dn"].(string); ok && dn != "" {
+		if dn := getPropString(doc.Properties, "dn"); dn != "" {
 			u.Identities = []domain.UserIdentity{
 				{
-					Provider: "ldap",
+					Provider: domain.LDAP.String(),
+					IdentityID: dn,
 					LdapInfo: domain.LdapInfo{DN: dn},
 				},
 			}
@@ -192,4 +195,13 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 
 func (cache *redisearchLdapUserCache) key(tid int64, username string) string {
 	return fmt.Sprintf("%s%d:%s", LdapUserKeyPrefix, tid, username)
+}
+
+func getPropString(props map[string]any, key string) string {
+	if v, ok := props[key]; ok && v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }

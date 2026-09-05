@@ -153,6 +153,7 @@ func (h *Handler) toDomain(req SaveIdentitySourceReq) domain.IdentitySource {
 			MailAttribute:        req.LDAP.MailAttribute,
 			DisplayNameAttribute: req.LDAP.DisplayNameAttribute,
 			TitleAttribute:       req.LDAP.TitleAttribute,
+			PhoneAttribute:       req.LDAP.PhoneAttribute,
 			UserFilter:           req.LDAP.UserFilter,
 			SyncUserFilter:       req.LDAP.SyncUserFilter,
 		}
@@ -222,6 +223,7 @@ func (h *Handler) toVo(src domain.IdentitySource) IdentitySourceVO {
 			MailAttribute:        src.LDAPConfig.MailAttribute,
 			DisplayNameAttribute: src.LDAPConfig.DisplayNameAttribute,
 			TitleAttribute:       src.LDAPConfig.TitleAttribute,
+			PhoneAttribute:       src.LDAPConfig.PhoneAttribute,
 			UserFilter:           src.LDAPConfig.UserFilter,
 			SyncUserFilter:       src.LDAPConfig.SyncUserFilter,
 		}

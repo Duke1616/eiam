@@ -6,7 +6,8 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
-	"github.com/Duke1616/eiam/pkg/utils"
+	"github.com/Duke1616/eiam/pkg/sorter"
+	"github.com/samber/lo"
 )
 
 // IResourceService 物理资源管理服务
@@ -94,19 +95,24 @@ func (s *resourceService) ReorderMenu(ctx context.Context, id, targetPid, target
 
 	draggedMenu.ParentID = targetPid
 
-	// 4. 计算排程：利用通用 Sorter 引擎执行数学空间映射
-	sorter := utils.NewSorter(func(m domain.Menu, idx int) domain.Menu {
-		m.Sort = int64(idx+1) * utils.DefaultIndexGap
-		m.ParentID = targetPid // NOTE: 确保重平衡时同步修正父子关联
-		return m
-	})
+	// 4. 计算排程：利用全新无状态 sorter 引擎执行空间插值与重排计算
+	plan := sorter.Reorder(targetMenus, id, targetPosition)
 
-	// 5. 生成计划：判定采取单步偏移 (Fast) 还是全量对齐 (Slow)
-	plan := sorter.PlanReorder(targetMenus, draggedMenu, targetPosition)
+	// 5. 原地拖拽短路：若位置未发生改变且父节点未变，直接短路返回，0 次数据库写操作
+	if plan.Unchanged && targetPid == draggedMenu.ParentID {
+		return nil
+	}
 
 	// 6. 执行更新：基于计算出的计划选择最优落库策略
 	if plan.NeedRebalance {
-		return s.repo.BatchUpdateMenuSort(ctx, plan.Items)
+		updatedMenus := lo.Map(plan.Items, func(item sorter.Item, _ int) domain.Menu {
+			return domain.Menu{
+				ID:       item.ID,
+				ParentID: targetPid,
+				Sort:     item.SortKey,
+			}
+		})
+		return s.repo.BatchUpdateMenuSort(ctx, updatedMenus)
 	}
 
 	// 快速路径：原子级别更新父节点归属与排序分值

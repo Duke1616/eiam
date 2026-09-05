@@ -10,13 +10,17 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	idsource "github.com/Duke1616/eiam/internal/service/identity_source"
 	"github.com/Duke1616/eiam/internal/service/tenant"
-	"github.com/Duke1616/eiam/internal/service/user/ldapx"
 )
 
-type LdapService interface {
-	Login(ctx context.Context, username, password string) (domain.User, error)
+// ILdapService LDAP 业务逻辑接口
+type ILdapService interface {
+	// SearchCacheUserWithPager 基于 RediSearch 缓存分页检索 LDAP 用户
 	SearchCacheUserWithPager(ctx context.Context, tid int64, keywords string, offset, limit int) ([]domain.User, int, error)
+
+	// RefreshCacheUserWithPager 从远端 LDAP 服务器拉取用户数据并刷新 RediSearch 缓存
 	RefreshCacheUserWithPager(ctx context.Context, tid int64) error
+
+	// Sync 批量持久化 LDAP 用户，初始化个人空间并绑定当前租户成员关系
 	Sync(ctx context.Context, tid int64, users []domain.User) error
 }
 
@@ -27,8 +31,9 @@ type ldapService struct {
 	cache     cache.RedisearchLdapUserCache
 }
 
+// NewLdapService 创建 LDAP 业务服务实例
 func NewLdapService(repo repository.IUserRepository, tenantSvc tenant.ITenantService,
-	idsSvc idsource.IService, cache cache.RedisearchLdapUserCache) LdapService {
+	idsSvc idsource.IService, cache cache.RedisearchLdapUserCache) ILdapService {
 	return &ldapService{
 		repo:      repo,
 		tenantSvc: tenantSvc,
@@ -37,7 +42,12 @@ func NewLdapService(repo repository.IUserRepository, tenantSvc tenant.ITenantSer
 	}
 }
 
+// Sync 批量持久化 LDAP 用户至系统，初始化个人空间并绑定当前租户成员关系
 func (l *ldapService) Sync(ctx context.Context, tid int64, users []domain.User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
 	now := time.Now().UnixMilli()
 	usernames := make([]string, 0, len(users))
 	for i := range users {
@@ -48,72 +58,61 @@ func (l *ldapService) Sync(ctx context.Context, tid int64, users []domain.User) 
 		usernames = append(usernames, users[i].Username)
 	}
 
-	// 1. 批量持久化用户
+	// 批量持久化用户基础信息
 	if err := l.repo.BatchUpsert(ctx, users); err != nil {
 		return err
 	}
 
-	// 2. 重新获取数据库生成的 ID（用于后续租户初始化）
+	// 查询落库后的用户实体获取系统生成 ID
 	savedUsers, err := l.repo.FindUsersByUsernames(ctx, usernames)
 	if err != nil {
 		return err
 	}
 
-	// 3. 为用户初始化个人租户空间（Batch 批量处理）
-	return l.tenantSvc.BatchInitPersonalTenant(ctx, savedUsers)
+	// 批量初始化个人租户空间
+	if err := l.tenantSvc.BatchInitPersonalTenant(ctx, savedUsers); err != nil {
+		return err
+	}
+
+	if tid <= 0 {
+		return nil
+	}
+
+	userIDs := make([]int64, 0, len(savedUsers))
+	for _, u := range savedUsers {
+		userIDs = append(userIDs, u.ID)
+	}
+	return l.tenantSvc.BatchAssignTenants(ctx, userIDs, []int64{tid})
 }
 
+// SearchCacheUserWithPager 从 RediSearch 索引中按关键字模糊分页查询 LDAP 用户
 func (l *ldapService) SearchCacheUserWithPager(ctx context.Context, tid int64, keywords string,
 	offset, limit int) ([]domain.User, int, error) {
 	return l.cache.Query(ctx, tid, keywords, offset, limit)
 }
 
+// RefreshCacheUserWithPager 通过 LDAP 分页遍历拉取远端用户并重建本地缓存索引
 func (l *ldapService) RefreshCacheUserWithPager(ctx context.Context, tid int64) error {
-	config, ok := l.getLDAPConfig(ctx)
+	config, ok := getLDAPConfig(ctx, l.idsSvc)
 	if !ok {
 		return errors.New("未找到启用的 LDAP 身份源配置")
 	}
 
-	provider := ldapx.NewLdap(l.toLdapxConfig(config))
-	ldapUsers, err := provider.SearchUserWithPaging(ctx)
+	client := newClient(config)
+	filter := config.SyncUserFilter
+	if filter == "" {
+		filter = config.UserFilter
+	}
+
+	entries, err := client.SearchWithPaging(ctx, filter, getRequiredAttributes(config), 500)
 	if err != nil {
 		return err
 	}
 
+	ldapUsers := make([]domain.User, 0, len(entries))
+	for _, entry := range entries {
+		ldapUsers = append(ldapUsers, buildDomainUser(entry, config))
+	}
+
 	return l.cache.Document(ctx, tid, ldapUsers)
-}
-
-// Login LDAP 登录
-func (l *ldapService) Login(ctx context.Context, username, password string) (domain.User, error) {
-	config, ok := l.getLDAPConfig(ctx)
-	if !ok {
-		return domain.User{}, errors.New("未找到启用的 LDAP 身份源配置")
-	}
-
-	provider := ldapx.NewLdap(l.toLdapxConfig(config))
-	return provider.Authenticate(ctx, username, password)
-}
-
-func (l *ldapService) getLDAPConfig(ctx context.Context) (domain.LDAPConfig, bool) {
-	source, err := l.idsSvc.FindEnabled(ctx, domain.LDAP)
-	if err != nil {
-		return domain.LDAPConfig{}, false
-	}
-
-	return source.LDAPConfig, true
-}
-
-func (l *ldapService) toLdapxConfig(cfg domain.LDAPConfig) ldapx.Config {
-	return ldapx.Config{
-		Url:                  cfg.URL,
-		BaseDN:               cfg.BaseDN,
-		BindDN:               cfg.BindDN,
-		BindPassword:         cfg.BindPassword,
-		UsernameAttribute:    cfg.UsernameAttribute,
-		MailAttribute:        cfg.MailAttribute,
-		DisplayNameAttribute: cfg.DisplayNameAttribute,
-		TitleAttribute:       cfg.TitleAttribute,
-		UserFilter:           cfg.UserFilter,
-		SyncUserFilter:       cfg.SyncUserFilter,
-	}
 }

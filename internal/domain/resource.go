@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Duke1616/eiam/pkg/pbac"
+	"github.com/Duke1616/eiam/pkg/sorter"
 	"github.com/Duke1616/eiam/pkg/urn"
 	"github.com/Duke1616/eiam/pkg/utils"
 )
@@ -56,10 +57,10 @@ func (l MenuList) ToTree() MenuTree {
 	// 递归逻辑已扁平化为 Map 遍历，只需对各层级执行排序
 	for _, m := range nodeMap {
 		if len(m.Children) > 1 {
-			utils.SortBySortKey(m.Children)
+			sorter.SortBySortKey(m.Children)
 		}
 	}
-	utils.SortBySortKey(roots)
+	sorter.SortBySortKey(roots)
 
 	return roots
 }

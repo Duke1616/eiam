@@ -647,3 +647,35 @@
       is_hidden: true
       is_keepalive: false
       platforms: ["iam"]
+- name: IAMSafetyAudit
+  path: /iam/audit
+  component: Layouts
+  redirect: /iam/audit/auth
+  meta:
+    title: 安全审计
+    icon: audit
+    is_hidden: false
+    is_keepalive: false
+    platforms: ["iam"]
+  children:
+  - name: AuthAuditLog
+    permission_code: "iam:audit:view_auth"
+    path: /iam/audit/auth
+    component: /pages/iam/audit/auth.vue
+    meta:
+      title: 登录审计
+      icon: auth-audit
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["iam"]
+  - name: OperationAuditLog
+    permission_code: "iam:audit:view_operation"
+    path: /iam/audit/operation
+    component: /pages/iam/audit/operation.vue
+    meta:
+      title: 操作审计
+      icon: operation-audit
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["iam"]
+

@@ -7,7 +7,7 @@ import (
 	"github.com/Duke1616/ecmdb/pkg/cryptox"
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository"
-	"github.com/Duke1616/eiam/internal/service/user/ldapx"
+	"github.com/Duke1616/eiam/pkg/ldapx"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/google/uuid"
 	"github.com/gotomicro/ego/core/elog"
@@ -252,21 +252,14 @@ func (s *service) TestConnection(ctx context.Context, source domain.IdentitySour
 	}
 
 	cfg := source.LDAPConfig
-	ldapConf := ldapx.Config{
-		Url:                  cfg.URL,
-		BaseDN:               cfg.BaseDN,
-		BindDN:               cfg.BindDN,
-		BindPassword:         password,
-		UserFilter:           cfg.UserFilter,
-		SyncUserFilter:       cfg.SyncUserFilter,
-		UsernameAttribute:    cfg.UsernameAttribute,
-		MailAttribute:        cfg.MailAttribute,
-		DisplayNameAttribute: cfg.DisplayNameAttribute,
-		TitleAttribute:       cfg.TitleAttribute,
-	}
+	client := ldapx.NewClient(ldapx.Config{
+		URL:          cfg.URL,
+		BaseDN:       cfg.BaseDN,
+		BindDN:       cfg.BindDN,
+		BindPassword: password,
+	})
 
-	provider := ldapx.NewLdap(ldapConf)
-	return provider.CheckConnect()
+	return client.CheckConnect()
 }
 
 func (s *service) ToggleEnabled(ctx context.Context, id int64) error {

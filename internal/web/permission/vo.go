@@ -55,6 +55,12 @@ type CheckPolicyReq struct {
 
 type AuthorizeResult = pbac.Decision
 
+// CheckPolicyResp 统一权限判定与审计指令响应体
+type CheckPolicyResp struct {
+	pbac.Decision
+	Audit bool `json:"audit"`
+}
+
 type Menu struct {
 	ID        int64  `json:"id"`
 	ParentID  int64  `json:"parent_id"`

@@ -51,7 +51,7 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 	ident, err := h.idsSvc.VerifyOIDC(ctx.Request.Context(), state, code)
 	if err != nil {
 		h.logger.Error("[OIDC] 身份校验失败", elog.FieldErr(err))
-		return ErrInternalServer, err
+		return ErrOIDCDenied, err
 	}
 
 	h.logger.Info("[OIDC] 身份校验成功",
@@ -60,7 +60,7 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 		elog.String("username", ident.Username),
 	)
 
-	result, err := h.userSvc.LoginWithExternal(ctx.Request.Context(), ident, true)
+	result, err := h.coordinator.Authenticate(ctx.Request.Context(), domain.OIDC.String(), ident)
 	if err != nil {
 		if errors.Is(err, errs.ErrUserNotLinked) {
 			token, tokenErr := h.userSvc.GenerateBindToken(ctx.Request.Context(), ident)
@@ -77,7 +77,7 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 			}, nil
 		}
 		h.logger.Error("[OIDC] 登录处理失败", elog.FieldErr(err))
-		return ErrInternalServer, err
+		return MapLoginError(err), err
 	}
 
 	return h.handleLoginResult(ctx, result)
@@ -117,12 +117,7 @@ func (h *Handler) ManageIdentities(ctx *ginx.Context, req ManageIdentitiesReques
 }
 
 // ListMyIdentities 获取当前用户绑定的身份列表 (支持按 provider 过滤)
-func (h *Handler) ListMyIdentities(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := session.Get(ctx)
-	if err != nil || sess == nil {
-		return ErrUnauthenticated, err
-	}
-
+func (h *Handler) ListMyIdentities(ctx *ginx.Context, sess session.Session) (ginx.Result, error) {
 	provider, _ := ctx.Query("provider").AsString()
 	uis, err := h.userSvc.ListIdentitiesByUserID(ctx.Request.Context(), sess.Claims().Uid, provider)
 	if err != nil {

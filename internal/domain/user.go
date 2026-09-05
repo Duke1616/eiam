@@ -144,6 +144,7 @@ type LoginResult struct {
 	User     User
 	TenantID int64
 	Tenants  []Tenant
+	AuthType string `json:"auth_type"` // 本次登录成功所使用的真实认证方式 (local, ldap, oidc, passkey 等)
 
 	// MFA/Passkey 流程支持
 	MfaRequired bool   `json:"mfa_required"`

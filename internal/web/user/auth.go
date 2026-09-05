@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	usersvc "github.com/Duke1616/eiam/internal/service/user"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gotomicro/ego/core/elog"
@@ -20,30 +21,39 @@ func (h *Handler) Signup(ctx *ginx.Context, req SignupRequest) (ginx.Result, err
 		return ErrSignupFailed, err
 	}
 
-	return ginx.Result{Data: id}, nil
+	return ginx.Result{
+		Data: id,
+		Msg:  "注册成功",
+	}, nil
 }
 
 func (h *Handler) LoginLdap(ctx *ginx.Context, req LoginRequest) (ginx.Result, error) {
-	return h.executeLogin(ctx, "ldap", req.Username, req.Password)
+	return h.executeLogin(ctx, domain.LDAP.String(), req.Username, req.Password)
 }
 
 func (h *Handler) LoginSystem(ctx *ginx.Context, req LoginRequest) (ginx.Result, error) {
-	return h.executeLogin(ctx, "local", req.Username, req.Password)
+	return h.executeLogin(ctx, domain.LOCAL.String(), req.Username, req.Password)
 }
 
 func (h *Handler) executeLogin(ctx *ginx.Context, provider, username, password string) (ginx.Result, error) {
-	result, err := h.userSvc.Login(ctx.Request.Context(), provider, username, password)
+	result, err := h.coordinator.Authenticate(ctx.Request.Context(), provider, usersvc.PasswordCredential{
+		Username: username,
+		Password: password,
+	})
 	if err != nil {
-		return ErrUnauthorized, err
+		return MapLoginError(err), err
 	}
 
 	return h.handleLoginResult(ctx, result)
 }
 
 func (h *Handler) BindConfirm(ctx *ginx.Context, req BindConfirmRequest) (ginx.Result, error) {
-	result, err := h.userSvc.Login(ctx.Request.Context(), "local", req.Username, req.Password)
+	result, err := h.coordinator.Authenticate(ctx.Request.Context(), domain.LOCAL.String(), usersvc.PasswordCredential{
+		Username: req.Username,
+		Password: req.Password,
+	})
 	if err != nil {
-		return ErrUnauthorized, err
+		return MapLoginError(err), err
 	}
 
 	err = h.userSvc.ConsumeBindToken(ctx.Request.Context(), result.User.ID, req.BindToken)
@@ -100,14 +110,16 @@ func (h *Handler) issueSession(ctx *ginx.Context, uid int64, username string, te
 	return err
 }
 
-func (h *Handler) Logout(ctx *ginx.Context) (ginx.Result, error) {
-	if _, err := session.Get(ctx); err != nil {
-		return ginx.Result{Msg: "已退出登录"}, nil
-	}
+func (h *Handler) Logout(ctx *ginx.Context, sess session.Session) (ginx.Result, error) {
+	claims := sess.Claims()
+	uid := claims.Uid
+	username, _ := claims.Get("username").AsString()
+	tid, _ := claims.Get("tenant_id").AsInt64()
 
-	if err := h.sp.Destroy(ctx); err != nil {
+	if err := sess.Destroy(ctx.Context); err != nil {
 		return ErrInternalServer, err
 	}
 
+	h.coordinator.RecordLogout(ctx.Request.Context(), uid, tid, username)
 	return ginx.Result{Msg: "退出登录成功"}, nil
 }

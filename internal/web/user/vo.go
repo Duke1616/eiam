@@ -29,11 +29,19 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+func (r LoginRequest) GetAccount() string {
+	return r.Username
+}
+
 // BindConfirmRequest 账号绑定确认请求
 type BindConfirmRequest struct {
 	Username  string `json:"username" binding:"required"`
 	Password  string `json:"password" binding:"required"`
 	BindToken string `json:"bind_token" binding:"required"`
+}
+
+func (r BindConfirmRequest) GetAccount() string {
+	return r.Username
 }
 
 // User 用户展示对象

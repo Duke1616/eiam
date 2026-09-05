@@ -36,6 +36,7 @@ func InitRedisSearch() *redisearch.Client {
 		AddField(redisearch.NewTextField("display_name")).
 		AddField(redisearch.NewTextField("title")).
 		AddField(redisearch.NewTextField("email")).
+		AddField(redisearch.NewTextField("phone")).
 		AddField(redisearch.NewTextField("dn")).
 		AddField(redisearch.NewNumericField("updated_at"))
 

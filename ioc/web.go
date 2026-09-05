@@ -3,8 +3,10 @@ package ioc
 import (
 	"net"
 
+	auditevt "github.com/Duke1616/eiam/internal/event/audit"
 	"github.com/Duke1616/eiam/internal/pkg/middleware"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	audithdl "github.com/Duke1616/eiam/internal/web/audit"
 	"github.com/Duke1616/eiam/internal/web/department"
 	"github.com/Duke1616/eiam/internal/web/discovery"
 	"github.com/Duke1616/eiam/internal/web/group"
@@ -15,6 +17,7 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	"github.com/Duke1616/eiam/internal/web/user"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -27,8 +30,8 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	roleHdl *rolehdl.Handler,
 	deptHdl *department.Handler, groupHdl *group.Handler,
 	identitySourceHdl *idhdl.Handler, invitationHdl *invitationhdl.Handler,
-	discoveryHdl *discovery.Handler, tenancyBuilder *pkgmiddleware.TenancyBuilder,
-	permSvc permission.IPermissionService) *egin.Component {
+	discoveryHdl *discovery.Handler, auditHdl *audithdl.Handler, tenancyBuilder *pkgmiddleware.TenancyBuilder,
+	permSvc permission.IPermissionService, auditProd auditevt.IAuditProducer) *egin.Component {
 	session.SetDefaultProvider(sp)
 
 	server := egin.Load("server.egin").Build(egin.WithListener(listener))
@@ -37,11 +40,14 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	server.Engine.ContextWithFallback = true
 	server.Use(func(ctx *gin.Context) {
 		ctx.Header(TokenCarrierHeader, ConfiguredTokenCarrier().String())
+		ctx.Request = ctx.Request.WithContext(
+			ctxutil.WithClientInfo(ctx.Request.Context(), ctx.ClientIP(), ctx.Request.UserAgent()),
+		)
 		ctx.Next()
 	})
 	server.Use(mdls...)
 
-	// 1. 注册公开路由 (无鉴权)
+	// 1. 注册公开路由 (无鉴权，天然隔离不经过 Audit 中间件)
 	userHdl.PublicRoutes(server.Engine)
 	policyHdl.PublicRoutes(server.Engine)
 	tenantHdl.PublicRoutes(server.Engine)
@@ -49,11 +55,16 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	identitySourceHdl.PublicRoutes(server.Engine)
 	invitationHdl.PublicRoutes(server.Engine)
 	discoveryHdl.PublicRoutes(server.Engine)
+	auditHdl.PublicRoutes(server.Engine)
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())
+
 	// 2.1 租户身份构建
 	server.Use(tenancyBuilder.Build())
+
+	// 2.2 统一操作与工作空间确立审计 (支持配置化动态控制审计动作与黑名单)
+	server.Use(middleware.Audit(auditProd, InitAuditMatcher(InitAuditConfig())))
 
 	// 3. 基础权限层：仅需登录即可访问的私有接口 (如获取菜单)
 	permissionHdl.IdentityRoutes(server.Engine)
@@ -74,6 +85,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	permissionHdl.PrivateRoutes(server.Engine)
 	identitySourceHdl.PrivateRoutes(server.Engine)
 	invitationHdl.PrivateRoutes(server.Engine)
+	auditHdl.PrivateRoutes(server.Engine)
 
 	return server
 }

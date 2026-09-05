@@ -2,8 +2,9 @@ package tenant
 
 import "github.com/Duke1616/eiam/internal/domain"
 
+
 type SwitchTenantReq struct {
-	TenantID int64 `json:"tenant_id" binding:"required"`
+	TenantID int64 `json:"tenant_id" binding:"required,gt=0"`
 }
 
 type CreateTenantReq struct {

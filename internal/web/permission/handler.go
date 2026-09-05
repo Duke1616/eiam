@@ -2,16 +2,15 @@ package permission
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/pkg/middleware"
 	permissionsvc "github.com/Duke1616/eiam/internal/service/permission"
 	permcontract "github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
-	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -19,14 +18,14 @@ import (
 
 type Handler struct {
 	capability.IRegistry
-	svc  permissionsvc.IPermissionService
-	sess session.Provider
+	svc     permissionsvc.IPermissionService
+	matcher middleware.IAuditMatcher
 }
 
-func NewHandler(svc permissionsvc.IPermissionService, sess session.Provider) *Handler {
+func NewHandler(svc permissionsvc.IPermissionService, matcher middleware.IAuditMatcher) *Handler {
 	return &Handler{
 		svc:       svc,
-		sess:      sess,
+		matcher:   matcher,
 		IRegistry: capability.NewRegistry("iam", "permission", "权限管理"),
 	}
 }
@@ -41,8 +40,8 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 func (h *Handler) IdentityRoutes(server *gin.Engine) {
 	g := server.Group("/api/permission")
 
-	// 核心业务：查询当前用户的权限资产（用于前端渲染菜单）
-	g.GET("/menus", ginx.W(h.GetAuthorizedMenus))
+	// 核心业务：查询当前用户的权限资产、用于前端渲染菜单
+	g.GET("/menus", ginx.S(h.GetAuthorizedMenus))
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
@@ -133,6 +132,7 @@ func (h *Handler) CheckLogin(ctx *ginx.Context) (ginx.Result, error) {
 		Data: map[string]any{
 			"uid":       claims.Uid,
 			"tenant_id": claims.Data["tenant_id"],
+			"username":  claims.Data["username"],
 		},
 	}, nil
 }
@@ -152,43 +152,44 @@ func (h *Handler) CheckPolicy(ctx *ginx.Context, req CheckPolicyReq) (ginx.Resul
 	if err != nil {
 		return ginx.Result{
 			Code: 0,
-			Data: AuthorizeResult{ReasonCode: pbac.ReasonEvaluationError, Reason: "authorization evaluation failed"},
+			Data: CheckPolicyResp{
+				Decision: AuthorizeResult{ReasonCode: pbac.ReasonEvaluationError, Reason: "authorization evaluation failed"},
+				Audit:    false,
+			},
 		}, nil
 	}
 
+	audit := h.matcher.ShouldAuditMethod(req.Method) && !h.matcher.IsIgnoredPath(req.Path)
+
 	return ginx.Result{
 		Code: 0,
-		Data: decision,
+		Data: CheckPolicyResp{
+			Decision: decision,
+			Audit:    audit,
+		},
 	}, nil
 }
 
-// ctxWithAuth 辅助方法：从请求中提取 Session 并注入到 Context 中
+// ctxWithAuth 辅助方法：从请求中提取 Session 并确保 Context 带有身份信息
 func (h *Handler) ctxWithAuth(ctx *ginx.Context) (context.Context, session.Claims, error) {
-	sess, err := h.sess.Get(&gctx.Context{Context: ctx.Context})
+	sess, err := session.Get(ctx)
 	if err != nil {
 		return nil, session.Claims{}, err
 	}
 
 	claims := sess.Claims()
-	newCtx := ctxutil.WithUserID(ctx.Request.Context(), claims.Uid)
+	reqCtx := ctx.Request.Context()
 
-	// 统一处理租户 ID 注入
-	var tid int64
-	if v, ok := claims.Data["tenant_id"]; ok && v != "" {
-		fmt.Sscanf(v, "%d", &tid)
+	// 优先复用全局中间件已注入的租户与用户上下文，缺失时从 Claims 回退注入
+	if ctxutil.GetTenantID(reqCtx) == 0 {
+		tid, _ := claims.Get("tenant_id").AsInt64()
+		reqCtx = ctxutil.WithUserAndTenant(reqCtx, claims.Uid, tid)
 	}
-	newCtx = ctxutil.WithTenantID(newCtx, tid)
-	newCtx = ctxutil.WithOriginTenantID(newCtx, tid)
 
-	return newCtx, claims, nil
+	return reqCtx, claims, nil
 }
 
-func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context) (ginx.Result, error) {
-	sess, err := session.Get(ctx)
-	if err != nil || sess == nil {
-		return ErrAuthMenuFailed, err
-	}
-
+func (h *Handler) GetAuthorizedMenus(ctx *ginx.Context, sess session.Session) (ginx.Result, error) {
 	username, ok := sess.Claims().Data["username"]
 	if !ok {
 		return ErrUnauthenticated, nil

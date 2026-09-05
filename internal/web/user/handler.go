@@ -11,42 +11,41 @@ import (
 	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
-	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
 )
 
 type Handler struct {
 	capability.IRegistry
-	userSvc    usersvc.IUserService
-	tenantSvc  tenant.ITenantService
-	ldapSvc    ldap.LdapService
-	idsSvc     idsource.IService
-	passkeySvc passkey.IPasskeyService
-	permSvc    permsvc.IPermissionService
-	sp         session.Provider
-	logger     *elog.Component
+	userSvc     usersvc.IUserService
+	coordinator usersvc.IAuthCoordinator
+	tenantSvc   tenant.ITenantService
+	ldapSvc     ldap.ILdapService
+	idsSvc      idsource.IService
+	passkeySvc  passkey.IPasskeyService
+	permSvc     permsvc.IPermissionService
+	logger      *elog.Component
 }
 
 func NewUserHandler(
 	userSvc usersvc.IUserService,
+	coordinator usersvc.IAuthCoordinator,
 	tenantSvc tenant.ITenantService,
-	ldapSvc ldap.LdapService,
+	ldapSvc ldap.ILdapService,
 	idsSvc idsource.IService,
 	passkeySvc passkey.IPasskeyService,
 	permSvc permsvc.IPermissionService,
-	sp session.Provider,
 ) *Handler {
 	return &Handler{
-		IRegistry:  capability.NewRegistry("iam", "user", "用户管理"),
-		userSvc:    userSvc,
-		tenantSvc:  tenantSvc,
-		ldapSvc:    ldapSvc,
-		idsSvc:     idsSvc,
-		passkeySvc: passkeySvc,
-		permSvc:    permSvc,
-		sp:         sp,
-		logger:     elog.DefaultLogger,
+		IRegistry:   capability.NewRegistry("iam", "user", "用户管理"),
+		userSvc:     userSvc,
+		coordinator: coordinator,
+		tenantSvc:   tenantSvc,
+		ldapSvc:     ldapSvc,
+		idsSvc:      idsSvc,
+		passkeySvc:  passkeySvc,
+		permSvc:     permSvc,
+		logger:      elog.DefaultLogger,
 	}
 }
 
@@ -71,21 +70,27 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 
 func (h *Handler) IdentityRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
-	g.POST("/password/update", ginx.B[UpdatePasswordRequest](h.UpdatePassword))
-	g.GET("/profile", ginx.W(h.Profile))
-	g.POST("/logout", ginx.W(h.Logout))
+	g.POST("/password/update", ginx.BS[UpdatePasswordRequest](h.UpdatePassword))
+	g.GET("/profile", h.Define("个人信息", "profile").
+		Scope(capability.ScopeTenant).NoSync().NoAudit().
+		Bind(ginx.S(h.Profile)),
+	)
+	g.POST("/logout", h.Define("退出登录", "logout").
+		Scope(capability.ScopeTenant).NoSync().NoAudit().
+		Bind(ginx.S(h.Logout)),
+	)
 
 	// Passkey 个人自服务
-	g.POST("/passkey/register/start", ginx.W(h.PasskeyRegisterStart))
-	g.POST("/passkey/register/finish", ginx.W(h.PasskeyRegisterFinish))
+	g.POST("/passkey/register/start", ginx.S(h.PasskeyRegisterStart))
+	g.POST("/passkey/register/finish", ginx.S(h.PasskeyRegisterFinish))
 
 	// MFA 二次验证
-	g.GET("/mfa/totp/setup", ginx.W(h.MfaTotpSetup))
-	g.POST("/mfa/totp/bind", ginx.B[MfaTotpBindRequest](h.MfaTotpBind))
-	g.POST("/mfa/disable", ginx.W(h.MfaDisable))
+	g.GET("/mfa/totp/setup", ginx.S(h.MfaTotpSetup))
+	g.POST("/mfa/totp/bind", ginx.BS[MfaTotpBindRequest](h.MfaTotpBind))
+	g.POST("/mfa/disable", ginx.S(h.MfaDisable))
 
 	// 用户绑定的第三方凭证
-	g.GET("/identity/list", ginx.W(h.ListMyIdentities))
+	g.GET("/identity/list", ginx.S(h.ListMyIdentities))
 }
 
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
