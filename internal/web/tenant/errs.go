@@ -19,6 +19,8 @@ var (
 	ErrTenantGet              = ginx.Result{Code: 4020906, Msg: "获取租户空间详情失败"}
 	ErrTenantRemoveMember     = ginx.Result{Code: 4020907, Msg: "移除租户成员失败"}
 	ErrTenantDimensionInvalid = ginx.Result{Code: 4020908, Msg: "仅支持单维度批量操作，禁止多对多关联"}
+	ErrCannotRemoveSuperAdmin = ginx.Result{Code: 4020909, Msg: "禁止将系统初始超级管理员从系统根管理空间中移除"}
+	ErrCannotRemoveSelf       = ginx.Result{Code: 4020910, Msg: "禁止将当前登录账号从当前租户空间中移除"}
 
 	ErrUnauthenticated = user.ErrUnauthenticated
 )

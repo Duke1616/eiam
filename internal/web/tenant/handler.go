@@ -3,6 +3,7 @@ package tenant
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	permsvc "github.com/Duke1616/eiam/internal/service/permission"
@@ -93,14 +94,14 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 		Bind(middleware.BTO[AssignUserReq](h.AssignUser)),
 	)
 	g.POST("/unassign", h.Define("移除租户成员", "unassign").
-		Bind(middleware.BTO[RemoveMemberReq](h.RemoveMember)),
+		Bind(middleware.BSTO[RemoveMemberReq](h.RemoveMember)),
 	)
 	g.POST("/batch_assign", h.Define("批量分配租户成员", "batch_assign").
 		Needs(permission.User.View).
 		Bind(middleware.BTO[BatchAssignTenantsReq](h.BatchAssignTenants)),
 	)
 	g.POST("/batch_unassign", h.Define("批量移除租户成员", "batch_unassign").
-		Bind(middleware.BTO[BatchUnassignTenantsReq](h.BatchUnassignTenants)),
+		Bind(middleware.BSTO[BatchUnassignTenantsReq](h.BatchUnassignTenants)),
 	)
 	g.POST("/list/attached/user", h.For(model.User).Define("查询用户所属租户", "view_user_tenants").
 		Scope(capability.ScopeTenant).
@@ -314,8 +315,19 @@ func (h *Handler) AssignUser(ctx *ginx.Context, req AssignUserReq) (ginx.Result,
 	return ginx.Result{Msg: "分配用户到租户成功"}, nil
 }
 
-func (h *Handler) RemoveMember(ctx *ginx.Context, req RemoveMemberReq) (ginx.Result, error) {
+func (h *Handler) RemoveMember(ctx *ginx.Context, req RemoveMemberReq, sess session.Session) (ginx.Result, error) {
+	currentUID := sess.Claims().Uid
+
+	// 防自锁：禁止管理员将自身账号从当前租户中移除
+	if req.UserID == currentUID {
+		h.logger.Warn("拦截危险操作: 尝试将当前登录账号从当前空间移除", elog.Int64("uid", currentUID))
+		return ErrCannotRemoveSelf, fmt.Errorf("禁止将当前登录账号从当前租户空间中移除")
+	}
+
 	if err := h.svc.RemoveMember(ctx.Context, req.UserID); err != nil {
+		if strings.Contains(err.Error(), "admin") {
+			return ErrCannotRemoveSuperAdmin, err
+		}
 		return ErrTenantRemoveMember, err
 	}
 	return ginx.Result{Msg: "成功将用户从租户空间移除"}, nil
@@ -332,12 +344,23 @@ func (h *Handler) BatchAssignTenants(ctx *ginx.Context, req BatchAssignTenantsRe
 	return ginx.Result{Msg: "批量分配租户成功"}, nil
 }
 
-func (h *Handler) BatchUnassignTenants(ctx *ginx.Context, req BatchUnassignTenantsReq) (ginx.Result, error) {
+func (h *Handler) BatchUnassignTenants(ctx *ginx.Context, req BatchUnassignTenantsReq, sess session.Session) (ginx.Result, error) {
 	if res, err := h.validateBatchDimension(ctx, req.UserIDs, req.TenantIDs); err != nil {
 		return res, err
 	}
 
+	currentUID := sess.Claims().Uid
+	for _, uid := range req.UserIDs {
+		// 禁止取消当前登录账号的租户关联
+		if uid == currentUID {
+			return ErrCannotRemoveSelf, fmt.Errorf("禁止取消当前登录账号的租户关联")
+		}
+	}
+
 	if err := h.svc.BatchUnassignTenants(ctx.Context, req.UserIDs, req.TenantIDs); err != nil {
+		if strings.Contains(err.Error(), "admin") {
+			return ErrCannotRemoveSuperAdmin, err
+		}
 		return ErrTenantRemoveMember, err
 	}
 	return ginx.Result{Msg: "成功取消用户与选定租户的关联记录"}, nil
@@ -345,6 +368,9 @@ func (h *Handler) BatchUnassignTenants(ctx *ginx.Context, req BatchUnassignTenan
 
 func (h *Handler) BatchRemoveMembers(ctx *ginx.Context, req BatchRemoveMembersReq) (ginx.Result, error) {
 	if err := h.svc.BatchRemoveMembers(ctx.Context, req.UserIDs); err != nil {
+		if strings.Contains(err.Error(), "admin") {
+			return ErrCannotRemoveSuperAdmin, err
+		}
 		return ErrTenantRemoveMember, err
 	}
 	return ginx.Result{Msg: "成功将选定用户从租户空间移除"}, nil

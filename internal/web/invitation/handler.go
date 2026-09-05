@@ -114,6 +114,8 @@ func (h *Handler) VerifyInvitation(ctx *ginx.Context) (ginx.Result, error) {
 
 	return ginx.Result{
 		Data: Invitation{
+			Code:            inv.Code,
+			TenantID:        inv.TenantID,
 			TenantName:      inv.TenantName,
 			InviterID:       inv.InviterID,
 			RoleCodes:       inv.RoleCodes,
@@ -135,7 +137,7 @@ func (h *Handler) AcceptInvitation(ctx *ginx.Context, req AcceptInvitationReq) (
 	uid := sess.Claims().Uid
 	username, _ := sess.Get(ctx.Request.Context(), "username").AsString()
 
-	requireApproval, err := h.svc.AcceptInvitation(ctx.Request.Context(), req.Code, uid, username)
+	requireApproval, targetTid, err := h.svc.AcceptInvitation(ctx.Request.Context(), req.Code, uid, username)
 	if err != nil {
 		if errors.Is(err, errs.ErrInvitationNotFound) {
 			return ErrInvitationNotFound, err
@@ -155,8 +157,11 @@ func (h *Handler) AcceptInvitation(ctx *ginx.Context, req AcceptInvitationReq) (
 	}
 
 	return ginx.Result{
-		Msg:  msg,
-		Data: map[string]bool{"require_approval": requireApproval},
+		Msg: msg,
+		Data: map[string]any{
+			"require_approval": requireApproval,
+			"tenant_id":        targetTid,
+		},
 	}, nil
 }
 
@@ -172,6 +177,7 @@ func (h *Handler) ListInvitations(ctx *ginx.Context, req Page) (ginx.Result, err
 			Invitations: lo.Map(invitations, func(inv domain.Invitation, _ int) Invitation {
 				return Invitation{
 					Code:            inv.Code,
+					TenantID:        inv.TenantID,
 					TenantName:      inv.TenantName,
 					InviterID:       inv.InviterID,
 					RoleCodes:       inv.RoleCodes,

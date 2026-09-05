@@ -29,6 +29,7 @@ type HandleJoinRequestReq struct {
 
 type Invitation struct {
 	Code            string   `json:"code"`
+	TenantID        int64    `json:"tenant_id"`
 	TenantName      string   `json:"tenant_name"`
 	InviterID       int64    `json:"inviter_id"`
 	RoleCodes       []string `json:"role_codes"`

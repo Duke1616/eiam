@@ -2,6 +2,7 @@ package tenant
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"time"
 
@@ -363,7 +364,11 @@ func (s *tenantService) BatchRemoveMembers(ctx context.Context, userIDs []int64)
 		return err
 	}
 
+	// 防自锁：禁止将系统初始 admin 从根管理空间(ID:1)移除，使用 Username 判断防 ID 漂移
 	tenantID := ctxutil.GetTenantID(ctx).Int64()
+	if tenantID == ctxutil.SystemTenantID && lo.SomeBy(users, func(u domain.User) bool { return u.Username == "admin" }) {
+		return errors.New("禁止将系统初始超级管理员(admin)从系统根管理空间中移除")
+	}
 	tidStr := ctxutil.ContextID(tenantID).String()
 
 	// 2. 批量清理权限
@@ -400,6 +405,11 @@ func (s *tenantService) BatchUnassignTenants(ctx context.Context, userIDs []int6
 	users, err := s.userRepo.FindByIds(ctx, userIDs)
 	if err != nil {
 		return err
+	}
+
+	// 防自锁：禁止取消系统初始 admin 与根管理空间的关联
+	if lo.Contains(tenantIDs, ctxutil.SystemTenantID) && lo.SomeBy(users, func(u domain.User) bool { return u.Username == "admin" }) {
+		return errors.New("禁止取消系统初始超级管理员(admin)与系统根管理空间的关联")
 	}
 
 	// 2. 使用 lo.FlatMap 将 (用户 x 租户) 的操作对打平

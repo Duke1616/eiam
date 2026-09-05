@@ -77,7 +77,8 @@ func (b *TenancyBuilder) resolveIdentity(ctx *gin.Context) (int64, int64) {
 func isTenantExemptPath(path string) bool {
 	return strings.HasPrefix(path, "/api/tenant/switch") ||
 		strings.HasPrefix(path, "/api/tenant/list/mine") ||
-		path == "/api/user/logout"
+		path == "/api/user/logout" ||
+		path == "/api/invitation/accept"
 }
 
 // WithTenantOverride 路由级跨租户数据上下文覆写 (仅限系统管理员)

@@ -18,8 +18,8 @@ type IInvitationService interface {
 	CreateInvitation(ctx context.Context, inviterID int64, maxUses int, expireAt int64, roleCodes []string, requireApproval bool) (string, error)
 	// VerifyInvitation 校验邀请码有效性并返回详细信息，可选传入 userID 校验成员资格
 	VerifyInvitation(ctx context.Context, code string, userID int64) (domain.Invitation, bool, error)
-	// AcceptInvitation 接受邀请，完成入驻或提交申请
-	AcceptInvitation(ctx context.Context, code string, userID int64, username string) (bool, error)
+	// AcceptInvitation 接受邀请，完成入驻或提交申请，返回 (requireApproval, tenantID, error)
+	AcceptInvitation(ctx context.Context, code string, userID int64, username string) (bool, int64, error)
 	// ListInvitations 获取当前租户下所有活跃的邀请链接
 	ListInvitations(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error)
 	// RevokeInvitation 撤回/删除邀请链接
@@ -101,10 +101,10 @@ func (s *invitationService) VerifyInvitation(ctx context.Context, code string, u
 	return inv, isMember, nil
 }
 
-func (s *invitationService) AcceptInvitation(ctx context.Context, code string, userID int64, username string) (bool, error) {
+func (s *invitationService) AcceptInvitation(ctx context.Context, code string, userID int64, username string) (bool, int64, error) {
 	inv, _, err := s.VerifyInvitation(ctx, code, userID)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 
 	// 注入正确的租户 ID，确保后续 Repo 操作在正确的租户上下文中执行
@@ -112,7 +112,7 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 
 	// 1. 预占用名额
 	if _, err = s.repo.IncrUsedCount(ctx, code, inv.MaxUses); err != nil {
-		return false, err
+		return false, 0, err
 	}
 
 	// 定义回滚闭包
@@ -124,7 +124,7 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 	_, err = s.tenantRepo.GetBind(ctx, userID)
 	if err == nil {
 		rollback()
-		return false, errs.ErrAlreadyMember
+		return false, 0, errs.ErrAlreadyMember
 	}
 
 	// 3. 如果需要审批，则创建申请记录
@@ -138,15 +138,15 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 		})
 		if err != nil {
 			rollback()
-			return false, err
+			return false, 0, err
 		}
-		return true, nil
+		return true, inv.TenantID, nil
 	}
 
 	// 4. 执行自动入驻逻辑
 	if err = s.tenantRepo.CreateBind(ctx, userID); err != nil {
 		rollback()
-		return false, err
+		return false, 0, err
 	}
 
 	// 自动授予角色
@@ -154,7 +154,7 @@ func (s *invitationService) AcceptInvitation(ctx context.Context, code string, u
 		_, _ = s.permSvc.AssignRolesToUser(ctx, []string{username}, inv.RoleCodes)
 	}
 
-	return false, nil
+	return false, inv.TenantID, nil
 }
 
 func (s *invitationService) ListInvitations(ctx context.Context, offset, limit int) ([]domain.Invitation, int64, error) {
