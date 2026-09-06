@@ -586,6 +586,16 @@
       is_hidden: false
       is_keepalive: false
       platforms: ["iam"]
+  - name: OAuthClientGovernance
+    permission_code: "iam:idp:list"
+    path: /iam/identity/client
+    component: /pages/iam/client/index.vue
+    meta:
+      title: 接入应用
+      icon: connection
+      is_hidden: false
+      is_keepalive: false
+      platforms: ["iam"]
 - name: IAMPermissionGovernance
   path: /iam/permission
   component: Layouts
