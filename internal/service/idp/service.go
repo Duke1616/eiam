@@ -18,6 +18,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/go-jose/go-jose/v4"
+	"github.com/spf13/viper"
 )
 
 // AuthorizeRequest 授权码发起请求参数
@@ -194,10 +195,15 @@ func (s *service) initiateConsentFlow(
 		return nil, fmt.Errorf("暂存授权上下文失败: %w", err)
 	}
 
+	consentURL := viper.GetString("idp.consent_url")
+	if consentURL == "" {
+		consentURL = "/consent"
+	}
+
 	return &AuthorizeResult{
 		RequireConsent: true,
 		ConsentID:      consentID,
-		RedirectURL:    fmt.Sprintf("/oauth/v2/consent?consent_id=%s", consentID),
+		RedirectURL:    fmt.Sprintf("%s?consent_id=%s", consentURL, consentID),
 	}, nil
 }
 
