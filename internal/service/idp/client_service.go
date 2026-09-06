@@ -92,6 +92,7 @@ func (s *oauthClientService) UpdateClient(ctx context.Context, client domain.OAu
 		return errs.ErrOAuthClientNotFound
 	}
 
+	client.ClientID = existing.ClientID
 	if err = s.repo.Update(ctx, client); err != nil {
 		s.recordAudit(ctx, existing.TenantID, "update_client", existing.ClientID, client.Name, domain.OpStatusFailed, err.Error())
 		return err

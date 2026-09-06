@@ -32,32 +32,18 @@ type OAuthClient struct {
 
 // HasRedirectURI 遵循 RFC 6749 Section 3.1.2 严格校验回调地址白名单 (防开放重定向)
 func (c *OAuthClient) HasRedirectURI(rawURI string) bool {
-	normURI := rawURI
-	// 若传入的 URI 被二次 URL 编码，解码归一化
-	if unescaped, err := url.QueryUnescape(rawURI); err == nil && strings.HasPrefix(unescaped, "http") {
-		normURI = unescaped
-	}
-
-	parsed, err := url.Parse(normURI)
+	parsed, err := url.Parse(rawURI)
 	if err != nil || !parsed.IsAbs() || parsed.Fragment != "" {
 		// RFC 6749 禁止回调 URL 携带 Fragment (#)
 		return false
 	}
 
-	// 1. 精确匹配
-	if slices.Contains(c.RedirectURIs, normURI) {
+	// 精确匹配
+	if slices.Contains(c.RedirectURIs, rawURI) {
 		return true
 	}
 
-	// 2. 忽略尾部斜杠容错匹配
-	trimmedNorm := strings.TrimRight(normURI, "/")
-	for _, allowed := range c.RedirectURIs {
-		if strings.TrimRight(allowed, "/") == trimmedNorm {
-			return true
-		}
-	}
-
-	// 3. 本地开发调试友好性：支持 localhost / 127.0.0.1 动态端口匹配
+	// 本地开发调试友好性：支持 localhost / 127.0.0.1 动态端口匹配
 	if parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" {
 		for _, allowed := range c.RedirectURIs {
 			allowedParsed, err := url.Parse(allowed)

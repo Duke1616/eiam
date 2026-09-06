@@ -50,16 +50,9 @@ func (r *oauthClientRepository) Create(ctx context.Context, client domain.OAuthC
 }
 
 func (r *oauthClientRepository) Update(ctx context.Context, client domain.OAuthClient) error {
-	targetClientID := client.ClientID
-	if targetClientID == "" && client.ID > 0 {
-		if existing, err := r.dao.FindByID(ctx, client.ID); err == nil {
-			targetClientID = existing.ClientID
-		}
-	}
-
 	err := r.dao.Update(ctx, r.toDao(client))
-	if err == nil && r.cache != nil && targetClientID != "" {
-		_ = r.cache.DeleteOAuthClient(ctx, targetClientID)
+	if err == nil && r.cache != nil && client.ClientID != "" {
+		_ = r.cache.DeleteOAuthClient(ctx, client.ClientID)
 	}
 	return err
 }
