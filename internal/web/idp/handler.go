@@ -288,10 +288,12 @@ func (h *Handler) Logout(c *gin.Context) {
 	postLogoutRedirectURI := c.Query("post_logout_redirect_uri")
 	state := c.Query("state")
 
-	// 清理当前主站 Session
-	sess, err := session.Get(&ginx.Context{Context: c})
-	if err == nil && sess != nil {
-		_ = sess.Destroy(c)
+	// 调用 DefaultProvider().Destroy 清理会话，联动触发 TokenCarrier.Clear 擦除浏览器 Cookie
+	gctx := &ginx.Context{Context: c}
+	if err := session.DefaultProvider().Destroy(gctx); err != nil {
+		if sess, getErr := session.Get(gctx); getErr == nil && sess != nil {
+			_ = sess.Destroy(c)
+		}
 	}
 
 	if postLogoutRedirectURI != "" {

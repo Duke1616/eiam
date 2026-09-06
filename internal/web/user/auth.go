@@ -115,8 +115,10 @@ func (h *Handler) Logout(ctx *ginx.Context, sess session.Session) (ginx.Result, 
 	username, _ := claims.Get("username").AsString()
 	tid, _ := claims.Get("tenant_id").AsInt64()
 
-	if err := sess.Destroy(ctx.Context); err != nil {
-		return ErrInternalServer, err
+	// 必须通过 session.DefaultProvider().Destroy(ctx) 触发 TokenCarrier.Clear(ctx) 清理客户端 Cookie
+	if err := session.DefaultProvider().Destroy(ctx); err != nil {
+		// 若因 session 失效导致 Provider.Get 报错，兜底销毁 Redis
+		_ = sess.Destroy(ctx.Context)
 	}
 
 	h.coordinator.RecordLogout(ctx.Request.Context(), uid, tid, username)
