@@ -156,3 +156,15 @@ func getClaimString(claims map[string]interface{}, keys ...string) string {
 
 	return ""
 }
+
+// OAuthStateContext 记录 OAuth/OIDC 授权全生命周期中透传的业务上下文
+type OAuthStateContext struct {
+	StateID     string            `json:"state_id"`     // 防重放与防 CSRF 的唯一 State 随机值
+	SourceID    int64             `json:"source_id"`    // 认证源 ID
+	Nonce       string            `json:"nonce"`        // OIDC Nonce
+	TenantID    int64             `json:"tenant_id"`    // 目标租户 ID（可选）
+	RedirectURL string            `json:"redirect_url"` // 登录完成后需要恢复的深度业务页面（可选，如 /join?code=xxx）
+	InviteCode  string            `json:"invite_code"`  // 邀请码（可选）
+	Extra       map[string]string `json:"extra"`        // 扩展业务自定义键值对
+	CreatedAt   int64             `json:"created_at"`   // 创建时间戳
+}

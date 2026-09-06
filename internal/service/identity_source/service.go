@@ -3,6 +3,7 @@ package identity_source
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Duke1616/ecmdb/pkg/cryptox"
 	"github.com/Duke1616/eiam/internal/domain"
@@ -26,11 +27,17 @@ type IService interface {
 	// Delete 删除指定的身份源
 	Delete(ctx context.Context, id int64) error
 
-	// GetAuthURL 根据 provider_type 获取 OIDC 授权跳转地址
+	// GetAuthURL 根据 provider_type 获取 OIDC 授权跳转地址 (兼容基础接口)
 	GetAuthURL(ctx context.Context, providerType string) (string, error)
 
-	// VerifyOIDC 校验回调并返回外部身份信息 (包含 State 校验)
+	// GetAuthURLWithContext 携带业务上下文（如深度重定向页面、邀请码）获取授权跳转地址
+	GetAuthURLWithContext(ctx context.Context, providerType string, sctx domain.OAuthStateContext) (string, error)
+
+	// VerifyOIDC 校验回调并返回外部身份信息 (兼容基础接口)
 	VerifyOIDC(ctx context.Context, state, code string) (domain.OidcIdentity, error)
+
+	// VerifyOIDCWithContext 校验回调并返回外部身份信息及还原的业务上下文
+	VerifyOIDCWithContext(ctx context.Context, state, code string) (domain.OidcIdentity, domain.OAuthStateContext, error)
 
 	// GetEnabledProviderTypes 获取所有已启用的登录提供商类型（用于登录页展示按钮/标签）
 	GetEnabledProviderTypes(ctx context.Context) ([]string, error)
@@ -133,6 +140,10 @@ func (s *service) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *service) GetAuthURL(ctx context.Context, providerType string) (string, error) {
+	return s.GetAuthURLWithContext(ctx, providerType, domain.OAuthStateContext{})
+}
+
+func (s *service) GetAuthURLWithContext(ctx context.Context, providerType string, sctx domain.OAuthStateContext) (string, error) {
 	// 1. 查找当前租户下匹配 provider_type 的启用 OIDC 身份源
 	source, err := s.FindEnabled(ctx, domain.OIDC, providerType)
 	if err != nil {
@@ -147,6 +158,7 @@ func (s *service) GetAuthURL(ctx context.Context, providerType string) (string, 
 		elog.String("auth_url", source.OIDCConfig.AuthURL),
 		elog.String("token_url", source.OIDCConfig.TokenURL),
 		elog.String("user_info_url", source.OIDCConfig.UserInfoURL),
+		elog.String("target_redirect", sctx.RedirectURL),
 	)
 
 	// 2. 解密敏感配置
@@ -156,11 +168,17 @@ func (s *service) GetAuthURL(ctx context.Context, providerType string) (string, 
 		return "", err
 	}
 
-	// 3. 生成 State 和 Nonce
+	// 3. 生成 State 和 Nonce，封装业务上下文
 	state := uuid.New().String()
 	nonce := uuid.New().String()
-	if err = s.repo.SaveState(ctx, state, source.ID, nonce); err != nil {
-		s.logger.Error("[OIDC] 保存 State 到 Redis 失败", elog.FieldErr(err))
+
+	sctx.StateID = state
+	sctx.SourceID = source.ID
+	sctx.Nonce = nonce
+	sctx.CreatedAt = time.Now().Unix()
+
+	if err = s.repo.SaveStateContext(ctx, sctx); err != nil {
+		s.logger.Error("[OIDC] 保存 State 上下文到 Redis 失败", elog.FieldErr(err))
 		return "", err
 	}
 
@@ -169,31 +187,45 @@ func (s *service) GetAuthURL(ctx context.Context, providerType string) (string, 
 }
 
 func (s *service) VerifyOIDC(ctx context.Context, state, code string) (domain.OidcIdentity, error) {
-	// 1. 校验并获取 SourceID 和 Nonce (Redis，一次性校验)
-	sourceID, nonce, err := s.repo.GetState(ctx, state)
+	ident, _, err := s.VerifyOIDCWithContext(ctx, state, code)
+	return ident, err
+}
+
+func (s *service) VerifyOIDCWithContext(ctx context.Context, state, code string) (domain.OidcIdentity, domain.OAuthStateContext, error) {
+	// 1. 原子读取并销毁 State 上下文 (Redis GETDEL 一次性校验，防重放)
+	sctx, err := s.repo.GetDelStateContext(ctx, state)
 	if err != nil {
-		s.logger.Error("[OIDC] State 校验失败（可能已过期或重复使用）", elog.String("state", state), elog.FieldErr(err))
-		return domain.OidcIdentity{}, fmt.Errorf("state 校验失败: %w", err)
+		s.logger.Error("[OIDC] State 上下文校验失败（可能已过期或重复使用）", elog.String("state", state), elog.FieldErr(err))
+		return domain.OidcIdentity{}, domain.OAuthStateContext{}, fmt.Errorf("state 校验失败: %w", err)
 	}
 
-	s.logger.Info("[OIDC] State 校验通过", elog.Int64("source_id", sourceID))
+	s.logger.Info("[OIDC] State 上下文校验通过",
+		elog.Int64("source_id", sctx.SourceID),
+		elog.String("redirect_url", sctx.RedirectURL),
+	)
 
 	// 2. 获取配置
-	source, err := s.repo.GetByID(ctx, sourceID)
+	source, err := s.repo.GetByID(ctx, sctx.SourceID)
 	if err != nil {
-		s.logger.Error("[OIDC] 获取身份源配置失败", elog.Int64("source_id", sourceID), elog.FieldErr(err))
-		return domain.OidcIdentity{}, err
+		s.logger.Error("[OIDC] 获取身份源配置失败", elog.Int64("source_id", sctx.SourceID), elog.FieldErr(err))
+		return domain.OidcIdentity{}, sctx, err
 	}
 	source, err = s.decryptSource(source)
 	if err != nil {
 		s.logger.Error("[OIDC] 解密身份源配置失败", elog.FieldErr(err))
-		return domain.OidcIdentity{}, err
+		return domain.OidcIdentity{}, sctx, err
 	}
 
 	s.logger.Info("[OIDC] 开始 Code 交换", elog.String("token_url", source.OIDCConfig.TokenURL))
 
-	// 3. 调用协议专家完成 Code 交换与校验 (带 nonce 校验)
-	return s.oidcSvc.Verify(ctx, source, code, nonce)
+	// 3. 调用协议专家完成 Code 交换与校验 (传入 sctx.Nonce 进行防篡改校验)
+	identity, err := s.oidcSvc.Verify(ctx, source, code, sctx.Nonce)
+	if err != nil {
+		s.logger.Error("[OIDC] 校验 Code 失败", elog.FieldErr(err))
+		return domain.OidcIdentity{}, sctx, err
+	}
+
+	return identity, sctx, nil
 }
 
 func (s *service) GetEnabledProviderTypes(ctx context.Context) ([]string, error) {

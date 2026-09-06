@@ -59,4 +59,10 @@ var (
 	// MFA 多因素认证相关错误
 	ErrMfaAttemptsExhausted = errors.New("MFA 验证失败次数过多")
 	ErrMfaTokenNotFound     = errors.New("MFA 令牌已过期或无效")
+
+	// 统一身份提供商 (IdP / OAuth2) 相关错误
+	ErrOAuthClientNotFound    = errors.New("接入应用不存在或已被移除")
+	ErrOAuthClientSecretWrong = errors.New("应用客户端密钥错误")
+	ErrInvalidRedirectURI     = errors.New("回调地址不在应用配置的合法白名单中")
+	ErrInvalidAuthRequest     = errors.New("授权会话无效或已过期")
 )

@@ -20,6 +20,7 @@ func InitApp() (*App, error) {
 		InvitationSet,
 		ResourceSet,
 		AuditSet,
+		IdpSet,
 		WebSet,
 		GrpcSet,
 		wire.Struct(new(App), "*"),

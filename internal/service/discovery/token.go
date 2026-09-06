@@ -10,7 +10,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
-	"github.com/Duke1616/eiam/pkg/gormx"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 )
 
 const discoveryTokenPrefix = "discovery:service:"
@@ -26,7 +26,7 @@ type ITokenService interface {
 
 type tokenService struct {
 	tenantKeyRepo repository.ITenantKeyRepository
-	serviceRepo  repository.IServiceRepository
+	serviceRepo   repository.IServiceRepository
 }
 
 // NewTokenService 构建微服务资产自发现专属令牌服务 (轻量纯 DB 依赖，供 CLI 及 Handler 复用)
@@ -36,7 +36,7 @@ func NewTokenService(
 ) ITokenService {
 	return &tokenService{
 		tenantKeyRepo: tenantKeyRepo,
-		serviceRepo:  serviceRepo,
+		serviceRepo:   serviceRepo,
 	}
 }
 
@@ -48,8 +48,8 @@ func (s *tokenService) GenerateToken(ctx context.Context, serviceName string) (s
 		return "", fmt.Errorf("微服务标识不能为空")
 	}
 
-	// NOTE: 系统级操作，显式豁免租户隔离
-	ctx = gormx.IgnoreTenantContext(ctx)
+	//  资产发现令牌归属于系统根租户
+	ctx = ctxutil.WithTenantID(ctx, ctxutil.SystemTenantID)
 
 	// 前置校验：服务 code 必须在服务目录中已登记
 	if _, err := s.serviceRepo.GetByCode(ctx, serviceName); err != nil {
@@ -63,9 +63,9 @@ func (s *tokenService) GenerateToken(ctx context.Context, serviceName string) (s
 
 	token := "eiam_sct_" + randomPart
 
-	// 存入系统租户 (tenant_id = 1) 名下，description 标记服务绑定关系
+	// 存入系统租户名下，description 标记服务绑定关系
 	tk := domain.TenantKey{
-		TenantID:    1,
+		TenantID:    ctxutil.SystemTenantID,
 		AccessKey:   token,
 		SecretKey:   token, // 单值 Token 模式下 AccessKey 与 SecretKey 等同
 		Status:      1,     // 启用
@@ -85,9 +85,6 @@ func (s *tokenService) VerifyToken(ctx context.Context, token string) (string, e
 	if token == "" {
 		return "", errs.ErrInvalidToken
 	}
-
-	// NOTE: 系统级凭据校验，显式豁免租户隔离
-	ctx = gormx.IgnoreTenantContext(ctx)
 
 	tk, err := s.tenantKeyRepo.FindByAccessKey(ctx, token)
 	if err != nil {

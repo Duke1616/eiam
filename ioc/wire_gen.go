@@ -16,6 +16,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/department"
 	"github.com/Duke1616/eiam/internal/service/discovery"
 	"github.com/Duke1616/eiam/internal/service/group"
+	"github.com/Duke1616/eiam/internal/service/idp"
 	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
@@ -32,6 +33,7 @@ import (
 	discovery2 "github.com/Duke1616/eiam/internal/web/discovery"
 	group2 "github.com/Duke1616/eiam/internal/web/group"
 	"github.com/Duke1616/eiam/internal/web/identity_source"
+	idp2 "github.com/Duke1616/eiam/internal/web/idp"
 	invitation2 "github.com/Duke1616/eiam/internal/web/invitation"
 	permission2 "github.com/Duke1616/eiam/internal/web/permission"
 	policy2 "github.com/Duke1616/eiam/internal/web/policy"
@@ -115,35 +117,45 @@ func InitApp() (*App, error) {
 	iInvitationService := invitation.NewInvitationService(iInvitationRepository, iTenantRepository, iPermissionService, iUserService)
 	invitationHandler := invitation2.NewHandler(iInvitationService, provider)
 	clientv3Client := InitEtcd()
-	reporter := InitCapabilityRegistry(clientv3Client)
+	v3 := InitCapabilityRegistry(clientv3Client)
 	iDiscoveryCache := cache.NewDiscoveryCache(cmdable)
-	iDiscoveryService := discovery.NewDiscoveryService(reporter, iDiscoveryCache)
+	iDiscoveryService := discovery.NewDiscoveryService(v3, iDiscoveryCache)
 	iTokenService := discovery.NewTokenService(iTenantKeyRepository, iServiceRepository)
 	discoveryHandler := discovery2.NewHandler(iDiscoveryService, iTokenService)
 	iAuditDAO := dao.NewAuditDAO(db)
 	iAuditRepository := repository.NewAuditRepository(iAuditDAO)
 	iAuditService := audit2.NewService(iAuditRepository)
 	auditHandler := audit3.NewHandler(iAuditService, iAuditProducer)
+	ioAuthClientDAO := dao.NewOAuthClientDAO(db)
+	iOidcCache := cache.NewOidcCache(cmdable)
+	ioAuthClientRepository := repository.NewOAuthClientRepository(ioAuthClientDAO, iOidcCache)
+	ioAuthClientService := idp.NewOAuthClientService(ioAuthClientRepository, iAuditProducer)
+	iKeyManager, err := InitKeyManager(iOidcCache)
+	if err != nil {
+		return nil, err
+	}
+	idpIService := idp.NewService(ioAuthClientRepository, iUserRepository, iPermissionService, iOidcCache, iKeyManager, iAuditProducer)
+	idpHandler := idp2.NewHandler(ioAuthClientService, idpIService)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
-	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, auditHandler, tenancyBuilder, iPermissionService, iAuditProducer)
+	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, auditHandler, idpHandler, tenancyBuilder, iPermissionService, iAuditProducer)
 	registry := InitRegistry(clientv3Client)
 	userServiceServer := grpc.NewUserServer(iUserService, iPermissionService)
 	tenantServiceServer := grpc.NewTenantServiceServer(iTenantKeyService)
 	departmentServiceServer := grpc.NewDepartmentServer(iDepartmentService)
 	server := InitGrpcServer(registry, userServiceServer, tenantServiceServer, departmentServiceServer)
 	engine := ingestion.NewEngine(iPermissionRepository, iResourceRepository, iServiceRepository)
-	iInitializer := resource.NewResourceInitializer(engine, reporter)
-	v3 := InitProviders()
+	iInitializer := resource.NewResourceInitializer(engine, v3)
+	v4 := InitProviders()
 	dlockClient := InitDLock(cmdable)
 	worker := discovery.NewWorker(clientv3Client, iDiscoveryService, iInitializer, dlockClient)
 	consumer := audit.NewConsumer(cmdable, iAuditRepository)
-	v4 := InitTasks(worker, consumer)
+	v5 := InitTasks(worker, consumer)
 	app := &App{
 		Web:       component,
 		Server:    server,
 		Init:      iInitializer,
-		Providers: v3,
-		Tasks:     v4,
+		Providers: v4,
+		Tasks:     v5,
 	}
 	return app, nil
 }

@@ -32,6 +32,8 @@ import (
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
+	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
+	idphdl "github.com/Duke1616/eiam/internal/web/idp"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
@@ -192,5 +194,16 @@ var (
 		repository.NewTenantKeyRepository,
 		repository.NewServiceRepository,
 		discovery.NewTokenService,
+	)
+
+	// IdpSet 统一身份提供商 (IdP / OIDC Provider) 模块 Provider 集合
+	IdpSet = wire.NewSet(
+		cache.NewOidcCache,
+		dao.NewOAuthClientDAO,
+		repository.NewOAuthClientRepository,
+		idpsvc.NewOAuthClientService,
+		idpsvc.NewService,
+		InitKeyManager,
+		idphdl.NewHandler,
 	)
 )

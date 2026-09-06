@@ -31,11 +31,17 @@ type IIdentitySourceRepository interface {
 	// Delete 删除记录
 	Delete(ctx context.Context, id int64) error
 
-	// SaveState 存储 OIDC State 与 Nonce (缓存 5 分钟)
+	// SaveState 存储 OIDC State 与 Nonce (缓存 5 分钟，向下兼容)
 	SaveState(ctx context.Context, state string, sourceID int64, nonce string) error
 
-	// GetState 获取并删除 OIDC State (一次性)，返回 sourceID 和 nonce
+	// GetState 获取并删除 OIDC State (一次性)，返回 sourceID 和 nonce (向下兼容)
 	GetState(ctx context.Context, state string) (int64, string, error)
+
+	// SaveStateContext 存储完整的 OAuth 业务透传上下文
+	SaveStateContext(ctx context.Context, stateCtx domain.OAuthStateContext) error
+
+	// GetDelStateContext 原子获取并销毁 OAuth 业务透传上下文
+	GetDelStateContext(ctx context.Context, state string) (domain.OAuthStateContext, error)
 
 	// ToggleEnabled 切换身份源启用状态（取反）
 	ToggleEnabled(ctx context.Context, id int64) error
@@ -105,6 +111,14 @@ func (r *identitySourceRepository) SaveState(ctx context.Context, state string, 
 
 func (r *identitySourceRepository) GetState(ctx context.Context, state string) (int64, string, error) {
 	return r.cache.GetState(ctx, state)
+}
+
+func (r *identitySourceRepository) SaveStateContext(ctx context.Context, stateCtx domain.OAuthStateContext) error {
+	return r.cache.SetStateContext(ctx, stateCtx)
+}
+
+func (r *identitySourceRepository) GetDelStateContext(ctx context.Context, state string) (domain.OAuthStateContext, error) {
+	return r.cache.GetDelStateContext(ctx, state)
 }
 
 func (r *identitySourceRepository) ToggleEnabled(ctx context.Context, id int64) error {

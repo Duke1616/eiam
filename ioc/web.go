@@ -11,6 +11,7 @@ import (
 	"github.com/Duke1616/eiam/internal/web/discovery"
 	"github.com/Duke1616/eiam/internal/web/group"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
+	idphdl "github.com/Duke1616/eiam/internal/web/idp"
 	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
@@ -30,7 +31,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	roleHdl *rolehdl.Handler,
 	deptHdl *department.Handler, groupHdl *group.Handler,
 	identitySourceHdl *idhdl.Handler, invitationHdl *invitationhdl.Handler,
-	discoveryHdl *discovery.Handler, auditHdl *audithdl.Handler, tenancyBuilder *pkgmiddleware.TenancyBuilder,
+	discoveryHdl *discovery.Handler, auditHdl *audithdl.Handler, idpHdl *idphdl.Handler, tenancyBuilder *pkgmiddleware.TenancyBuilder,
 	permSvc permission.IPermissionService, auditProd auditevt.IAuditProducer) *egin.Component {
 	session.SetDefaultProvider(sp)
 
@@ -56,6 +57,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	invitationHdl.PublicRoutes(server.Engine)
 	discoveryHdl.PublicRoutes(server.Engine)
 	auditHdl.PublicRoutes(server.Engine)
+	idpHdl.PublicRoutes(server.Engine)
 
 	// 2. 登录层：验证是否登录
 	server.Use(session.CheckLoginMiddleware())
@@ -86,6 +88,7 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	identitySourceHdl.PrivateRoutes(server.Engine)
 	invitationHdl.PrivateRoutes(server.Engine)
 	auditHdl.PrivateRoutes(server.Engine)
+	idpHdl.PrivateRoutes(server.Engine)
 
 	return server
 }
