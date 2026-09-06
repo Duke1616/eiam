@@ -48,6 +48,8 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	// 3. 用户授权确认交互端点 (Consent Flow)
 	server.GET("/oauth/v2/consent", h.GetConsent)
 	server.POST("/oauth/v2/consent", h.ConfirmConsent)
+	server.GET("/api/idp/consent", h.GetConsent)
+	server.POST("/api/idp/consent", h.ConfirmConsent)
 
 	// 4. 授权码换发 Token 端点 (支持 code 与 refresh_token 策略)
 	server.POST("/oauth/v2/token", h.Token)
@@ -172,6 +174,15 @@ func (h *Handler) GetConsent(c *gin.Context) {
 	info, err := h.svc.GetConsentInfo(c.Request.Context(), consentID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 0,
+			"msg":  "OK",
+			"data": info,
+		})
 		return
 	}
 
