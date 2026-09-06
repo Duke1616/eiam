@@ -346,7 +346,14 @@ func (s *service) GetUserInfo(ctx context.Context, tokenString string) (*domain.
 
 // GetDiscoveryConfig 返回标准 OIDC 发现元数据
 func (s *service) GetDiscoveryConfig(ctx context.Context, issuerURL string) domain.OidcDiscovery {
-	return domain.NewOidcDiscovery(issuerURL)
+	trimmed := strings.TrimRight(issuerURL, "/")
+	var opts []domain.OidcDiscoveryOption
+
+	if viper.GetBool("idp.enable_slo") {
+		opts = append(opts, domain.WithEndSessionEndpoint(trimmed+"/oauth/v2/logout"))
+	}
+
+	return domain.NewOidcDiscovery(issuerURL, opts...)
 }
 
 // GetJWKS 获取公钥集合

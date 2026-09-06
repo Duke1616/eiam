@@ -127,8 +127,8 @@ type OidcDiscovery struct {
 	TokenEndpoint                     string   `json:"token_endpoint"`
 	UserinfoEndpoint                  string   `json:"userinfo_endpoint"`
 	JwksURI                           string   `json:"jwks_uri"`
-	RevocationEndpoint                string   `json:"revocation_endpoint"`
-	EndSessionEndpoint                string   `json:"end_session_endpoint"`
+	RevocationEndpoint                string   `json:"revocation_endpoint,omitempty"`
+	EndSessionEndpoint                string   `json:"end_session_endpoint,omitempty"`
 	ResponseTypesSupported            []string `json:"response_types_supported"`
 	SubjectTypesSupported             []string `json:"subject_types_supported"`
 	IDTokenSigningAlgValuesSupported  []string `json:"id_token_signing_alg_values_supported"`
@@ -139,17 +139,33 @@ type OidcDiscovery struct {
 	GrantTypesSupported               []string `json:"grant_types_supported"`
 }
 
+// OidcDiscoveryOption 发现元数据配置选项
+type OidcDiscoveryOption func(*OidcDiscovery)
+
+// WithEndSessionEndpoint 配置单点注销端点
+func WithEndSessionEndpoint(endpoint string) OidcDiscoveryOption {
+	return func(d *OidcDiscovery) {
+		d.EndSessionEndpoint = endpoint
+	}
+}
+
+// WithRevocationEndpoint 配置令牌撤销端点
+func WithRevocationEndpoint(endpoint string) OidcDiscoveryOption {
+	return func(d *OidcDiscovery) {
+		d.RevocationEndpoint = endpoint
+	}
+}
+
 // NewOidcDiscovery 构建标准 Discovery 元数据实体
-func NewOidcDiscovery(issuerURL string) OidcDiscovery {
+func NewOidcDiscovery(issuerURL string, opts ...OidcDiscoveryOption) OidcDiscovery {
 	trimmed := strings.TrimRight(issuerURL, "/")
-	return OidcDiscovery{
+	discovery := OidcDiscovery{
 		Issuer:                            trimmed,
 		AuthorizationEndpoint:             trimmed + "/oauth/v2/authorize",
 		TokenEndpoint:                     trimmed + "/oauth/v2/token",
 		UserinfoEndpoint:                  trimmed + "/userinfo",
 		JwksURI:                           trimmed + "/oauth/v2/jwks",
 		RevocationEndpoint:                trimmed + "/oauth/v2/revoke",
-		EndSessionEndpoint:                trimmed + "/oauth/v2/logout",
 		ResponseTypesSupported:            []string{"code"},
 		SubjectTypesSupported:             []string{"public"},
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
@@ -161,6 +177,12 @@ func NewOidcDiscovery(issuerURL string) OidcDiscovery {
 		CodeChallengeMethodsSupported: []string{"S256", "plain"},
 		GrantTypesSupported:           []string{"authorization_code", "refresh_token"},
 	}
+
+	for _, opt := range opts {
+		opt(&discovery)
+	}
+
+	return discovery
 }
 
 // ResolveScopeDescriptions 将请求的 Scope 列表转换为易于理解的用户授权描述

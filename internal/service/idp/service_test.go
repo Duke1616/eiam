@@ -14,6 +14,7 @@ import (
 	repomocks "github.com/Duke1616/eiam/internal/repository/mocks"
 	permmocks "github.com/Duke1616/eiam/internal/service/permission/mocks"
 	tenantmocks "github.com/Duke1616/eiam/internal/service/tenant/mocks"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -366,4 +367,32 @@ func TestService_RevokeToken(t *testing.T) {
 
 	err := svc.RevokeToken(context.Background(), "target_token", "refresh_token", "client_rev", rawSecret)
 	assert.NoError(t, err)
+}
+
+func TestService_GetDiscoveryConfig(t *testing.T) {
+	svc := NewService(nil, nil, nil, nil, nil, nil, nil)
+
+	t.Run("默认配置下不暴露 end_session 且标准暴露 revocation", func(t *testing.T) {
+		viper.Set("idp.enable_slo", false)
+
+		disc := svc.GetDiscoveryConfig(context.Background(), "https://eiam.example.com")
+		assert.Empty(t, disc.EndSessionEndpoint)
+		assert.Equal(t, "https://eiam.example.com/oauth/v2/revoke", disc.RevocationEndpoint)
+
+		// 序列化后验证 JSON 中 omitempty
+		raw, err := json.Marshal(disc)
+		assert.NoError(t, err)
+		assert.NotContains(t, string(raw), "end_session_endpoint")
+		assert.Contains(t, string(raw), "revocation_endpoint")
+	})
+
+	t.Run("显式开启 SLO 时暴露端点", func(t *testing.T) {
+		viper.Set("idp.enable_slo", true)
+		disc := svc.GetDiscoveryConfig(context.Background(), "https://eiam.example.com")
+		assert.Equal(t, "https://eiam.example.com/oauth/v2/logout", disc.EndSessionEndpoint)
+
+		raw, err := json.Marshal(disc)
+		assert.NoError(t, err)
+		assert.Contains(t, string(raw), "end_session_endpoint")
+	})
 }
