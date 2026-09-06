@@ -11,6 +11,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/pkg/sessionx"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
@@ -288,13 +289,8 @@ func (h *Handler) Logout(c *gin.Context) {
 	postLogoutRedirectURI := c.Query("post_logout_redirect_uri")
 	state := c.Query("state")
 
-	// 调用 DefaultProvider().Destroy 清理会话，联动触发 TokenCarrier.Clear 擦除浏览器 Cookie
-	gctx := &ginx.Context{Context: c}
-	if err := session.DefaultProvider().Destroy(gctx); err != nil {
-		if sess, getErr := session.Get(gctx); getErr == nil && sess != nil {
-			_ = sess.Destroy(c)
-		}
-	}
+	// 统一彻底销毁主站会话，联动清理客户端 Cookie 与服务端 Redis 缓存
+	_ = sessionx.DestroyGin(c)
 
 	if postLogoutRedirectURI != "" {
 		target := postLogoutRedirectURI
