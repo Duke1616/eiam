@@ -11,6 +11,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/pkg/sessionx"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
@@ -288,11 +289,11 @@ func (h *Handler) UserInfo(c *gin.Context) {
 }
 
 // Logout 单点注销端点 (OIDC RP-Initiated Logout)
-// 设计考量：不启用全局 SLO (Single Logout)，第三方业务系统的注销由业务系统本地维护，
-// 此处绝不销毁 EIAM 主站登录态，避免误踢主站及其他业务系统；仅协助客户端进行安全重定向。
 func (h *Handler) Logout(c *gin.Context) {
 	postLogoutRedirectURI := c.Query("post_logout_redirect_uri")
 	state := c.Query("state")
+
+	_ = sessionx.DestroyGin(c)
 
 	if postLogoutRedirectURI != "" {
 		target := appendQueryParam(postLogoutRedirectURI, "state", state)
