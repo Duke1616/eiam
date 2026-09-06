@@ -322,7 +322,9 @@ func friendlyAuthFailReason(err error) string {
 
 // provisionOrLinkIdentity 统一处理外部身份源用户关联与 JIT 预供建档
 func (c *authCoordinator) provisionOrLinkIdentity(ctx context.Context, provider string, extUser domain.User, identity domain.UserIdentity) (domain.User, error) {
-	localUser, err := c.repo.FindUserByIdentity(ctx, provider, identity.IdentityKey())
+	// 优先按具体外部身份源查找已绑定用户，为空时兜底使用协议类型
+	searchProvider := lo.CoalesceOrEmpty(identity.Provider, provider)
+	localUser, err := c.repo.FindUserByIdentity(ctx, searchProvider, identity.IdentityKey())
 	if err == nil {
 		return localUser, nil
 	}

@@ -227,6 +227,45 @@ func TestAuthCoordinator_Authenticate(t *testing.T) {
 			wantErr: nil,
 		},
 		{
+			name: "OIDC飞书身份源已绑定用户成功按feishu匹配并出单",
+			mock: func(ctrl *gomock.Controller) (repository.IUserRepository, tenant.ITenantService) {
+				repo := repomocks.NewMockIUserRepository(ctrl)
+				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
+
+				feishuUser := domain.User{
+					ID:                 104,
+					Username:           "feishu_user",
+					Source:             domain.Source("feishu"),
+					LastActiveTenantID: 1001,
+				}
+				repo.EXPECT().FindUserByIdentity(gomock.Any(), "feishu", "feishu_union_123").Return(feishuUser, nil)
+				repo.EXPECT().UpdateLastLoginAt(gomock.Any(), int64(104), gomock.Any()).Return(nil)
+				tenantSvc.EXPECT().GetTenantsByUserId(gomock.Any(), int64(104)).Return([]domain.Tenant{
+					{ID: 1001, Name: "飞书租户"},
+				}, nil)
+
+				return repo, tenantSvc
+			},
+			authType: domain.OIDC.String(),
+			payload: domain.OidcIdentity{
+				Provider:   "feishu",
+				ExternalID: "feishu_union_123",
+				Username:   "feishu_user",
+			},
+			wantResult: domain.LoginResult{
+				User: domain.User{
+					ID:                 104,
+					Username:           "feishu_user",
+					Source:             domain.Source("feishu"),
+					LastActiveTenantID: 1001,
+				},
+				TenantID:    1001,
+				AuthType:    domain.OIDC.String(),
+				MfaRequired: false,
+			},
+			wantErr: nil,
+		},
+		{
 			name: "未注册的认证源返回ProviderNotFound",
 			mock: func(ctrl *gomock.Controller) (repository.IUserRepository, tenant.ITenantService) {
 				repo := repomocks.NewMockIUserRepository(ctrl)

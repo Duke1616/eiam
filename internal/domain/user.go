@@ -116,7 +116,12 @@ func (id UserIdentity) IdentityKey() string {
 	case "ldap":
 		return id.LdapInfo.DN
 	case "feishu":
-		return id.FeishuInfo.UserID
+		for _, candidate := range []string{id.FeishuInfo.UserID, id.FeishuInfo.UnionID, id.FeishuInfo.OpenID} {
+			if candidate != "" {
+				return candidate
+			}
+		}
+		return ""
 	case "wechat":
 		return id.WechatInfo.UserID
 	default:

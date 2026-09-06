@@ -72,10 +72,8 @@ func newCookieTokenCarrier(cfg sessionCookieConfig) *cookie.TokenCarrier {
 	if cfg.Name == "" {
 		panic("cookie.name is required")
 	}
-	if cfg.Domain == "" {
-		panic("cookie.domain is required")
-	}
 
+	// 允许 Domain 留空，缺省时作为 Host-only Cookie 自动适配当前访问域名
 	return &cookie.TokenCarrier{
 		MaxAge:   int(sessionExpiration.Seconds()),
 		Name:     cfg.Name,

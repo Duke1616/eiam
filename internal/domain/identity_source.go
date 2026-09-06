@@ -125,7 +125,13 @@ func (ident OidcIdentity) BuildUserIdentity() UserIdentity {
 			UnionID: getClaimString(ident.RawClaims, "union_id"),
 			OpenID:  getClaimString(ident.RawClaims, "open_id"),
 		}
-		id.IdentityID = id.FeishuInfo.UserID
+		// 飞书唯一标识多级容错：优先工号，缺省时降级联合标识
+		for _, candidate := range []string{id.FeishuInfo.UserID, id.FeishuInfo.UnionID, id.FeishuInfo.OpenID, ident.ExternalID} {
+			if candidate != "" {
+				id.IdentityID = candidate
+				break
+			}
+		}
 	case SourceWechat.String():
 		id.WechatInfo = WechatInfo{UserID: ident.ExternalID}
 		id.IdentityID = ident.ExternalID
