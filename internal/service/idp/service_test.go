@@ -120,6 +120,60 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 			},
 			wantErr: errs.ErrOAuthClientNotFound,
 		},
+		{
+			name: "授权失败-跨租户访问私有应用被拒绝",
+			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache) {
+				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
+				c := cachemocks.NewMockIOidcCache(ctrl)
+
+				repo.EXPECT().FindByClientID(gomock.Any(), "tenant_10_app").Return(domain.OAuthClient{
+					TenantID:     10,
+					ClientID:     "tenant_10_app",
+					RedirectURIs: []string{"https://app10.example.com/callback"},
+				}, nil)
+
+				return repo, c
+			},
+			req: AuthorizeRequest{
+				ClientID:    "tenant_10_app",
+				RedirectURI: "https://app10.example.com/callback",
+				TenantID:    20, // 租户 20 的用户试图访问租户 10 的应用
+			},
+			wantErr: errs.ErrTenantAccessDenied,
+		},
+		{
+			name: "全平台共享应用-系统租户应用允许其他租户用户单点登录",
+			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache) {
+				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
+				c := cachemocks.NewMockIOidcCache(ctrl)
+
+				repo.EXPECT().FindByClientID(gomock.Any(), "system_global_app").Return(domain.OAuthClient{
+					TenantID:     1, // 系统根租户应用
+					ClientID:     "system_global_app",
+					AutoConsent:  true,
+					RedirectURIs: []string{"https://gitlab.example.com/callback"},
+					Scopes:       []string{"openid"},
+				}, nil)
+
+				c.EXPECT().SaveAuthCodeContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+				return repo, c
+			},
+			req: AuthorizeRequest{
+				ClientID:     "system_global_app",
+				RedirectURI:  "https://gitlab.example.com/callback",
+				ResponseType: "code",
+				Scopes:       []string{"openid"},
+				UserID:       100,
+				Username:     "developer",
+				TenantID:     20, // 普通租户用户通过系统全局 GitLab 登录
+			},
+			wantErr: nil,
+			check: func(t *testing.T, res *AuthorizeResult) {
+				assert.False(t, res.RequireConsent)
+				assert.NotEmpty(t, res.RedirectURL)
+			},
+		},
 	}
 
 	for _, tc := range testCases {

@@ -115,6 +115,11 @@ func (s *service) Authorize(ctx context.Context, req AuthorizeRequest) (*Authori
 		return nil, errs.ErrInvalidRedirectURI
 	}
 
+	// 多租户准入隔离：非系统租户（全局共享应用）的专属租户应用，仅允许本租户用户单点登录访问
+	if client.TenantID != ctxutil.SystemTenantID && client.TenantID != 0 && client.TenantID != req.TenantID {
+		return nil, errs.ErrTenantAccessDenied
+	}
+
 	// 过滤有效 Scopes (使用 Domain 充血方法)
 	validScopes := client.FilterAllowedScopes(req.Scopes)
 
