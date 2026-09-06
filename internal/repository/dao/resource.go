@@ -63,6 +63,7 @@ const (
 
 // IResourceDAO 定义了物理资源 (Menu/API) 的底层持久化接口。
 // 所有查询方法默认仅返回 status = Active 的有效资产，已标记为 orphan 的数据对业务层不可见。
+//go:generate mockgen -package=daomocks -destination=./mocks/resource.mock.go github.com/Duke1616/eiam/internal/repository/dao IResourceDAO
 type IResourceDAO interface {
 	// InsertMenu 插入一条菜单记录，返回自增 ID
 	InsertMenu(ctx context.Context, m Menu) (int64, error)

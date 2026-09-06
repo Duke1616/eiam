@@ -9,6 +9,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
+	cachemocks "github.com/Duke1616/eiam/internal/repository/cache/mocks"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/resource"
@@ -235,9 +236,13 @@ func (s *PermissionSuite) TestIngestPhysicalClearAndReload() {
 	permDAO := dao.NewPermissionDAO(s.db)
 	resDAO := dao.NewResourceDAO(s.db)
 	svcDAO := dao.NewServiceDAO(s.db)
+	permCache := cachemocks.NewMockIPermissionCache(s.ctrl)
+	permCache.EXPECT().DeleteCodesByResources(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	resCache := cachemocks.NewMockIResourceCache(s.ctrl)
+	resCache.EXPECT().InvalidateServiceAPIs(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	engine := ingestion.NewEngine(
-		repository.NewPermissionRepository(permDAO),
-		repository.NewResourceRepository(resDAO),
+		repository.NewPermissionRepository(permDAO, permCache),
+		repository.NewResourceRepository(resDAO, resCache),
 		repository.NewServiceRepository(svcDAO),
 	)
 
@@ -322,9 +327,13 @@ func (s *PermissionSuite) TestIngestMenusAndPhysicalClearProtection() {
 	permDAO := dao.NewPermissionDAO(s.db)
 	resDAO := dao.NewResourceDAO(s.db)
 	svcDAO := dao.NewServiceDAO(s.db)
+	permCache := cachemocks.NewMockIPermissionCache(s.ctrl)
+	permCache.EXPECT().DeleteCodesByResources(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	resCache := cachemocks.NewMockIResourceCache(s.ctrl)
+	resCache.EXPECT().InvalidateServiceAPIs(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	engine := ingestion.NewEngine(
-		repository.NewPermissionRepository(permDAO),
-		repository.NewResourceRepository(resDAO),
+		repository.NewPermissionRepository(permDAO, permCache),
+		repository.NewResourceRepository(resDAO, resCache),
 		repository.NewServiceRepository(svcDAO),
 	)
 

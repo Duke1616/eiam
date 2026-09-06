@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/pbac"
 	"github.com/Duke1616/eiam/pkg/sqlx"
@@ -14,6 +15,8 @@ import (
 )
 
 // IResourceRepository 物理资源仓库，负责全量 Menu 和 API 资产的底数管理
+//
+//go:generate mockgen -package=repomocks -destination=./mocks/resource.mock.go github.com/Duke1616/eiam/internal/repository IResourceRepository
 type IResourceRepository interface {
 	// CreateAPI 录入一个新的物理接口资产
 	CreateAPI(ctx context.Context, a domain.API) (int64, error)
@@ -50,11 +53,15 @@ type IResourceRepository interface {
 }
 
 type ResourceRepository struct {
-	dao dao.IResourceDAO
+	dao   dao.IResourceDAO
+	cache cache.IResourceCache
 }
 
-func NewResourceRepository(dao dao.IResourceDAO) IResourceRepository {
-	return &ResourceRepository{dao: dao}
+func NewResourceRepository(dao dao.IResourceDAO, cache cache.IResourceCache) IResourceRepository {
+	return &ResourceRepository{
+		dao:   dao,
+		cache: cache,
+	}
 }
 
 // SyncMenus 实现高性能的原子级资产同步
@@ -126,7 +133,7 @@ func (r *ResourceRepository) alignTopology(ctx context.Context, entities []dao.M
 // --- 其它方法保持简洁 ---
 
 func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64, error) {
-	return r.dao.InsertAPI(ctx, dao.API{
+	id, err := r.dao.InsertAPI(ctx, dao.API{
 		Service:       a.Service,
 		Source:        a.Source,
 		Name:          a.Name,
@@ -134,25 +141,49 @@ func (r *ResourceRepository) CreateAPI(ctx context.Context, a domain.API) (int64
 		Path:          a.Path,
 		FilterProfile: string(a.FilterProfile),
 	})
+	if err != nil {
+		return 0, err
+	}
+	_ = r.cache.InvalidateServiceAPIs(ctx, a.Service)
+	return id, nil
 }
 
 func (r *ResourceRepository) BatchCreateAPI(ctx context.Context, apis []domain.API) error {
 	daoApis := lo.Map(apis, func(a domain.API, _ int) dao.API {
 		return dao.API{Service: a.Service, Source: a.Source, Name: a.Name, Method: a.Method, Path: a.Path, FilterProfile: string(a.FilterProfile)}
 	})
-	return r.dao.BatchInsertAPI(ctx, daoApis)
+	if err := r.dao.BatchInsertAPI(ctx, daoApis); err != nil {
+		return err
+	}
+	services := lo.Uniq(lo.Map(apis, func(a domain.API, _ int) string { return a.Service }))
+	for _, s := range services {
+		_ = r.cache.InvalidateServiceAPIs(ctx, s)
+	}
+	return nil
 }
 
 func (r *ResourceRepository) FindAPIByPath(ctx context.Context, service, method, path string) (domain.API, error) {
+	cachedAPI, err := r.cache.GetAPI(ctx, service, method, path)
+	if err == nil {
+		if cachedAPI.ID == cache.EmptyAPIID {
+			return domain.API{}, nil
+		}
+		return cachedAPI, nil
+	}
+
 	a, err := r.dao.FindAPIByPath(ctx, service, method, path)
 	if err != nil {
-		// 将记录不存在视为正常空结果，而非错误
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			_ = r.cache.SetEmptyAPI(ctx, service, method, path)
 			return domain.API{}, nil
 		}
 		return domain.API{}, err
 	}
-	return r.toDomainAPI(a), nil
+
+	domainAPI := r.toDomainAPI(a)
+	_ = r.cache.SetAPI(ctx, service, method, path, domainAPI)
+
+	return domainAPI, nil
 }
 
 func (r *ResourceRepository) ListAllAPIs(ctx context.Context) ([]domain.API, error) {
@@ -194,7 +225,12 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service, source strin
 	}
 
 	// 2. 将不再存在的接口标记为孤儿 (而非直接删除)
-	return r.dao.MarkAPIsAsOrphan(ctx, service, source, urns)
+	if err := r.dao.MarkAPIsAsOrphan(ctx, service, source, urns); err != nil {
+		return err
+	}
+
+	// 3. 资产变更后精准失效当前微服务的 API 缓存，确保鉴权快路径强一致
+	return r.cache.InvalidateServiceAPIs(ctx, service)
 }
 
 func (r *ResourceRepository) MarkAPIsAsOrphan(ctx context.Context, service, source string, urns []string) error {
@@ -202,7 +238,10 @@ func (r *ResourceRepository) MarkAPIsAsOrphan(ctx context.Context, service, sour
 }
 
 func (r *ResourceRepository) DeleteAPIsByServiceAndURNs(ctx context.Context, service, source string, urns []string) error {
-	return r.dao.DeleteAPIsByServiceAndURNs(ctx, service, source, urns)
+	if err := r.dao.DeleteAPIsByServiceAndURNs(ctx, service, source, urns); err != nil {
+		return err
+	}
+	return r.cache.InvalidateServiceAPIs(ctx, service)
 }
 
 func (r *ResourceRepository) UpsertMenu(ctx context.Context, m *domain.Menu) error {

@@ -108,6 +108,7 @@ var (
 
 	// PermissionSet 权限管理、边界校验与 PBAC 策略模块 Provider 集合
 	PermissionSet = wire.NewSet(
+		cache.NewPermissionCache,
 		dao.NewPermissionDAO,
 		dao.NewPolicyDAO,
 		repository.NewPermissionRepository,
@@ -146,6 +147,7 @@ var (
 	// ResourceSet 统一资产对账、元数据发现与令牌服务模块 Provider 集合
 	ResourceSet = wire.NewSet(
 		cache.NewDiscoveryCache,
+		cache.NewResourceCache,
 		dao.NewResourceDAO,
 		dao.NewServiceDAO,
 		repository.NewResourceRepository,

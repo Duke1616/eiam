@@ -59,41 +59,48 @@ func (CasbinRule) TableName() string {
 	return "casbin_rule"
 }
 
+// IPermissionDAO 定义了逻辑权限能力项与物理资产绑定的底层持久化接口。
+//go:generate mockgen -package=daomocks -destination=./mocks/permission.mock.go github.com/Duke1616/eiam/internal/repository/dao IPermissionDAO
 type IPermissionDAO interface {
+	// Insert 录入单个逻辑权限定义，返回自增 ID
 	Insert(ctx context.Context, p Permission) (int64, error)
+	// BatchInsert 批量录入逻辑权限定义；以 code 为唯一键，发生冲突时更新元数据并将状态重置为 Active
 	BatchInsert(ctx context.Context, perms []Permission) error
+	// Delete 根据主键 ID 删除权限记录，并在同一事务内物理级联删除关联的资源绑定
 	Delete(ctx context.Context, id int64) error
+	// GetByCode 根据权限码精确获取权限定义，未找到时返回 gorm.ErrRecordNotFound
 	GetByCode(ctx context.Context, code string) (Permission, error)
+	// ListAll 查询系统中全部逻辑权限定义
 	ListAll(ctx context.Context) ([]Permission, error)
 
-	// BindResources 批量关联物理资产 (基于唯一索引实现幂等，不重复插入)
+	// BindResources 批量写入物理资源绑定关系；以 (perm_code, tenant_id, resource_urn) 为唯一索引进行 Upsert
 	BindResources(ctx context.Context, bindings []PermissionBinding) error
-	// GetBindingsByRes 反查：查看物理标识归属哪些能力码
+	// GetBindingsByRes 根据物理资产 URN 查询其关联的全部权限绑定记录
 	GetBindingsByRes(ctx context.Context, resURN string) ([]PermissionBinding, error)
-	// ListBindingsByPerm 正查：查看能力项下的全部资产
+	// ListBindingsByPerm 根据逻辑权限 ID 查询其关联的全部物理资产绑定记录
 	ListBindingsByPerm(ctx context.Context, permId int64) ([]PermissionBinding, error)
-	// ListBindingsByResURNs 批量反查：查看一组 URN 分别归属哪些能力码
+	// ListBindingsByResURNs 批量根据物理资产 URN 列表查询对应的全部权限绑定记录
 	ListBindingsByResURNs(ctx context.Context, resURNs []string) ([]PermissionBinding, error)
-	// ListMenuBindings 获取所有菜单类型的资源绑定关系
+	// ListMenuBindings 查询所有菜单类型的资源绑定关系（前缀为 eiam:menu:）
 	ListMenuBindings(ctx context.Context) ([]PermissionBinding, error)
 
-	// SyncResourceBindings 同步物理资产与功能码的映射关系 (基于 URN 的 Full-Sync)
+	// SyncResourceBindings 在事务中全量同步资源绑定关系：先删除 resURNs 的已有绑定，再写入新的映射
 	SyncResourceBindings(ctx context.Context, resURNs []string, bindings []PermissionBinding) error
-	// ListCasbinRules 查询 Casbin 关系规则 (带分页)
+	// ListCasbinRules 分页查询指定租户下的 Casbin 继承规则（ptype='g' 且 v2=tid），支持按主体/角色前缀与关键字过滤
 	ListCasbinRules(ctx context.Context, tid, offset, limit int64, v0Prefix, v1Prefix, keyword string) ([]CasbinRule, int64, error)
-	// FindByActions 根据一组 Action 标识查询权限项，支持通配符 *
+	// FindByActions 根据 Action 列表查询权限定义，支持通配符后缀（如 iam:user:*）模糊匹配及精确匹配
 	FindByActions(ctx context.Context, actions []string) ([]Permission, error)
-	// FindParentsByNeeds 反向查找：哪些权限码依赖了传入的这些 codes
+	// FindParentsByNeeds 反向拓扑查询：查找 needs 依赖项中包含任一指定权限码的父级权限码列表
 	FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error)
-	// CountByService 按服务分组统计权限点总数
+	// CountByService 按服务名分组统计逻辑权限数量
 	CountByService(ctx context.Context) ([]ServiceCount, error)
-	// DeletePermissionsByServiceAndCodes 删除指定服务下不在给定 codes 列表中的所有权限
+	// DeletePermissionsByServiceAndCodes 物理删除指定服务与来源下不在 codes 列表中的权限记录
 	DeletePermissionsByServiceAndCodes(ctx context.Context, service, source string, codes []string) error
-	// MarkPermissionsAsOrphan 将不在 codes 列表中的权限标记为孤儿状态
+	// MarkPermissionsAsOrphan 将指定服务与来源下不在 codes 列表中的权限标记为孤儿状态
 	MarkPermissionsAsOrphan(ctx context.Context, service, source string, codes []string) error
-	// DeleteBindingsByPermCodes 根据逻辑权限码列表物理删除所有的资源绑定关系
+	// DeleteBindingsByPermCodes 批量删除指定权限码的资源绑定记录，自动排除菜单类资源（避免影响全局菜单染色）
 	DeleteBindingsByPermCodes(ctx context.Context, codes []string) error
-	// Transaction 开启事务支持
+	// Transaction 在事务上下文中执行业务逻辑，通过 context 隐式传递事务连接
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
@@ -138,7 +145,6 @@ func (d *PermissionDAO) BatchInsert(ctx context.Context, perms []Permission) err
 		perms[i].Status = PermissionStatusActive
 	}
 
-	// 1. 批量插入/更新权限数据
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "code"}},
 		DoUpdates: clause.AssignmentColumns([]string{"service", "source", "name", "group", "needs", "scope", "utime", "status", "sort", "access_scope_presets"}),
@@ -171,7 +177,7 @@ func (d *PermissionDAO) BindResources(ctx context.Context, bindings []Permission
 		return nil
 	}
 
-	// 升级为 CreateInBatches 分批保护
+	// 分批写入，防止 SQL 占位符超限
 	return d.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 		DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
@@ -213,7 +219,7 @@ func (d *PermissionDAO) SyncResourceBindings(ctx context.Context, resURNs []stri
 			}
 		}
 		if len(bindings) > 0 {
-			// 升级为 CreateInBatches 分批保护
+			// 分批写入，防止 SQL 占位符超限
 			return d.getDB(txCtx).Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "perm_code"}, {Name: "tenant_id"}, {Name: "resource_urn"}},
 				DoUpdates: clause.AssignmentColumns([]string{"perm_id"}),
