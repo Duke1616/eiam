@@ -11,7 +11,6 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
-	"github.com/Duke1616/eiam/pkg/sessionx"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
@@ -285,27 +284,33 @@ func (h *Handler) UserInfo(c *gin.Context) {
 }
 
 // Logout 单点注销端点 (OIDC RP-Initiated Logout)
+// 设计考量：不启用全局 SLO (Single Logout)，第三方业务系统的注销由业务系统本地维护，
+// 此处绝不销毁 EIAM 主站登录态，避免误踢主站及其他业务系统；仅协助客户端进行安全重定向。
 func (h *Handler) Logout(c *gin.Context) {
 	postLogoutRedirectURI := c.Query("post_logout_redirect_uri")
 	state := c.Query("state")
 
-	// 统一彻底销毁主站会话，联动清理客户端 Cookie 与服务端 Redis 缓存
-	_ = sessionx.DestroyGin(c)
-
 	if postLogoutRedirectURI != "" {
-		target := postLogoutRedirectURI
-		if state != "" {
-			sep := "?"
-			if strings.Contains(target, "?") {
-				sep = "&"
-			}
-			target = fmt.Sprintf("%s%sstate=%s", target, sep, url.QueryEscape(state))
-		}
+		target := appendQueryParam(postLogoutRedirectURI, "state", state)
 		c.Redirect(http.StatusFound, target)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "已成功注销登录态"})
+}
+
+func appendQueryParam(rawURL, key, val string) string {
+	if val == "" {
+		return rawURL
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	q := parsed.Query()
+	q.Set(key, val)
+	parsed.RawQuery = q.Encode()
+	return parsed.String()
 }
 
 func (h *Handler) resolveIssuerURL(c *gin.Context) string {

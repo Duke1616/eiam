@@ -81,18 +81,8 @@ func (h *refreshTokenGrantHandler) Handle(ctx context.Context, req domain.TokenR
 	_ = h.cache.SaveRefreshToken(ctx, newRefreshToken, sessBytes)
 	_ = h.cache.TrackUserRefreshToken(ctx, strconv.FormatInt(session.UserID, 10), newRefreshToken)
 
-	// 4. 重新获取用户最新角色与名片
-	roles, _ := h.permSvc.GetRolesForUser(ctx, session.Username)
-
-	var profile UserProfile
-	user, err := h.userRepo.FindById(ctx, session.UserID)
-	if err == nil {
-		profile = UserProfile{
-			Nickname: user.Profile.Nickname,
-			Email:    user.Email,
-			Phone:    user.Profile.Phone,
-		}
-	}
+	// 4. 获取会话绑定租户下的最新用户角色与名片信息
+	roles, profile := FetchUserClaims(ctx, session.TenantID, session.UserID, session.Username, h.permSvc, h.userRepo)
 
 	// 5. 统一签发新 AccessToken 与 IDToken
 	accessToken, idToken, err := IssueTokenPair(h.signer, TokenPayload{

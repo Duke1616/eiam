@@ -85,18 +85,8 @@ func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenReque
 		return nil, errs.ErrOAuthClientSecretWrong
 	}
 
-	// 4. 获取用户角色与名片信息
-	roles, _ := h.permSvc.GetRolesForUser(ctx, authCode.Username)
-
-	var profile UserProfile
-	user, err := h.userRepo.FindById(ctx, authCode.UserID)
-	if err == nil {
-		profile = UserProfile{
-			Nickname: user.Profile.Nickname,
-			Email:    user.Email,
-			Phone:    user.Profile.Phone,
-		}
-	}
+	// 4. 获取授权码绑定租户下的用户角色与名片信息
+	roles, profile := FetchUserClaims(ctx, authCode.TenantID, authCode.UserID, authCode.Username, h.permSvc, h.userRepo)
 
 	// 5. 统一签发 AccessToken 与 IDToken
 	accessToken, idToken, err := IssueTokenPair(h.signer, TokenPayload{

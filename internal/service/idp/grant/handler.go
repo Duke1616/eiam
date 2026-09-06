@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/repository"
+	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -153,4 +156,32 @@ func GenerateRandomString(byteLen int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// FetchUserClaims 获取指定租户空间下的用户有效角色与名片信息
+// 统一封装租户隔离上下文注入与资料装配，消除各授权模式策略间的重复代码
+func FetchUserClaims(
+	ctx context.Context,
+	tenantID, userID int64,
+	username string,
+	permSvc permission.IPermissionService,
+	userRepo repository.IUserRepository,
+) ([]string, UserProfile) {
+	targetCtx := ctx
+	if tenantID > 0 {
+		targetCtx = ctxutil.WithTenantID(ctx, tenantID)
+	}
+
+	roles, _ := permSvc.GetRolesForUser(targetCtx, username)
+
+	var profile UserProfile
+	if user, err := userRepo.FindById(targetCtx, userID); err == nil {
+		profile = UserProfile{
+			Nickname: user.Profile.Nickname,
+			Email:    user.Email,
+			Phone:    user.Profile.Phone,
+		}
+	}
+
+	return roles, profile
 }

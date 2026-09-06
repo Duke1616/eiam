@@ -12,7 +12,7 @@ import (
 // OAuthClient 下游应用 GORM 持久化模型
 type OAuthClient struct {
 	ID               int64                     `gorm:"primaryKey;autoIncrement"`
-	TenantID         int64                     `gorm:"column:tenant_id;type:bigint;index;NOT NULL;comment:'归属租户ID'"`
+	TenantID         int64                     `gorm:"column:tenant_id;type:bigint;index;NOT NULL;comment:'归属租户ID'" eiam:"shared"`
 	ClientID         string                    `gorm:"column:client_id;type:varchar(64);uniqueIndex;NOT NULL;comment:'应用唯一客户端标识'"`
 	ClientSecretHash string                    `gorm:"column:client_secret_hash;type:varchar(255);NOT NULL;default:'';comment:'客户端密钥哈希'"`
 	Name             string                    `gorm:"column:name;type:varchar(128);NOT NULL;comment:'应用名称'"`

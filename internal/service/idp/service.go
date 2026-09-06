@@ -15,6 +15,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/service/idp/grant"
 	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/go-jose/go-jose/v4"
 )
@@ -67,6 +68,7 @@ type service struct {
 	repo          repository.IOAuthClientRepository
 	userRepo      repository.IUserRepository
 	permSvc       permission.IPermissionService
+	tenantSvc     tenant.ITenantService
 	cache         cache.IOidcCache
 	km            IKeyManager
 	auditProducer auditevt.IAuditProducer
@@ -78,6 +80,7 @@ func NewService(
 	repo repository.IOAuthClientRepository,
 	userRepo repository.IUserRepository,
 	permSvc permission.IPermissionService,
+	tenantSvc tenant.ITenantService,
 	cache cache.IOidcCache,
 	km IKeyManager,
 	auditProducer auditevt.IAuditProducer,
@@ -86,6 +89,7 @@ func NewService(
 		repo:          repo,
 		userRepo:      userRepo,
 		permSvc:       permSvc,
+		tenantSvc:     tenantSvc,
 		cache:         cache,
 		km:            km,
 		auditProducer: auditProducer,
@@ -115,56 +119,21 @@ func (s *service) Authorize(ctx context.Context, req AuthorizeRequest) (*Authori
 		return nil, errs.ErrInvalidRedirectURI
 	}
 
-	// 多租户准入隔离：非系统租户（全局共享应用）的专属租户应用，仅允许本租户用户单点登录访问
-	if client.TenantID != ctxutil.SystemTenantID && client.TenantID != 0 && client.TenantID != req.TenantID {
-		return nil, errs.ErrTenantAccessDenied
+	// 1. 多租户准入校验：用户必须属于该应用所在的租户空间
+	if err := s.checkTenantAccess(ctx, client.TenantID, req.UserID); err != nil {
+		return nil, err
 	}
+	req.TenantID = client.TenantID
 
-	// 过滤有效 Scopes (使用 Domain 充血方法)
+	// 2. 过滤有效 Scopes (使用 Domain 充血方法)
 	validScopes := client.FilterAllowedScopes(req.Scopes)
 
-	// 若未开启自动授权 (AutoConsent = false)，暂存 Consent 上下文并导向用户授权页
+	// 3. 第三方应用走 Consent 用户显式授权确认流程
 	if !client.AutoConsent {
-		consentID, err := generateRandomString(24)
-		if err != nil {
-			return nil, fmt.Errorf("生成授权会话失败: %w", err)
-		}
-
-		consentInfo := domain.ConsentInfo{
-			ConsentID:           consentID,
-			ClientID:            client.ClientID,
-			ClientName:          client.Name,
-			ClientLogo:          client.Logo,
-			UserID:              req.UserID,
-			Username:            req.Username,
-			TenantID:            req.TenantID,
-			RedirectURI:         req.RedirectURI,
-			Scopes:              validScopes,
-			ScopeDescriptions:   domain.ResolveScopeDescriptions(validScopes),
-			State:               req.State,
-			Nonce:               req.Nonce,
-			CodeChallenge:       req.CodeChallenge,
-			CodeChallengeMethod: req.CodeChallengeMethod,
-			CreatedAt:           time.Now().Unix(),
-		}
-
-		data, err := json.Marshal(consentInfo)
-		if err != nil {
-			return nil, fmt.Errorf("序列化授权信息失败: %w", err)
-		}
-
-		if err = s.cache.SaveConsentContext(ctx, consentID, data); err != nil {
-			return nil, fmt.Errorf("暂存授权上下文失败: %w", err)
-		}
-
-		return &AuthorizeResult{
-			RequireConsent: true,
-			ConsentID:      consentID,
-			RedirectURL:    fmt.Sprintf("/oauth/v2/consent?consent_id=%s", consentID),
-		}, nil
+		return s.initiateConsentFlow(ctx, client, req, validScopes)
 	}
 
-	// 第一方应用直接生成 AuthCode 并回跳
+	// 4. 第一方免确认应用直接签发 AuthCode 并回跳
 	redirectURL, err := s.generateAndSaveAuthCode(ctx, req, validScopes)
 	if err != nil {
 		return nil, err
@@ -173,6 +142,62 @@ func (s *service) Authorize(ctx context.Context, req AuthorizeRequest) (*Authori
 	return &AuthorizeResult{
 		RequireConsent: false,
 		RedirectURL:    redirectURL,
+	}, nil
+}
+
+// checkTenantAccess 校验用户是否具备该应用所在租户空间的成员访问权限
+func (s *service) checkTenantAccess(ctx context.Context, tenantID, userID int64) error {
+	targetCtx := ctxutil.WithTenantID(ctx, tenantID)
+	hasAccess, err := s.tenantSvc.CheckUserTenantAccess(targetCtx, userID)
+	if err != nil || !hasAccess {
+		return errs.ErrTenantAccessDenied
+	}
+	return nil
+}
+
+// initiateConsentFlow 暂存授权确认上下文并构造 Consent 重定向结果
+func (s *service) initiateConsentFlow(
+	ctx context.Context,
+	client domain.OAuthClient,
+	req AuthorizeRequest,
+	scopes []string,
+) (*AuthorizeResult, error) {
+	consentID, err := generateRandomString(24)
+	if err != nil {
+		return nil, fmt.Errorf("生成授权会话失败: %w", err)
+	}
+
+	consentInfo := domain.ConsentInfo{
+		ConsentID:           consentID,
+		ClientID:            client.ClientID,
+		ClientName:          client.Name,
+		ClientLogo:          client.Logo,
+		UserID:              req.UserID,
+		Username:            req.Username,
+		TenantID:            req.TenantID,
+		RedirectURI:         req.RedirectURI,
+		Scopes:              scopes,
+		ScopeDescriptions:   domain.ResolveScopeDescriptions(scopes),
+		State:               req.State,
+		Nonce:               req.Nonce,
+		CodeChallenge:       req.CodeChallenge,
+		CodeChallengeMethod: req.CodeChallengeMethod,
+		CreatedAt:           time.Now().Unix(),
+	}
+
+	data, err := json.Marshal(consentInfo)
+	if err != nil {
+		return nil, fmt.Errorf("序列化授权信息失败: %w", err)
+	}
+
+	if err = s.cache.SaveConsentContext(ctx, consentID, data); err != nil {
+		return nil, fmt.Errorf("暂存授权上下文失败: %w", err)
+	}
+
+	return &AuthorizeResult{
+		RequireConsent: true,
+		ConsentID:      consentID,
+		RedirectURL:    fmt.Sprintf("/oauth/v2/consent?consent_id=%s", consentID),
 	}, nil
 }
 
@@ -297,30 +322,17 @@ func (s *service) GetUserInfo(ctx context.Context, tokenString string) (*domain.
 
 	userID, _ := strconv.ParseInt(claims.Subject, 10, 64)
 
-	user, err := s.userRepo.FindById(ctx, userID)
-	if err != nil {
-		return &domain.OidcUserInfo{
-			Subject:           claims.Subject,
-			PreferredUsername: claims.PreferredUsername,
-			Nickname:          claims.Nickname,
-			Email:             claims.Email,
-			EmailVerified:     claims.EmailVerified,
-			PhoneNumber:       claims.PhoneNumber,
-			TenantID:          claims.TenantID,
-			Roles:             claims.Roles,
-		}, nil
-	}
-
-	roles, _ := s.permSvc.GetRolesForUser(ctx, user.Username)
+	// 绑定 Token 所在租户空间，获取该租户下的最新角色与名片信息
+	roles, profile := grant.FetchUserClaims(ctx, claims.TenantID, userID, claims.PreferredUsername, s.permSvc, s.userRepo)
 
 	return &domain.OidcUserInfo{
-		Subject:           strconv.FormatInt(user.ID, 10),
-		PreferredUsername: user.Username,
-		Name:              user.Profile.Nickname,
-		Nickname:          user.Profile.Nickname,
-		Email:             user.Email,
-		EmailVerified:     user.Email != "",
-		PhoneNumber:       user.Profile.Phone,
+		Subject:           strconv.FormatInt(userID, 10),
+		PreferredUsername: claims.PreferredUsername,
+		Name:              profile.Nickname,
+		Nickname:          profile.Nickname,
+		Email:             profile.Email,
+		EmailVerified:     profile.Email != "",
+		PhoneNumber:       profile.Phone,
 		TenantID:          claims.TenantID,
 		Roles:             roles,
 	}, nil

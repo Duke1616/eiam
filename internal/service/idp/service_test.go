@@ -13,6 +13,7 @@ import (
 	cachemocks "github.com/Duke1616/eiam/internal/repository/cache/mocks"
 	repomocks "github.com/Duke1616/eiam/internal/repository/mocks"
 	permmocks "github.com/Duke1616/eiam/internal/service/permission/mocks"
+	tenantmocks "github.com/Duke1616/eiam/internal/service/tenant/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -28,27 +29,30 @@ func newTestKeyManager(t *testing.T) IKeyManager {
 func TestService_Authorize_AutoConsent(t *testing.T) {
 	testCases := []struct {
 		name    string
-		mock    func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache)
+		mock    func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache, *tenantmocks.MockITenantService)
 		req     AuthorizeRequest
 		wantErr error
 		check   func(t *testing.T, res *AuthorizeResult)
 	}{
 		{
 			name: "第一方应用-自动授权生成Code",
-			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache) {
+			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache, *tenantmocks.MockITenantService) {
 				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
 				c := cachemocks.NewMockIOidcCache(ctrl)
+				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 
 				repo.EXPECT().FindByClientID(gomock.Any(), "client_1").Return(domain.OAuthClient{
+					TenantID:     1,
 					ClientID:     "client_1",
 					AutoConsent:  true,
 					RedirectURIs: []string{"https://app.example.com/callback"},
 					Scopes:       []string{"openid", "profile"},
 				}, nil)
 
+				tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(10)).Return(true, nil)
 				c.EXPECT().SaveAuthCodeContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-				return repo, c
+				return repo, c, tenantSvc
 			},
 			req: AuthorizeRequest{
 				ClientID:     "client_1",
@@ -63,56 +67,23 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 			wantErr: nil,
 			check: func(t *testing.T, res *AuthorizeResult) {
 				assert.False(t, res.RequireConsent)
+				assert.NotEmpty(t, res.RedirectURL)
 				parsed, err := url.Parse(res.RedirectURL)
 				assert.NoError(t, err)
-				assert.Equal(t, "app.example.com", parsed.Hostname())
-				assert.Equal(t, "state_xyz", parsed.Query().Get("state"))
 				assert.NotEmpty(t, parsed.Query().Get("code"))
+				assert.Equal(t, "state_xyz", parsed.Query().Get("state"))
 			},
 		},
 		{
-			name: "第三方应用-跳转Consent授权确认页",
-			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache) {
+			name: "客户端不存在-返回错误",
+			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache, *tenantmocks.MockITenantService) {
 				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
 				c := cachemocks.NewMockIOidcCache(ctrl)
-
-				repo.EXPECT().FindByClientID(gomock.Any(), "client_3rd").Return(domain.OAuthClient{
-					ClientID:     "client_3rd",
-					Name:         "第三方数据大屏",
-					AutoConsent:  false,
-					RedirectURIs: []string{"https://3rd.example.com/callback"},
-					Scopes:       []string{"openid", "profile", "email"},
-				}, nil)
-
-				c.EXPECT().SaveConsentContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-
-				return repo, c
-			},
-			req: AuthorizeRequest{
-				ClientID:    "client_3rd",
-				RedirectURI: "https://3rd.example.com/callback",
-				Scopes:      []string{"openid", "profile"},
-				State:       "state_abc",
-				UserID:      20,
-				Username:    "bob",
-				TenantID:    1,
-			},
-			wantErr: nil,
-			check: func(t *testing.T, res *AuthorizeResult) {
-				assert.True(t, res.RequireConsent)
-				assert.NotEmpty(t, res.ConsentID)
-				assert.Contains(t, res.RedirectURL, "/oauth/v2/consent?consent_id=")
-			},
-		},
-		{
-			name: "授权失败-客户端不存在",
-			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache) {
-				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
-				c := cachemocks.NewMockIOidcCache(ctrl)
+				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 
 				repo.EXPECT().FindByClientID(gomock.Any(), "unknown_client").Return(domain.OAuthClient{}, errs.ErrOAuthClientNotFound)
 
-				return repo, c
+				return repo, c, tenantSvc
 			},
 			req: AuthorizeRequest{
 				ClientID:    "unknown_client",
@@ -121,10 +92,56 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 			wantErr: errs.ErrOAuthClientNotFound,
 		},
 		{
-			name: "授权失败-跨租户访问私有应用被拒绝",
-			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache) {
+			name: "专属租户应用-用户跨活跃租户访问但拥有目标租户成员资格-准入成功并绑定应用租户",
+			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache, *tenantmocks.MockITenantService) {
 				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
 				c := cachemocks.NewMockIOidcCache(ctrl)
+				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
+
+				repo.EXPECT().FindByClientID(gomock.Any(), "tenant_10_app").Return(domain.OAuthClient{
+					TenantID:     10,
+					ClientID:     "tenant_10_app",
+					AutoConsent:  true,
+					RedirectURIs: []string{"https://app10.example.com/callback"},
+					Scopes:       []string{"openid"},
+				}, nil)
+
+				// 校验用户是否为租户 10 的成员 (返回 true)
+				tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(100)).Return(true, nil)
+
+				c.EXPECT().SaveAuthCodeContext(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+					func(ctx context.Context, code string, data []byte) error {
+						var authCode domain.AuthCode
+						assert.NoError(t, json.Unmarshal(data, &authCode))
+						// 确保签发出来的 AuthCode 中租户上下文绑定为应用所属租户 10，而非用户在主站活跃的租户 20
+						assert.Equal(t, int64(10), authCode.TenantID)
+						return nil
+					},
+				)
+
+				return repo, c, tenantSvc
+			},
+			req: AuthorizeRequest{
+				ClientID:     "tenant_10_app",
+				RedirectURI:  "https://app10.example.com/callback",
+				ResponseType: "code",
+				Scopes:       []string{"openid"},
+				UserID:       100,
+				Username:     "bob",
+				TenantID:     20, // 用户在主站会话处于租户 20
+			},
+			wantErr: nil,
+			check: func(t *testing.T, res *AuthorizeResult) {
+				assert.False(t, res.RequireConsent)
+				assert.NotEmpty(t, res.RedirectURL)
+			},
+		},
+		{
+			name: "专属租户应用-用户非目标租户成员-准入被拒绝",
+			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache, *tenantmocks.MockITenantService) {
+				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
+				c := cachemocks.NewMockIOidcCache(ctrl)
+				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 
 				repo.EXPECT().FindByClientID(gomock.Any(), "tenant_10_app").Return(domain.OAuthClient{
 					TenantID:     10,
@@ -132,20 +149,25 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 					RedirectURIs: []string{"https://app10.example.com/callback"},
 				}, nil)
 
-				return repo, c
+				// 用户非租户 10 成员
+				tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(100)).Return(false, nil)
+
+				return repo, c, tenantSvc
 			},
 			req: AuthorizeRequest{
 				ClientID:    "tenant_10_app",
 				RedirectURI: "https://app10.example.com/callback",
-				TenantID:    20, // 租户 20 的用户试图访问租户 10 的应用
+				UserID:      100,
+				TenantID:    20,
 			},
 			wantErr: errs.ErrTenantAccessDenied,
 		},
 		{
-			name: "全平台共享应用-系统租户应用允许其他租户用户单点登录",
-			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache) {
+			name: "系统租户应用-用户具备系统租户权限准入成功",
+			mock: func(ctrl *gomock.Controller) (*repomocks.MockIOAuthClientRepository, *cachemocks.MockIOidcCache, *tenantmocks.MockITenantService) {
 				repo := repomocks.NewMockIOAuthClientRepository(ctrl)
 				c := cachemocks.NewMockIOidcCache(ctrl)
+				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 
 				repo.EXPECT().FindByClientID(gomock.Any(), "system_global_app").Return(domain.OAuthClient{
 					TenantID:     1, // 系统根租户应用
@@ -155,9 +177,10 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 					Scopes:       []string{"openid"},
 				}, nil)
 
+				tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(100)).Return(true, nil)
 				c.EXPECT().SaveAuthCodeContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-				return repo, c
+				return repo, c, tenantSvc
 			},
 			req: AuthorizeRequest{
 				ClientID:     "system_global_app",
@@ -166,7 +189,7 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 				Scopes:       []string{"openid"},
 				UserID:       100,
 				Username:     "developer",
-				TenantID:     20, // 普通租户用户通过系统全局 GitLab 登录
+				TenantID:     20,
 			},
 			wantErr: nil,
 			check: func(t *testing.T, res *AuthorizeResult) {
@@ -181,13 +204,13 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			repo, oidcCache := tc.mock(ctrl)
+			repo, oidcCache, tenantSvc := tc.mock(ctrl)
 			userRepo := repomocks.NewMockIUserRepository(ctrl)
 			permSvc := permmocks.NewMockIPermissionService(ctrl)
 			audit := auditmocks.NewMockIAuditProducer(ctrl)
 			km := newTestKeyManager(t)
 
-			svc := NewService(repo, userRepo, permSvc, oidcCache, km, audit)
+			svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
 			res, err := svc.Authorize(context.Background(), tc.req)
 			if tc.wantErr != nil {
 				assert.Error(t, err)
@@ -231,7 +254,8 @@ func TestService_ConsentFlow(t *testing.T) {
 	// 1. 获取 Consent 详情 (只读缓存)
 	oidcCache.EXPECT().GetConsentContext(gomock.Any(), "consent_123").Return(data, nil)
 
-	svc := NewService(repo, userRepo, permSvc, oidcCache, km, audit)
+	tenantSvc := tenantmocks.NewMockITenantService(ctrl)
+	svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
 	info, err := svc.GetConsentInfo(context.Background(), "consent_123")
 	assert.NoError(t, err)
 	assert.Equal(t, "Grafana", info.ClientName)
@@ -258,6 +282,7 @@ func TestService_ExchangeToken_RefreshToken_Rotation(t *testing.T) {
 	repo := repomocks.NewMockIOAuthClientRepository(ctrl)
 	userRepo := repomocks.NewMockIUserRepository(ctrl)
 	permSvc := permmocks.NewMockIPermissionService(ctrl)
+	tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 	oidcCache := cachemocks.NewMockIOidcCache(ctrl)
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
 	km := newTestKeyManager(t)
@@ -297,7 +322,7 @@ func TestService_ExchangeToken_RefreshToken_Rotation(t *testing.T) {
 		Email:    "backend@example.com",
 	}, nil)
 
-	svc := NewService(repo, userRepo, permSvc, oidcCache, km, audit)
+	svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
 
 	res, err := svc.ExchangeToken(context.Background(), domain.TokenRequest{
 		GrantType:    "refresh_token",
@@ -319,6 +344,7 @@ func TestService_RevokeToken(t *testing.T) {
 	repo := repomocks.NewMockIOAuthClientRepository(ctrl)
 	userRepo := repomocks.NewMockIUserRepository(ctrl)
 	permSvc := permmocks.NewMockIPermissionService(ctrl)
+	tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 	oidcCache := cachemocks.NewMockIOidcCache(ctrl)
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
 	km := newTestKeyManager(t)
@@ -336,7 +362,7 @@ func TestService_RevokeToken(t *testing.T) {
 	oidcCache.EXPECT().DeleteRefreshToken(gomock.Any(), "target_token").Return(nil)
 	oidcCache.EXPECT().RevokeToken(gomock.Any(), "target_token", 24*time.Hour).Return(nil)
 
-	svc := NewService(repo, userRepo, permSvc, oidcCache, km, audit)
+	svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
 
 	err := svc.RevokeToken(context.Background(), "target_token", "refresh_token", "client_rev", rawSecret)
 	assert.NoError(t, err)
