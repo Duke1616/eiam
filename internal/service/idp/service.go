@@ -116,7 +116,7 @@ func (s *service) Authorize(ctx context.Context, req AuthorizeRequest) (*Authori
 	}
 
 	if !client.HasRedirectURI(req.RedirectURI) {
-		return nil, errs.ErrInvalidRedirectURI
+		return nil, fmt.Errorf("%w: 请求传入 [%s], 合法白名单 %v", errs.ErrInvalidRedirectURI, req.RedirectURI, client.RedirectURIs)
 	}
 
 	// 1. 多租户准入校验：用户必须属于该应用所在的租户空间
