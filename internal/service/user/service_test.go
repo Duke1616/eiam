@@ -117,17 +117,19 @@ func TestUserService_List(t *testing.T) {
 func TestUserService_SwitchTenant(t *testing.T) {
 	testCases := []struct {
 		name           string
-		mock           func(ctrl *gomock.Controller) tenant.ITenantService
+		mock           func(ctrl *gomock.Controller) (repository.IUserRepository, tenant.ITenantService)
 		uid            int64
 		targetTenantID int64
 		wantErr        error
 	}{
 		{
 			name: "拥有目标租户访问权",
-			mock: func(ctrl *gomock.Controller) tenant.ITenantService {
+			mock: func(ctrl *gomock.Controller) (repository.IUserRepository, tenant.ITenantService) {
+				userRepo := repomocks.NewMockIUserRepository(ctrl)
 				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 				tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(100)).Return(true, nil)
-				return tenantSvc
+				userRepo.EXPECT().UpdateLastActiveTenantID(gomock.Any(), int64(100), int64(10)).Return(nil)
+				return userRepo, tenantSvc
 			},
 			uid:            100,
 			targetTenantID: 10,
@@ -135,10 +137,11 @@ func TestUserService_SwitchTenant(t *testing.T) {
 		},
 		{
 			name: "无目标租户访问权拦截",
-			mock: func(ctrl *gomock.Controller) tenant.ITenantService {
+			mock: func(ctrl *gomock.Controller) (repository.IUserRepository, tenant.ITenantService) {
+				userRepo := repomocks.NewMockIUserRepository(ctrl)
 				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 				tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(100)).Return(false, nil)
-				return tenantSvc
+				return userRepo, tenantSvc
 			},
 			uid:            100,
 			targetTenantID: 20,
@@ -151,8 +154,8 @@ func TestUserService_SwitchTenant(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			tenantSvc := tc.mock(ctrl)
-			svc := NewUserService(nil, tenantSvc, nil, nil)
+			userRepo, tenantSvc := tc.mock(ctrl)
+			svc := NewUserService(userRepo, tenantSvc, nil, nil)
 
 			err := svc.SwitchTenant(context.Background(), tc.uid, tc.targetTenantID)
 			if tc.wantErr != nil {

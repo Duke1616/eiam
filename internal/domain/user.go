@@ -55,9 +55,10 @@ type User struct {
 	Source      Source
 	MfaType     string
 	MfaSecret   string
-	Ctime       int64
-	Utime       int64
-	LastLoginAt int64
+	Ctime              int64
+	Utime              int64
+	LastLoginAt        int64
+	LastActiveTenantID int64
 
 	// 各司其职：侧写资料归公司
 	Profile UserProfile
@@ -150,9 +151,8 @@ type LoginResult struct {
 	MfaRequired bool   `json:"mfa_required"`
 	MfaToken    string `json:"mfa_token"`
 
-	MustSelectTenant bool   `json:"must_select_tenant"`
-	MustBind         bool   `json:"must_bind"`
-	BindToken        string `json:"bind_token"`
+	MustBind  bool   `json:"must_bind"`
+	BindToken string `json:"bind_token"`
 }
 
 // CredentialProvider 外部凭证提供者策略接口。

@@ -147,6 +147,9 @@ func (h *Handler) SwitchTenant(ctx *ginx.Context, req SwitchTenantReq, sess sess
 		return ErrTenantSwitch, err
 	}
 
+	// 4. 记录用户最近一次活跃租户，供后续免选直达
+	_ = h.svc.UpdateLastActiveTenant(ctx.Request.Context(), uid, targetTid)
+
 	return ginx.Result{Msg: "成功切换至新租户空间"}, nil
 }
 

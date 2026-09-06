@@ -26,25 +26,28 @@ func TestAuthCoordinator_Authenticate(t *testing.T) {
 	passwordHash, _ := bcrypt.GenerateFromPassword([]byte("correct_password"), bcrypt.DefaultCost)
 
 	aliceUser := domain.User{
-		ID:       101,
-		Username: "alice",
-		Password: string(passwordHash),
-		Source:   domain.SourceLocal,
+		ID:                 101,
+		Username:           "alice",
+		Password:           string(passwordHash),
+		Source:             domain.SourceLocal,
+		LastActiveTenantID: ctxutil.SystemTenantID,
 	}
 
 	bobMfaUser := domain.User{
-		ID:        102,
-		Username:  "bob_mfa",
-		Password:  string(passwordHash),
-		Source:    domain.SourceLocal,
-		MfaType:   "totp",
-		MfaSecret: "encrypted_secret",
+		ID:                 102,
+		Username:           "bob_mfa",
+		Password:           string(passwordHash),
+		Source:             domain.SourceLocal,
+		MfaType:            "totp",
+		MfaSecret:          "encrypted_secret",
+		LastActiveTenantID: ctxutil.SystemTenantID,
 	}
 
 	oidcUser := domain.User{
-		ID:       103,
-		Username: "charlie_oidc",
-		Source:   domain.Source("oidc"),
+		ID:                 103,
+		Username:           "charlie_oidc",
+		Source:             domain.Source("oidc"),
+		LastActiveTenantID: 1001,
 	}
 
 	testCases := []struct {
@@ -67,7 +70,6 @@ func TestAuthCoordinator_Authenticate(t *testing.T) {
 				tenantSvc.EXPECT().GetTenantsByUserId(gomock.Any(), int64(101)).Return([]domain.Tenant{
 					{ID: ctxutil.SystemTenantID, Name: "系统管理租户"},
 				}, nil)
-				repo.EXPECT().FindById(gomock.Any(), int64(101)).Return(aliceUser, nil)
 
 				return repo, tenantSvc
 			},
@@ -132,21 +134,66 @@ func TestAuthCoordinator_Authenticate(t *testing.T) {
 				repo := repomocks.NewMockIUserRepository(ctrl)
 				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 
-				repo.EXPECT().FindById(gomock.Any(), int64(101)).Return(aliceUser, nil)
+				passkeyUser := aliceUser
+				passkeyUser.LastActiveTenantID = 1001
+
+				repo.EXPECT().FindById(gomock.Any(), int64(101)).Return(passkeyUser, nil)
 				repo.EXPECT().UpdateLastLoginAt(gomock.Any(), int64(101), gomock.Any()).Return(nil)
 				tenantSvc.EXPECT().GetTenantsByUserId(gomock.Any(), int64(101)).Return([]domain.Tenant{
 					{ID: 1001, Name: "企业工作区"},
 				}, nil)
-				repo.EXPECT().FindById(gomock.Any(), int64(101)).Return(aliceUser, nil)
 
 				return repo, tenantSvc
 			},
 			authType: domain.PASSKEY.String(),
 			payload:  int64(101),
 			wantResult: domain.LoginResult{
-				User:        aliceUser,
+				User: func() domain.User {
+					u := aliceUser
+					u.LastActiveTenantID = 1001
+					return u
+				}(),
 				TenantID:    1001,
 				AuthType:    domain.PASSKEY.String(),
+				MfaRequired: false,
+			},
+			wantErr: nil,
+		},
+		{
+			name: "首次登录无记忆租户自动推导首个租户并更新记录",
+			mock: func(ctrl *gomock.Controller) (repository.IUserRepository, tenant.ITenantService) {
+				repo := repomocks.NewMockIUserRepository(ctrl)
+				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
+
+				newUser := domain.User{
+					ID:       104,
+					Username: "newbie",
+					Password: string(passwordHash),
+					Source:   domain.SourceLocal,
+				}
+
+				repo.EXPECT().FindByUsername(gomock.Any(), "newbie").Return(newUser, nil)
+				repo.EXPECT().UpdateLastLoginAt(gomock.Any(), int64(104), gomock.Any()).Return(nil)
+				tenantSvc.EXPECT().GetTenantsByUserId(gomock.Any(), int64(104)).Return([]domain.Tenant{
+					{ID: 2001, Name: "新员工部门"},
+					{ID: 2002, Name: "公共部门"},
+				}, nil)
+				repo.EXPECT().UpdateLastActiveTenantID(gomock.Any(), int64(104), int64(2001)).Return(nil)
+
+				return repo, tenantSvc
+			},
+			authType: "local",
+			payload:  PasswordCredential{Username: "newbie", Password: "correct_password"},
+			wantResult: domain.LoginResult{
+				User: domain.User{
+					ID:       104,
+					Username: "newbie",
+					Password: string(passwordHash),
+					Source:   domain.SourceLocal,
+				},
+				TenantID:    2001,
+				Tenants:     []domain.Tenant{{ID: 2001, Name: "新员工部门"}, {ID: 2002, Name: "公共部门"}},
+				AuthType:    "local",
 				MfaRequired: false,
 			},
 			wantErr: nil,
@@ -162,7 +209,6 @@ func TestAuthCoordinator_Authenticate(t *testing.T) {
 				tenantSvc.EXPECT().GetTenantsByUserId(gomock.Any(), int64(103)).Return([]domain.Tenant{
 					{ID: 1001, Name: "OIDC租户"},
 				}, nil)
-				repo.EXPECT().FindById(gomock.Any(), int64(103)).Return(oidcUser, nil)
 
 				return repo, tenantSvc
 			},
@@ -237,11 +283,12 @@ func TestAuthCoordinator_ResolveMfaChallenge(t *testing.T) {
 	require.NoError(t, err)
 
 	mfaUser := domain.User{
-		ID:        201,
-		Username:  "bob",
-		MfaType:   "totp",
-		MfaSecret: encryptedSecret,
-		Source:    domain.SourceLocal,
+		ID:                 201,
+		Username:           "bob",
+		MfaType:            "totp",
+		MfaSecret:          encryptedSecret,
+		Source:             domain.SourceLocal,
+		LastActiveTenantID: 1,
 	}
 
 	testCases := []struct {
@@ -264,7 +311,6 @@ func TestAuthCoordinator_ResolveMfaChallenge(t *testing.T) {
 				tenantSvc.EXPECT().GetTenantsByUserId(gomock.Any(), int64(201)).Return([]domain.Tenant{
 					{ID: 1, Name: "主租户"},
 				}, nil)
-				repo.EXPECT().FindById(gomock.Any(), int64(201)).Return(mfaUser, nil)
 
 				return repo, tenantSvc
 			},
@@ -372,12 +418,14 @@ func TestAuthCoordinator_AuditLogs(t *testing.T) {
 				tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 				auditProd := auditmocks.NewMockIAuditProducer(ctrl)
 
-				repo.EXPECT().FindByUsername(gomock.Any(), "alice").Return(aliceUser, nil)
+				userWithTenant3 := aliceUser
+				userWithTenant3.LastActiveTenantID = 3
+
+				repo.EXPECT().FindByUsername(gomock.Any(), "alice").Return(userWithTenant3, nil)
 				repo.EXPECT().UpdateLastLoginAt(gomock.Any(), int64(101), gomock.Any()).Return(nil)
 				tenantSvc.EXPECT().GetTenantsByUserId(gomock.Any(), int64(101)).Return([]domain.Tenant{
 					{ID: 3, Name: "研发租户"},
 				}, nil)
-				repo.EXPECT().FindById(gomock.Any(), int64(101)).Return(aliceUser, nil)
 
 				auditProd.EXPECT().RecordAuth(gomock.Any(), gomock.Cond(func(x any) bool {
 					log, ok := x.(domain.AuthLog)

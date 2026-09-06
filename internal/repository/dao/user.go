@@ -69,6 +69,8 @@ type IUserDAO interface {
 	BatchUpsertProfilesAndIdentities(ctx context.Context, profiles []UserProfile, identities []UserIdentity) error
 	// UpdateLastLoginAt 更新最近登录时间
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
+	// UpdateLastActiveTenantID 更新用户最近一次活跃租户 ID
+	UpdateLastActiveTenantID(ctx context.Context, id int64, tenantID int64) error
 	// DeleteIdentity 解除外部身份绑定
 	DeleteIdentity(ctx context.Context, userID int64, provider, identityID string) error
 	// FindIdentitiesByUserID 根据用户 ID 和提供商查询身份列表
@@ -107,9 +109,10 @@ type User struct {
 	Source      string `gorm:"type:varchar(32);index;comment:'身份来源: local, ldap等'"`
 	MfaType     string `gorm:"type:varchar(16);comment:'MFA类型: totp等'"`
 	MfaSecret   string `gorm:"type:varchar(255);comment:'MFA密钥'"`
-	Ctime       int64  `gorm:"comment:'创建时间'"`
-	Utime       int64  `gorm:"comment:'更新时间'"`
-	LastLoginAt int64  `gorm:"comment:'最近登录时间'"`
+	Ctime              int64  `gorm:"comment:'创建时间'"`
+	Utime              int64  `gorm:"comment:'更新时间'"`
+	LastLoginAt        int64  `gorm:"comment:'最近登录时间'"`
+	LastActiveTenantID int64  `gorm:"column:last_active_tenant_id;default:0;comment:'最近一次活跃租户ID'"`
 }
 
 type UserProfile struct {
@@ -466,6 +469,10 @@ func (dao *userDAO) UpdateMfa(ctx context.Context, id int64, mfaType, mfaSecret 
 
 func (dao *userDAO) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error {
 	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("last_login_at", loginAt).Error
+}
+
+func (dao *userDAO) UpdateLastActiveTenantID(ctx context.Context, id int64, tenantID int64) error {
+	return dao.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("last_active_tenant_id", tenantID).Error
 }
 
 func (dao *userDAO) DeleteIdentity(ctx context.Context, userID int64, provider, identityID string) error {

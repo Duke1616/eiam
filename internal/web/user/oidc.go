@@ -19,9 +19,21 @@ func (h *Handler) OIDCAuthURL(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrInvalidInput, fmt.Errorf("provider_type 不能为空")
 	}
 
-	h.logger.Info("[OIDC] 获取授权 URL", elog.String("provider_type", providerType))
+	// 读取可选的业务重定向深度路径或邀请码（完全向后兼容）
+	redirectURL, _ := ctx.Query("redirect").AsString()
+	inviteCode, _ := ctx.Query("invite_code").AsString()
 
-	url, err := h.idsSvc.GetAuthURL(ctx.Request.Context(), providerType)
+	h.logger.Info("[OIDC] 获取授权 URL",
+		elog.String("provider_type", providerType),
+		elog.String("redirect", redirectURL),
+	)
+
+	sctx := domain.OAuthStateContext{
+		RedirectURL: redirectURL,
+		InviteCode:  inviteCode,
+	}
+
+	url, err := h.idsSvc.GetAuthURLWithContext(ctx.Request.Context(), providerType, sctx)
 	if err != nil {
 		h.logger.Error("[OIDC] 获取授权 URL 失败", elog.FieldErr(err))
 		return ErrInternalServer, err
@@ -48,7 +60,7 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 
 	h.logger.Info("[OIDC] 收到回调", elog.Int("code_len", len(code)), elog.String("state", state))
 
-	ident, err := h.idsSvc.VerifyOIDC(ctx.Request.Context(), state, code)
+	ident, sctx, err := h.idsSvc.VerifyOIDCWithContext(ctx.Request.Context(), state, code)
 	if err != nil {
 		h.logger.Error("[OIDC] 身份校验失败", elog.FieldErr(err))
 		return ErrOIDCDenied, err
@@ -58,6 +70,7 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 		elog.String("provider", ident.Provider),
 		elog.String("external_id", ident.ExternalID),
 		elog.String("username", ident.Username),
+		elog.String("redirect_url", sctx.RedirectURL),
 	)
 
 	result, err := h.coordinator.Authenticate(ctx.Request.Context(), domain.OIDC.String(), ident)
@@ -71,8 +84,9 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 				Code: 0,
 				Msg:  "请先登录现有账号完成绑定",
 				Data: RetrieveUser{
-					MustBind:  true,
-					BindToken: token,
+					MustBind:    true,
+					BindToken:   token,
+					RedirectURL: sctx.RedirectURL,
 				},
 			}, nil
 		}
@@ -80,7 +94,18 @@ func (h *Handler) OIDCCallback(ctx *ginx.Context) (ginx.Result, error) {
 		return MapLoginError(err), err
 	}
 
-	return h.handleLoginResult(ctx, result)
+	loginRes, loginErr := h.handleLoginResult(ctx, result)
+	if loginErr != nil {
+		return loginRes, loginErr
+	}
+
+	// 注入透传的原始跳转深度 URL
+	if ru, ok := loginRes.Data.(RetrieveUser); ok && sctx.RedirectURL != "" {
+		ru.RedirectURL = sctx.RedirectURL
+		loginRes.Data = ru
+	}
+
+	return loginRes, nil
 }
 
 func (h *Handler) BindIdentity(ctx *ginx.Context, req BindIdentityRequest) (ginx.Result, error) {

@@ -140,16 +140,16 @@ type RetrieveUsers[T any] struct {
 }
 
 type RetrieveUser struct {
-	User             User     `json:"user"`
-	Tenants          []Tenant `json:"tenants"`
-	CurrentTenantID  int64    `json:"current_tenant_id"`
-	MustSelectTenant bool     `json:"must_select_tenant"`
-	MustBind         bool     `json:"must_bind"`
-	BindToken        string   `json:"bind_token,omitempty"`
-	MfaRequired      bool     `json:"mfa_required"`
-	MfaToken         string   `json:"mfa_token,omitempty"`
-	IsAdmin          bool     `json:"is_admin"`
-	Permissions      []string `json:"permissions"`
+	User            User     `json:"user"`
+	Tenants         []Tenant `json:"tenants"`
+	CurrentTenantID int64    `json:"current_tenant_id"`
+	MustBind        bool     `json:"must_bind"`
+	BindToken       string   `json:"bind_token,omitempty"`
+	MfaRequired     bool     `json:"mfa_required"`
+	MfaToken        string   `json:"mfa_token,omitempty"`
+	IsAdmin         bool     `json:"is_admin"`
+	Permissions     []string `json:"permissions"`
+	RedirectURL     string   `json:"redirect_url,omitempty"`
 }
 
 type UpdatePasswordRequest struct {

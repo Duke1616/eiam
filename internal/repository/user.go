@@ -51,6 +51,8 @@ type IUserRepository interface {
 	GetAttachedUsersWithFilter(ctx context.Context, roleCode string, offset, limit int64, keyword string) ([]domain.User, int64, error)
 	// UpdateLastLoginAt 更新最近登录时间
 	UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error
+	// UpdateLastActiveTenantID 更新用户最近一次活跃租户 ID
+	UpdateLastActiveTenantID(ctx context.Context, id int64, tenantID int64) error
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 	// BatchDelete 批量删除用户
@@ -350,9 +352,10 @@ func (repo *userRepository) toDomain(u dao.User, up dao.UserProfile, ids []dao.U
 		Source:      domain.Source(u.Source),
 		MfaType:     u.MfaType,
 		MfaSecret:   u.MfaSecret,
-		Ctime:       u.Ctime,
-		Utime:       u.Utime,
-		LastLoginAt: u.LastLoginAt,
+		Ctime:              u.Ctime,
+		Utime:              u.Utime,
+		LastLoginAt:        u.LastLoginAt,
+		LastActiveTenantID: u.LastActiveTenantID,
 		Profile: domain.UserProfile{
 			UserID:   up.UserID,
 			Nickname: up.Nickname,
@@ -374,9 +377,10 @@ func (repo *userRepository) toEntity(u domain.User) dao.User {
 		Source:      string(u.Source),
 		MfaType:     u.MfaType,
 		MfaSecret:   u.MfaSecret,
-		Ctime:       u.Ctime,
-		Utime:       u.Utime,
-		LastLoginAt: u.LastLoginAt,
+		Ctime:              u.Ctime,
+		Utime:              u.Utime,
+		LastLoginAt:        u.LastLoginAt,
+		LastActiveTenantID: u.LastActiveTenantID,
 	}
 }
 
@@ -387,6 +391,10 @@ func (repo *userRepository) UpdateMfa(ctx context.Context, id int64, mfaType, mf
 
 func (repo *userRepository) UpdateLastLoginAt(ctx context.Context, id int64, loginAt int64) error {
 	return repo.dao.UpdateLastLoginAt(ctx, id, loginAt)
+}
+
+func (repo *userRepository) UpdateLastActiveTenantID(ctx context.Context, id int64, tenantID int64) error {
+	return repo.dao.UpdateLastActiveTenantID(ctx, id, tenantID)
 }
 
 func (repo *userRepository) Delete(ctx context.Context, id int64) error {

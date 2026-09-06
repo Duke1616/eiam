@@ -122,6 +122,9 @@ func (s *userService) SwitchTenant(ctx context.Context, uid int64, targetTenantI
 		return errs.ErrTenantAccessDenied
 	}
 
+	// 记录用户最近一次活跃租户，供后续登录免选直达
+	_ = s.repo.UpdateLastActiveTenantID(ctx, uid, targetTenantID)
+
 	return nil
 }
 

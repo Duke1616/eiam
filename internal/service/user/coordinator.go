@@ -378,7 +378,7 @@ func (c *authCoordinator) provisionUserByIdentity(ctx context.Context, extUser d
 	return u, nil
 }
 
-// postLoginPipeline 登录成功后的租户初始化与结果构建
+// postLoginPipeline 登录成功后的统一装配出单流水线
 func (c *authCoordinator) postLoginPipeline(ctx context.Context, u domain.User, authType string) (domain.LoginResult, error) {
 	_ = c.repo.UpdateLastLoginAt(ctx, u.ID, time.Now().UnixMilli())
 
@@ -387,26 +387,32 @@ func (c *authCoordinator) postLoginPipeline(ctx context.Context, u domain.User, 
 		return domain.LoginResult{}, err
 	}
 
-	var activeTid int64
-	mustSelectTenant := len(tenants) > 1
-	if !mustSelectTenant && len(tenants) == 1 {
-		activeTid = tenants[0].ID
-		u, _ = c.repo.FindById(ctxutil.WithTenantID(ctx, activeTid), u.ID)
-	}
-
-	auditTid := activeTid
-	if auditTid <= 0 && len(tenants) > 0 {
-		auditTid = tenants[0].ID
-	}
-	c.recordAuthSuccess(ctx, u.ID, auditTid, u.Username, authType)
+	activeTid := c.resolveActiveTenant(ctx, u, tenants)
+	c.recordAuthSuccess(ctx, u.ID, activeTid, u.Username, authType)
 
 	return domain.LoginResult{
-		User:             u,
-		TenantID:         activeTid,
-		Tenants:          tenants,
-		AuthType:         authType,
-		MustSelectTenant: mustSelectTenant,
+		User:     u,
+		TenantID: activeTid,
+		Tenants:  tenants,
+		AuthType: authType,
 	}, nil
+}
+
+// resolveActiveTenant 智能推导当前活跃租户 (记忆优先 -> 首个租户兜底)
+func (c *authCoordinator) resolveActiveTenant(ctx context.Context, u domain.User, tenants []domain.Tenant) int64 {
+	if len(tenants) == 0 {
+		return 0
+	}
+
+	// 1. 优先使用用户最近一次活跃的租户 (若依然属于该租户)
+	if u.LastActiveTenantID > 0 && lo.SomeBy(tenants, func(t domain.Tenant) bool { return t.ID == u.LastActiveTenantID }) {
+		return u.LastActiveTenantID
+	}
+
+	// 2. 首次登录或记忆失效，默认直接进入用户的第 1 个租户并持久化记录
+	firstTid := tenants[0].ID
+	_ = c.repo.UpdateLastActiveTenantID(ctx, u.ID, firstTid)
+	return firstTid
 }
 
 func (c *authCoordinator) getOrInitTenants(ctx context.Context, uid int64, username string) ([]domain.Tenant, error) {

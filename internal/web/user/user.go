@@ -43,12 +43,11 @@ func (h *Handler) Profile(ctx *ginx.Context, sess session.Session) (ginx.Result,
 
 	return ginx.Result{
 		Data: RetrieveUser{
-			User:             ToUserVO(u),
-			Tenants:          ToTenantVOs(tenants),
-			CurrentTenantID:  tenantID,
-			MustSelectTenant: tenantID <= 0 && len(tenants) > 1,
-			IsAdmin:          lo.Contains(roles, "admin"),
-			Permissions:      permissions,
+			User:            ToUserVO(u),
+			Tenants:         ToTenantVOs(tenants),
+			CurrentTenantID: tenantID,
+			IsAdmin:         lo.Contains(roles, "admin"),
+			Permissions:     permissions,
 		},
 	}, nil
 }
