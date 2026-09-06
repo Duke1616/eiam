@@ -22,10 +22,12 @@ func InitRedisSearch() *redisearch.Client {
 		panic(fmt.Errorf("unable to decode into structure: %v", err))
 	}
 
+	// RediSearch 引擎有官方硬性约束：所有 FT.* 索引必须且只能创建在 DB 0 上（Cannot create index on db != 0）。
+	// 因此此处连接池强制路由到 DB 0，避免全局配置中 db != 0 导致服务崩溃。
 	pool := &redis.Pool{Dial: func() (redis.Conn, error) {
 		return redis.Dial("tcp", cfg.Addr,
 			redis.DialPassword(cfg.Password),
-			redis.DialDatabase(cfg.DB))
+			redis.DialDatabase(0))
 	}}
 
 	client := redisearch.NewClientFromPool(pool, cache.LdapUserIndexName)
