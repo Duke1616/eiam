@@ -1,6 +1,10 @@
 package idp
 
-import "time"
+import (
+	"time"
+
+	"github.com/Duke1616/eiam/internal/domain"
+)
 
 // CreateOAuthClientReq 创建应用请求
 type CreateOAuthClientReq struct {
@@ -26,6 +30,20 @@ type UpdateOAuthClientReq struct {
 	Scopes        []string `json:"scopes"`
 	IsPublic      bool     `json:"is_public"`
 	AutoConsent   bool     `json:"auto_consent"`
+}
+
+func (r UpdateOAuthClientReq) ToDomain() domain.OAuthClient {
+	return domain.OAuthClient{
+		ID:            r.ID,
+		Name:          r.Name,
+		Logo:          r.Logo,
+		RedirectURIs:  r.RedirectURIs,
+		ResponseTypes: r.ResponseTypes,
+		GrantTypes:    r.GrantTypes,
+		Scopes:        r.Scopes,
+		IsPublic:      r.IsPublic,
+		AutoConsent:   r.AutoConsent,
+	}
 }
 
 // ListOAuthClientReq 应用分页查询请求

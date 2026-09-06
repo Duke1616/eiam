@@ -357,19 +357,7 @@ func (h *Handler) CreateClient(ctx *ginx.Context, req CreateOAuthClientReq, sess
 
 // UpdateClient 更新接入应用
 func (h *Handler) UpdateClient(ctx *ginx.Context, req UpdateOAuthClientReq) (ginx.Result, error) {
-	client := domain.OAuthClient{
-		ID:            req.ID,
-		Name:          req.Name,
-		Logo:          req.Logo,
-		RedirectURIs:  req.RedirectURIs,
-		ResponseTypes: req.ResponseTypes,
-		GrantTypes:    req.GrantTypes,
-		Scopes:        req.Scopes,
-		IsPublic:      req.IsPublic,
-		AutoConsent:   req.AutoConsent,
-	}
-
-	if err := h.clientSvc.UpdateClient(ctx.Request.Context(), client); err != nil {
+	if err := h.clientSvc.UpdateClient(ctx.Request.Context(), req.ToDomain()); err != nil {
 		return ErrIdpClientUpdateFailed, err
 	}
 
