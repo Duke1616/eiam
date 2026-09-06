@@ -45,9 +45,7 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	server.GET("/oauth/v2/authorize", h.Authorize)
 	server.POST("/oauth/v2/authorize", h.Authorize)
 
-	// 3. 用户授权确认交互端点 (Consent Flow)
-	server.GET("/oauth/v2/consent", h.GetConsent)
-	server.POST("/oauth/v2/consent", h.ConfirmConsent)
+	// 3. 用户授权确认交互端点 (Consent Flow，统一供 ecmdb-web 内部调用)
 	server.GET("/api/idp/consent", h.GetConsent)
 	server.POST("/api/idp/consent", h.ConfirmConsent)
 
@@ -177,16 +175,11 @@ func (h *Handler) GetConsent(c *gin.Context) {
 		return
 	}
 
-	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-		c.JSON(http.StatusOK, gin.H{
-			"code": 0,
-			"msg":  "OK",
-			"data": info,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, info)
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "OK",
+		"data": info,
+	})
 }
 
 // ConfirmConsent 用户提交授权决策 (同意或拒绝)

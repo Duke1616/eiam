@@ -30,7 +30,7 @@ func TestHandler_RouteRegistration(t *testing.T) {
 		"/.well-known/openid-configuration",
 		"/oauth/v2/jwks",
 		"/oauth/v2/authorize",
-		"/oauth/v2/consent",
+		"/api/idp/consent",
 		"/oauth/v2/token",
 		"/oauth/v2/revoke",
 		"/oauth/v2/logout",

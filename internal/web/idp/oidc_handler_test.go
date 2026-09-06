@@ -539,19 +539,22 @@ func (s *OIDCHandlerTestSuite) TestConsent() {
 				Scopes:     []string{"openid", "profile"},
 			}, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/v2/consent?consent_id=consent_abc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/idp/consent?consent_id=consent_abc", nil)
 		w := httptest.NewRecorder()
 		s.server.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		var info domain.ConsentInfo
-		require.NoError(t, json.NewDecoder(w.Body).Decode(&info))
-		assert.Equal(t, "consent_abc", info.ConsentID)
-		assert.Equal(t, "第三方应用", info.ClientName)
+		var resp struct {
+			Code int                `json:"code"`
+			Data domain.ConsentInfo `json:"data"`
+		}
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Equal(t, "consent_abc", resp.Data.ConsentID)
+		assert.Equal(t, "第三方应用", resp.Data.ClientName)
 	})
 
 	s.T().Run("GetConsent - 缺少 consent_id", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/oauth/v2/consent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/idp/consent", nil)
 		w := httptest.NewRecorder()
 		s.server.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -563,7 +566,7 @@ func (s *OIDCHandlerTestSuite) TestConsent() {
 			Return("https://app.example.com/callback?code=new_code&state=s1", nil)
 
 		form := url.Values{"consent_id": {"consent_abc"}, "approved": {"true"}}
-		req := httptest.NewRequest(http.MethodPost, "/oauth/v2/consent",
+		req := httptest.NewRequest(http.MethodPost, "/api/idp/consent",
 			strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		w := httptest.NewRecorder()
@@ -579,7 +582,7 @@ func (s *OIDCHandlerTestSuite) TestConsent() {
 			Return("https://app.example.com/callback?error=access_denied", nil)
 
 		form := url.Values{"consent_id": {"consent_xyz"}, "approved": {"false"}}
-		req := httptest.NewRequest(http.MethodPost, "/oauth/v2/consent",
+		req := httptest.NewRequest(http.MethodPost, "/api/idp/consent",
 			strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		w := httptest.NewRecorder()
