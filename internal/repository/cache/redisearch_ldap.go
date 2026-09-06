@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -18,7 +19,22 @@ const (
 	LdapUserKeyPrefix = "eiam:user:ldap:"
 	BatchSize         = 500
 	PagingSize        = 1000
+	MaxDropIterations = 50 // 防御性退出阈值，防止数据清理发生死循环
 )
+
+// NewLdapUserSchema 统一维护 LDAP 用户 RediSearch 索引元数据结构
+// 供 ioc 初始化与后续可能发生的索引重建调用
+func NewLdapUserSchema() *redisearch.Schema {
+	return redisearch.NewSchema(redisearch.DefaultOptions).
+		AddField(redisearch.NewTagField("tid")). // TagField 用于租户 ID 的高效率、精确匹配
+		AddField(redisearch.NewTextField("username")).
+		AddField(redisearch.NewTextField("display_name")).
+		AddField(redisearch.NewTextField("title")).
+		AddField(redisearch.NewTextField("email")).
+		AddField(redisearch.NewTextField("phone")).
+		AddField(redisearch.NewTextField("dn")).
+		AddField(redisearch.NewNumericField("updated_at"))
+}
 
 // RedisearchLdapUserCache 基于 RediSearch 的 LDAP 用户搜索缓存
 // 提供高性能的关键词模糊搜索和分页查询能力
@@ -64,19 +80,28 @@ func (cache *redisearchLdapUserCache) Document(ctx context.Context, tid int64, u
 	}
 
 	// 1. 并发分批执行索引更新，显著提升大数据量下的同步速度
-	g, ctx := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
+	// 限制并发 batch 数量，避免瞬间耗尽 Redis 客户端连接池
+	g.SetLimit(10)
+
 	for i := 0; i < len(allDocs); i += BatchSize {
-		i := i
-		end := i + BatchSize
+		start := i
+		end := start + BatchSize
 		if end > len(allDocs) {
 			end = len(allDocs)
 		}
 
+		batch := allDocs[start:end]
 		g.Go(func() error {
+			select {
+			case <-gCtx.Done():
+				return gCtx.Err()
+			default:
+			}
 			if err := cache.conn.IndexOptions(redisearch.IndexingOptions{
 				Replace: true,
-			}, allDocs[i:end]...); err != nil {
-				return fmt.Errorf("分批索引写入失败 [%d:%d]: %w", i, end, err)
+			}, batch...); err != nil {
+				return fmt.Errorf("分批索引写入失败 [%d:%d]: %w", start, end, err)
 			}
 			return nil
 		})
@@ -87,60 +112,59 @@ func (cache *redisearchLdapUserCache) Document(ctx context.Context, tid int64, u
 	}
 
 	// 2. 清理过期数据：利用时间戳定位并删除该租户下未参与本次同步的旧数据
-	return cache.dropDocument(tid, syncTime)
+	return cache.dropDocument(ctx, tid, syncTime)
 }
 
-func (cache *redisearchLdapUserCache) dropDocument(tid int64, syncTime int64) error {
-	// 构造查询：找出该租户下，更新时间早于本次同步时间的所有文档
-	// 语法说明：-@updated_at:[syncTime syncTime] 代表排除当前时间戳
-	raw := fmt.Sprintf("@tid:%d -@updated_at:[%d %d]", tid, syncTime, syncTime)
+func (cache *redisearchLdapUserCache) dropDocument(ctx context.Context, tid int64, syncTime int64) error {
+	// 构造查询：找出该租户下更新时间早于本次同步时间的旧文档
+	// Tag 字段匹配语法为 @tid:{%d}，排除当前时间戳语法为 -@updated_at:[syncTime syncTime]
+	raw := fmt.Sprintf("@tid:{%d} -@updated_at:[%d %d]", tid, syncTime, syncTime)
 
-	// 分页查找并删除
-	for {
-		// 仅返回 ID 即可，降低网络开销
-		query := redisearch.NewQuery(raw).SetReturnFields().Limit(0, PagingSize)
-		docs, total, err := cache.conn.Search(query)
-		if err != nil {
-			return err
+	for iteration := 0; iteration < MaxDropIterations; iteration++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
-		if len(docs) == 0 || total == 0 {
+		// 仅返回 ID 降低网络负载
+		query := redisearch.NewQuery(raw).SetReturnFields().Limit(0, PagingSize)
+		docs, _, err := cache.conn.Search(query)
+		if err != nil {
+			return fmt.Errorf("查找待删除旧数据失败: %w", err)
+		}
+
+		if len(docs) == 0 {
 			break
 		}
 
-		docIds := make([]string, 0, len(docs))
-		for _, doc := range docs {
-			docIds = append(docIds, doc.Id)
-		}
+		// 批量并发删除，限制并发协程数防打满连接池
+		g, gCtx := errgroup.WithContext(ctx)
+		g.SetLimit(10)
 
-		// 执行并发删除
-		g := new(errgroup.Group)
-		for _, id := range docIds {
-			id := id
+		for _, doc := range docs {
+			id := doc.Id
 			g.Go(func() error {
+				select {
+				case <-gCtx.Done():
+					return gCtx.Err()
+				default:
+				}
 				return cache.conn.DeleteDocument(id)
 			})
 		}
 
 		if err := g.Wait(); err != nil {
-			return err
+			return fmt.Errorf("批量删除过期 LDAP 文档失败: %w", err)
 		}
 
-		// 如果处理完一批后，剩余总数没有变化，说明可能陷入死循环，应安全退出
-		if total <= len(docs) {
+		// 如果本批取出的数量已少于 PagingSize，说明已是最后一批数据
+		if len(docs) < PagingSize {
 			break
 		}
 	}
 
 	return nil
-}
-
-func (cache *redisearchLdapUserCache) next(tid int64, offset, limit int) ([]redisearch.Document, int, error) {
-	query := redisearch.NewQuery(fmt.Sprintf("@tid:%d", tid)).
-		SetReturnFields(). // 仅返回 ID
-		Limit(offset, limit)
-
-	return cache.conn.Search(query)
 }
 
 func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keywords string,
@@ -151,9 +175,13 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 		}
 	}()
 
-	raw := fmt.Sprintf("@tid:%d", tid)
-	if keywords != "" {
-		raw = fmt.Sprintf("@tid:%d %s*", tid, keywords)
+	var raw string
+	cleanKeywords := escapeQueryString(strings.TrimSpace(keywords))
+	if cleanKeywords != "" {
+		// 模糊前缀匹配，严格限定在对应租户范围内
+		raw = fmt.Sprintf("@tid:{%d} %s*", tid, cleanKeywords)
+	} else {
+		raw = fmt.Sprintf("@tid:{%d}", tid)
 	}
 
 	query := redisearch.NewQuery(raw).
@@ -180,9 +208,9 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 		if dn := getPropString(doc.Properties, "dn"); dn != "" {
 			u.Identities = []domain.UserIdentity{
 				{
-					Provider: domain.LDAP.String(),
+					Provider:   domain.LDAP.String(),
 					IdentityID: dn,
-					LdapInfo: domain.LdapInfo{DN: dn},
+					LdapInfo:   domain.LdapInfo{DN: dn},
 				},
 			}
 		}
@@ -205,3 +233,28 @@ func getPropString(props map[string]any, key string) string {
 	}
 	return ""
 }
+
+// escapeQueryString 对用户输入的 RediSearch 保留符号进行转义或清洗
+// 避免因输入特殊字符（如 @, :, -, /, ., *, (, ) 等）导致 RediSearch 查询语法解析失败
+func escapeQueryString(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	// RediSearch 查询语法中的保留字符
+	specialChars := []string{
+		"\\", ",", ".", "<", ">", "{", "}", "[", "]",
+		"\"", "'", ":", ";", "!", "@", "#", "$", "%",
+		"^", "&", "*", "(", ")", "-", "+", "=", "~",
+		"|", "/", "?",
+	}
+
+	var replacerArgs []string
+	for _, char := range specialChars {
+		replacerArgs = append(replacerArgs, char, "\\"+char)
+	}
+
+	r := strings.NewReplacer(replacerArgs...)
+	return r.Replace(s)
+}
+
