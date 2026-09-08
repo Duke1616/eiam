@@ -33,6 +33,7 @@ import (
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
+	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
 	idphdl "github.com/Duke1616/eiam/internal/web/idp"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
@@ -198,13 +199,15 @@ var (
 		discovery.NewTokenService,
 	)
 
-	// IdpSet 统一身份提供商 (IdP / OIDC Provider) 模块 Provider 集合
+	// IdpSet 统一身份提供商 (IdP / OIDC & CAS Provider) 模块 Provider 集合
 	IdpSet = wire.NewSet(
 		cache.NewOidcCache,
-		dao.NewOAuthClientDAO,
-		repository.NewOAuthClientRepository,
-		idpsvc.NewOAuthClientService,
+		cache.NewCasCache,
+		dao.NewApplicationDAO,
+		repository.NewApplicationRepository,
+		idpsvc.NewApplicationService,
 		idpsvc.NewService,
+		cassvc.NewCasService,
 		InitKeyManager,
 		idphdl.NewHandler,
 	)

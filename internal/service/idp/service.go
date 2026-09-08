@@ -66,7 +66,7 @@ type IService interface {
 }
 
 type service struct {
-	repo          repository.IOAuthClientRepository
+	repo          repository.IApplicationRepository
 	userRepo      repository.IUserRepository
 	permSvc       permission.IPermissionService
 	tenantSvc     tenant.ITenantService
@@ -78,7 +78,7 @@ type service struct {
 
 // NewService 构造 IdP 协议服务实例
 func NewService(
-	repo repository.IOAuthClientRepository,
+	repo repository.IApplicationRepository,
 	userRepo repository.IUserRepository,
 	permSvc permission.IPermissionService,
 	tenantSvc tenant.ITenantService,
@@ -96,8 +96,8 @@ func NewService(
 		auditProducer: auditProducer,
 	}
 
-	secLogFn := func(ctx context.Context, client domain.OAuthClient, action, failReason string) {
-		s.recordAudit(ctx, client.TenantID, action, client.ClientID, client.Name, domain.OpStatusFailed, failReason)
+	secLogFn := func(ctx context.Context, app domain.Application, action, failReason string) {
+		s.recordAudit(ctx, app.TenantID, action, app.ClientID, app.Name, domain.OpStatusFailed, failReason)
 	}
 
 	// 注册授权模式策略 (Strategy Pattern)
@@ -113,7 +113,11 @@ func NewService(
 func (s *service) Authorize(ctx context.Context, req AuthorizeRequest) (*AuthorizeResult, error) {
 	client, err := s.repo.FindByClientID(ctx, req.ClientID)
 	if err != nil {
-		return nil, errs.ErrOAuthClientNotFound
+		return nil, errs.ErrApplicationNotFound
+	}
+
+	if !client.SupportsProtocol(domain.ProtocolOIDC) {
+		return nil, fmt.Errorf("%w: 当前接入应用协议为 [%s], 不支持 OIDC/OAuth 2.0 授权流程", errs.ErrUnsupportedProtocol, client.Protocol.DisplayName())
 	}
 
 	if !client.HasRedirectURI(req.RedirectURI) {
@@ -121,7 +125,7 @@ func (s *service) Authorize(ctx context.Context, req AuthorizeRequest) (*Authori
 	}
 
 	// 1. 多租户准入校验：用户必须属于该应用所在的租户空间
-	if err := s.checkTenantAccess(ctx, client.TenantID, req.UserID); err != nil {
+	if err = s.checkTenantAccess(ctx, client.TenantID, req.UserID); err != nil {
 		return nil, err
 	}
 	req.TenantID = client.TenantID
@@ -159,7 +163,7 @@ func (s *service) checkTenantAccess(ctx context.Context, tenantID, userID int64)
 // initiateConsentFlow 暂存授权确认上下文并构造 Consent 重定向结果
 func (s *service) initiateConsentFlow(
 	ctx context.Context,
-	client domain.OAuthClient,
+	app domain.Application,
 	req AuthorizeRequest,
 	scopes []string,
 ) (*AuthorizeResult, error) {
@@ -170,9 +174,9 @@ func (s *service) initiateConsentFlow(
 
 	consentInfo := domain.ConsentInfo{
 		ConsentID:           consentID,
-		ClientID:            client.ClientID,
-		ClientName:          client.Name,
-		ClientLogo:          client.Logo,
+		ClientID:            app.ClientID,
+		ClientName:          app.Name,
+		ClientLogo:          app.Logo,
 		UserID:              req.UserID,
 		Username:            req.Username,
 		TenantID:            req.TenantID,
@@ -270,7 +274,11 @@ func (s *service) ExchangeToken(ctx context.Context, req domain.TokenRequest, is
 
 	client, err := s.repo.FindByClientID(ctx, req.ClientID)
 	if err != nil {
-		return nil, errs.ErrOAuthClientNotFound
+		return nil, errs.ErrApplicationNotFound
+	}
+
+	if !client.SupportsProtocol(domain.ProtocolOIDC) {
+		return nil, fmt.Errorf("unauthorized_client: 当前应用协议为 [%s], 不支持 OAuth 2.0 令牌交换", client.Protocol.DisplayName())
 	}
 
 	if !client.IsGrantTypeAllowed(req.GrantType) {
@@ -295,11 +303,11 @@ func (s *service) RevokeToken(ctx context.Context, token, tokenTypeHint, clientI
 
 	client, err := s.repo.FindByClientID(ctx, clientID)
 	if err != nil {
-		return errs.ErrOAuthClientNotFound
+		return errs.ErrApplicationNotFound
 	}
 
 	if !client.VerifySecret(clientSecret) {
-		return errs.ErrOAuthClientSecretWrong
+		return errs.ErrApplicationSecretWrong
 	}
 
 	// 1. 若为 RefreshToken，直接从 Redis 会话中移除

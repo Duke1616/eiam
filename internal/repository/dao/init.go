@@ -31,6 +31,6 @@ func InitTables(db *gorm.DB) error {
 		&TenantKey{},
 		&AuditAuthLog{},
 		&AuditOperationLog{},
-		&OAuthClient{},
+		&Application{},
 	)
 }

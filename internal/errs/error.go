@@ -60,9 +60,14 @@ var (
 	ErrMfaAttemptsExhausted = errors.New("MFA 验证失败次数过多")
 	ErrMfaTokenNotFound     = errors.New("MFA 令牌已过期或无效")
 
-	// 统一身份提供商 (IdP / OAuth2) 相关错误
-	ErrOAuthClientNotFound    = errors.New("接入应用不存在或已被移除")
-	ErrOAuthClientSecretWrong = errors.New("应用客户端密钥错误")
-	ErrInvalidRedirectURI     = errors.New("回调地址不在应用配置的合法白名单中")
-	ErrInvalidAuthRequest     = errors.New("授权会话无效或已过期")
+	// 统一接入应用 (Application) 与单点登录 (IdP / OIDC / CAS) 相关错误
+	ErrApplicationNotFound     = errors.New("接入应用不存在或已被移除")
+	ErrApplicationSecretWrong  = errors.New("应用客户端密钥错误")
+	ErrUnsupportedProtocol     = errors.New("不支持的应用单点登录协议类型")
+	ErrInvalidRedirectURI      = errors.New("回调地址不在应用配置的合法白名单中")
+	ErrInvalidAuthRequest      = errors.New("授权会话无效或已过期")
+	ErrCasInvalidService       = errors.New("目标服务与当初签发票据的地址不匹配")
+	ErrCasTicketInvalid        = errors.New("票据无效或已过期")
+	ErrCasUserNotFound         = errors.New("凭据关联用户不存在或状态异常")
+	ErrCasServiceNotRegistered = errors.New("目标服务未在当前租户或系统级接入应用白名单中注册")
 )

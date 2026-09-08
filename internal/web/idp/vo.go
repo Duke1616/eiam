@@ -6,9 +6,10 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 )
 
-// CreateOAuthClientReq 创建应用请求
-type CreateOAuthClientReq struct {
+// CreateApplicationReq 创建应用请求
+type CreateApplicationReq struct {
 	Name          string   `json:"name" binding:"required"`
+	Protocol      string   `json:"protocol"`  // 接入协议类型: oidc / cas / saml (默认 oidc)
 	ClientID      string   `json:"client_id"` // 可选，留空由服务端自动生成
 	Logo          string   `json:"logo"`
 	RedirectURIs  []string `json:"redirect_uris" binding:"required"` // 至少一个合法回调地址
@@ -19,10 +20,11 @@ type CreateOAuthClientReq struct {
 	AutoConsent   bool     `json:"auto_consent"` // 是否跳过用户授权确认 (第一方应用建议设为 true)
 }
 
-// UpdateOAuthClientReq 更新应用请求
-type UpdateOAuthClientReq struct {
+// UpdateApplicationReq 更新应用请求
+type UpdateApplicationReq struct {
 	ID            int64    `json:"id" binding:"required"`
 	Name          string   `json:"name" binding:"required"`
+	Protocol      string   `json:"protocol"`
 	Logo          string   `json:"logo"`
 	RedirectURIs  []string `json:"redirect_uris" binding:"required"`
 	ResponseTypes []string `json:"response_types"`
@@ -32,10 +34,15 @@ type UpdateOAuthClientReq struct {
 	AutoConsent   bool     `json:"auto_consent"`
 }
 
-func (r UpdateOAuthClientReq) ToDomain() domain.OAuthClient {
-	return domain.OAuthClient{
+func (r UpdateApplicationReq) ToDomain() domain.Application {
+	protocol := domain.Protocol(r.Protocol)
+	if protocol == "" {
+		protocol = domain.ProtocolOIDC
+	}
+	return domain.Application{
 		ID:            r.ID,
 		Name:          r.Name,
+		Protocol:      protocol,
 		Logo:          r.Logo,
 		RedirectURIs:  r.RedirectURIs,
 		ResponseTypes: r.ResponseTypes,
@@ -46,16 +53,17 @@ func (r UpdateOAuthClientReq) ToDomain() domain.OAuthClient {
 	}
 }
 
-// ListOAuthClientReq 应用分页查询请求
-type ListOAuthClientReq struct {
+// ListApplicationReq 应用分页查询请求
+type ListApplicationReq struct {
 	Offset int `json:"offset"`
 	Limit  int `json:"limit"`
 }
 
-// OAuthClientVO 应用视图响应对象
-type OAuthClientVO struct {
+// ApplicationVO 应用视图响应对象
+type ApplicationVO struct {
 	ID            int64     `json:"id"`
 	TenantID      int64     `json:"tenant_id"`
+	Protocol      string    `json:"protocol"`
 	ClientID      string    `json:"client_id"`
 	ClientSecret  string    `json:"client_secret,omitempty"` // 仅在创建或重置时呈现
 	Name          string    `json:"name"`

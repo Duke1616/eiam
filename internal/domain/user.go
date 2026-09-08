@@ -66,6 +66,24 @@ type User struct {
 	Identities []UserIdentity
 }
 
+// IsActive 判断用户是否处于正常启用激活状态
+func (u User) IsActive() bool {
+	return u.Status == StatusActive
+}
+
+// IsDisabled 判断用户是否已被管理员禁用
+func (u User) IsDisabled() bool {
+	return u.Status == StatusDisable
+}
+
+// DisplayName 返回用户的友好展示名称 (优先昵称，回退用户名)
+func (u User) DisplayName() string {
+	if u.Profile.Nickname != "" {
+		return u.Profile.Nickname
+	}
+	return u.Username
+}
+
 // UserProfile 业务名片
 type UserProfile struct {
 	UserID   int64

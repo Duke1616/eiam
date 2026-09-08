@@ -50,9 +50,9 @@ func (c *inMemoryOidcCache) RevokeToken(ctx context.Context, token string, ttl t
 func (c *inMemoryOidcCache) IsTokenRevoked(ctx context.Context, token string) (bool, error)   { return false, nil }
 func (c *inMemoryOidcCache) TrackUserRefreshToken(ctx context.Context, userID, token string) error { return nil }
 func (c *inMemoryOidcCache) DeleteUserRefreshTokens(ctx context.Context, userID string) error  { return nil }
-func (c *inMemoryOidcCache) SaveOAuthClient(ctx context.Context, clientID string, data []byte) error { return nil }
-func (c *inMemoryOidcCache) GetOAuthClient(ctx context.Context, clientID string) ([]byte, error) { return nil, nil }
-func (c *inMemoryOidcCache) DeleteOAuthClient(ctx context.Context, clientID string) error      { return nil }
+func (c *inMemoryOidcCache) SaveApplication(ctx context.Context, clientID string, data []byte) error { return nil }
+func (c *inMemoryOidcCache) GetApplication(ctx context.Context, clientID string) ([]byte, error) { return nil, nil }
+func (c *inMemoryOidcCache) DeleteApplication(ctx context.Context, clientID string) error      { return nil }
 func (c *inMemoryOidcCache) Ping(ctx context.Context) error                                   { return nil }
 
 func TestClusterKeyManager_MultiPodConsistency(t *testing.T) {

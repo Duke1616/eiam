@@ -10,33 +10,39 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
+	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sessionx"
 	"github.com/Duke1616/eiam/pkg/web/capability"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/gotomicro/ego/core/elog"
 	"github.com/samber/lo"
 	"github.com/spf13/viper"
 )
 
-// Handler 统一身份提供商 Web 接入层 (企业级原生 OIDC 实现)
+// Handler 统一身份提供商 Web 接入层 (原生 OIDC & CAS 2.0/3.0 实现)
 type Handler struct {
 	capability.IRegistry
-	clientSvc idpsvc.IOAuthClientService
-	svc       idpsvc.IService
+	appSvc idpsvc.IApplicationService
+	svc    idpsvc.IService
+	casSvc cassvc.ICasService
+	logger *elog.Component
 }
 
 // NewHandler 构造 IdP Web 处理器
-func NewHandler(clientSvc idpsvc.IOAuthClientService, svc idpsvc.IService) *Handler {
+func NewHandler(appSvc idpsvc.IApplicationService, svc idpsvc.IService, casSvc cassvc.ICasService) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "idp", "统一身份提供商").DefaultScope(capability.ScopeTenant),
-		clientSvc: clientSvc,
+		appSvc:    appSvc,
 		svc:       svc,
+		casSvc:    casSvc,
+		logger:    elog.DefaultLogger,
 	}
 }
 
-// PublicRoutes 注册公开的标准 OIDC 协议端点
+// PublicRoutes 注册公开的标准 OIDC 与 CAS 协议端点
 func (h *Handler) PublicRoutes(server *gin.Engine) {
 	// 1. 标准 OpenID Connect 自动发现与 JWKS 端点
 	server.GET("/.well-known/openid-configuration", h.Discovery)
@@ -64,29 +70,35 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	// 7. 单点登出端点 (OIDC RP-Initiated Logout)
 	server.GET("/oauth/v2/logout", h.Logout)
 	server.POST("/oauth/v2/logout", h.Logout)
+
+	// 8. 标准 CAS 2.0 / 3.0 单点登录协议端点 (JumpServer 等系统接入)
+	server.GET("/cas/login", h.CasLogin)
+	server.GET("/cas/serviceValidate", h.CasServiceValidate)
+	server.GET("/cas/p3/serviceValidate", h.CasServiceValidate) // CAS 3.0 别名
+	server.GET("/cas/validate", h.CasValidate)                  // CAS 1.0 兼容
+	server.GET("/cas/logout", h.CasLogout)
 }
 
-// PrivateRoutes 注册租户管理员的应用管理接口 (OPA/RBAC 鉴权保护)
+// PrivateRoutes 注册租户管理员的应用管理接口
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
-	g := server.Group("/api/idp/client")
-
+	g := server.Group("/api/idp/application")
 	g.POST("/create", h.Define("创建接入应用", "create").
-		Bind(ginx.BS[CreateOAuthClientReq](h.CreateClient)),
+		Bind(ginx.BS[CreateApplicationReq](h.CreateApplication)),
 	)
 	g.POST("/update", h.Define("更新接入应用", "update").
-		Bind(ginx.B[UpdateOAuthClientReq](h.UpdateClient)),
+		Bind(ginx.B[UpdateApplicationReq](h.UpdateApplication)),
 	)
 	g.POST("/reset_secret/:id", h.Define("重置应用密钥", "reset_secret").
-		Bind(ginx.W(h.ResetClientSecret)),
+		Bind(ginx.W(h.ResetApplicationSecret)),
 	)
 	g.POST("/list", h.Define("接入应用列表", "list").
-		Bind(ginx.BS[ListOAuthClientReq](h.ListClients)),
+		Bind(ginx.BS[ListApplicationReq](h.ListApplications)),
 	)
 	g.DELETE("/delete/:id", h.Define("删除接入应用", "delete").
-		Bind(ginx.W(h.DeleteClient)),
+		Bind(ginx.W(h.DeleteApplication)),
 	)
 	g.GET("/detail/:id", h.Define("接入应用详情", "detail").
-		Bind(ginx.W(h.GetClientDetail)),
+		Bind(ginx.W(h.GetApplicationDetail)),
 	)
 }
 
@@ -332,15 +344,21 @@ func (h *Handler) resolveIssuerURL(c *gin.Context) string {
 
 // --- 接入应用管理接口 ---
 
-// CreateClient 创建接入应用
-func (h *Handler) CreateClient(ctx *ginx.Context, req CreateOAuthClientReq, sess session.Session) (ginx.Result, error) {
+// CreateApplication 创建接入应用
+func (h *Handler) CreateApplication(ctx *ginx.Context, req CreateApplicationReq, sess session.Session) (ginx.Result, error) {
 	tid, _ := sess.Get(ctx.Request.Context(), "tenant_id").AsInt64()
 	if tid <= 0 {
 		tid = int64(ctxutil.GetTenantID(ctx.Request.Context()))
 	}
 
-	client := domain.OAuthClient{
+	protocol := domain.Protocol(req.Protocol)
+	if protocol == "" {
+		protocol = domain.ProtocolOIDC
+	}
+
+	app := domain.Application{
 		TenantID:      tid,
+		Protocol:      protocol,
 		ClientID:      req.ClientID,
 		Name:          req.Name,
 		Logo:          req.Logo,
@@ -352,7 +370,7 @@ func (h *Handler) CreateClient(ctx *ginx.Context, req CreateOAuthClientReq, sess
 		AutoConsent:   req.AutoConsent,
 	}
 
-	created, err := h.clientSvc.CreateClient(ctx.Request.Context(), client)
+	created, err := h.appSvc.CreateApplication(ctx.Request.Context(), app)
 	if err != nil {
 		return ErrIdpClientCreateFailed, err
 	}
@@ -360,23 +378,23 @@ func (h *Handler) CreateClient(ctx *ginx.Context, req CreateOAuthClientReq, sess
 	return ginx.Result{Data: h.toVO(created)}, nil
 }
 
-// UpdateClient 更新接入应用
-func (h *Handler) UpdateClient(ctx *ginx.Context, req UpdateOAuthClientReq) (ginx.Result, error) {
-	if err := h.clientSvc.UpdateClient(ctx.Request.Context(), req.ToDomain()); err != nil {
+// UpdateApplication 更新接入应用
+func (h *Handler) UpdateApplication(ctx *ginx.Context, req UpdateApplicationReq) (ginx.Result, error) {
+	if err := h.appSvc.UpdateApplication(ctx.Request.Context(), req.ToDomain()); err != nil {
 		return ErrIdpClientUpdateFailed, err
 	}
 
 	return ginx.Result{Msg: "更新应用成功"}, nil
 }
 
-// ResetClientSecret 重置应用客户端密钥
-func (h *Handler) ResetClientSecret(ctx *ginx.Context) (ginx.Result, error) {
+// ResetApplicationSecret 重置应用客户端密钥
+func (h *Handler) ResetApplicationSecret(ctx *ginx.Context) (ginx.Result, error) {
 	id, err := ctx.Param("id").AsInt64()
 	if err != nil {
 		return ErrIdpClientInvalidID, err
 	}
 
-	newSecret, err := h.clientSvc.ResetClientSecret(ctx.Request.Context(), id)
+	newSecret, err := h.appSvc.ResetApplicationSecret(ctx.Request.Context(), id)
 	if err != nil {
 		return ErrIdpClientResetFailed, err
 	}
@@ -387,8 +405,8 @@ func (h *Handler) ResetClientSecret(ctx *ginx.Context) (ginx.Result, error) {
 	}, nil
 }
 
-// ListClients 租户级分页查询应用列表
-func (h *Handler) ListClients(ctx *ginx.Context, req ListOAuthClientReq, sess session.Session) (ginx.Result, error) {
+// ListApplications 租户级分页查询应用列表
+func (h *Handler) ListApplications(ctx *ginx.Context, req ListApplicationReq, sess session.Session) (ginx.Result, error) {
 	tid, _ := sess.Get(ctx.Request.Context(), "tenant_id").AsInt64()
 	if tid <= 0 {
 		tid = int64(ctxutil.GetTenantID(ctx.Request.Context()))
@@ -398,67 +416,73 @@ func (h *Handler) ListClients(ctx *ginx.Context, req ListOAuthClientReq, sess se
 		req.Limit = 10
 	}
 
-	clients, total, err := h.clientSvc.ListClients(ctx.Request.Context(), tid, req.Offset, req.Limit)
+	apps, total, err := h.appSvc.ListApplications(ctx.Request.Context(), tid, req.Offset, req.Limit)
 	if err != nil {
 		return ErrIdpClientListFailed, err
 	}
 
-	voList := lo.Map(clients, func(c domain.OAuthClient, _ int) OAuthClientVO {
-		return h.toVO(c)
+	voList := lo.Map(apps, func(a domain.Application, _ int) ApplicationVO {
+		return h.toVO(a)
 	})
 
 	return ginx.Result{
 		Data: map[string]any{
-			"total":   total,
-			"clients": voList,
+			"total":        total,
+			"applications": voList,
+			"clients":      voList, // 兼容前端旧字段
 		},
 	}, nil
 }
 
-// DeleteClient 删除应用
-func (h *Handler) DeleteClient(ctx *ginx.Context) (ginx.Result, error) {
+// DeleteApplication 删除应用
+func (h *Handler) DeleteApplication(ctx *ginx.Context) (ginx.Result, error) {
 	id, err := ctx.Param("id").AsInt64()
 	if err != nil {
 		return ErrIdpClientInvalidID, err
 	}
 
-	if err = h.clientSvc.DeleteClient(ctx.Request.Context(), id); err != nil {
+	if err = h.appSvc.DeleteApplication(ctx.Request.Context(), id); err != nil {
 		return ErrIdpClientDeleteFailed, err
 	}
 
 	return ginx.Result{Msg: "删除应用成功"}, nil
 }
 
-// GetClientDetail 查询应用详情
-func (h *Handler) GetClientDetail(ctx *ginx.Context) (ginx.Result, error) {
+// GetApplicationDetail 查询应用详情
+func (h *Handler) GetApplicationDetail(ctx *ginx.Context) (ginx.Result, error) {
 	id, err := ctx.Param("id").AsInt64()
 	if err != nil {
 		return ErrIdpClientInvalidID, err
 	}
 
-	client, err := h.clientSvc.GetClientByID(ctx.Request.Context(), id)
+	app, err := h.appSvc.GetApplicationByID(ctx.Request.Context(), id)
 	if err != nil {
 		return ErrIdpClientInvalidID, err
 	}
 
-	return ginx.Result{Data: h.toVO(client)}, nil
+	return ginx.Result{Data: h.toVO(app)}, nil
 }
 
-func (h *Handler) toVO(client domain.OAuthClient) OAuthClientVO {
-	return OAuthClientVO{
-		ID:            client.ID,
-		TenantID:      client.TenantID,
-		ClientID:      client.ClientID,
-		ClientSecret:  client.ClientSecret,
-		Name:          client.Name,
-		Logo:          client.Logo,
-		RedirectURIs:  client.RedirectURIs,
-		ResponseTypes: client.ResponseTypes,
-		GrantTypes:    client.GrantTypes,
-		Scopes:        client.Scopes,
-		IsPublic:      client.IsPublic,
-		AutoConsent:   client.AutoConsent,
-		Ctime:         client.Ctime,
-		Utime:         client.Utime,
+func (h *Handler) toVO(app domain.Application) ApplicationVO {
+	protocol := string(app.Protocol)
+	if protocol == "" {
+		protocol = string(domain.ProtocolOIDC)
+	}
+	return ApplicationVO{
+		ID:            app.ID,
+		TenantID:      app.TenantID,
+		Protocol:      protocol,
+		ClientID:      app.ClientID,
+		ClientSecret:  app.ClientSecret,
+		Name:          app.Name,
+		Logo:          app.Logo,
+		RedirectURIs:  app.RedirectURIs,
+		ResponseTypes: app.ResponseTypes,
+		GrantTypes:    app.GrantTypes,
+		Scopes:        app.Scopes,
+		IsPublic:      app.IsPublic,
+		AutoConsent:   app.AutoConsent,
+		Ctime:         app.Ctime,
+		Utime:         app.Utime,
 	}
 }

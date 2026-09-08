@@ -13,7 +13,7 @@ func TestHandler_RouteRegistration(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := gin.New()
 
-	hdl := NewHandler(nil, nil)
+	hdl := NewHandler(nil, nil, nil)
 	assert.NotNil(t, hdl)
 
 	// 测试公共路由注册不 panic
@@ -25,7 +25,7 @@ func TestHandler_RouteRegistration(t *testing.T) {
 	routes := server.Routes()
 	assert.NotEmpty(t, routes)
 
-	// 验证私有管理路由挂载与公开 OIDC 路由
+	// 验证私有管理路由挂载与公开 OIDC/CAS 路由
 	expectedPaths := []string{
 		"/.well-known/openid-configuration",
 		"/oauth/v2/jwks",
@@ -35,12 +35,17 @@ func TestHandler_RouteRegistration(t *testing.T) {
 		"/oauth/v2/revoke",
 		"/oauth/v2/logout",
 		"/userinfo",
-		"/api/idp/client/create",
-		"/api/idp/client/update",
-		"/api/idp/client/reset_secret/:id",
-		"/api/idp/client/list",
-		"/api/idp/client/delete/:id",
-		"/api/idp/client/detail/:id",
+		"/cas/login",
+		"/cas/serviceValidate",
+		"/cas/p3/serviceValidate",
+		"/cas/validate",
+		"/cas/logout",
+		"/api/idp/application/create",
+		"/api/idp/application/update",
+		"/api/idp/application/reset_secret/:id",
+		"/api/idp/application/list",
+		"/api/idp/application/delete/:id",
+		"/api/idp/application/detail/:id",
 	}
 
 	for _, expected := range expectedPaths {
@@ -57,11 +62,12 @@ func TestHandler_RouteRegistration(t *testing.T) {
 
 func TestHandler_ToVO(t *testing.T) {
 	hdl := &Handler{}
-	client := domain.OAuthClient{
+	app := domain.Application{
 		ID:            101,
 		TenantID:      1,
 		ClientID:      "app_test_123",
 		ClientSecret:  "secret-plain",
+		Protocol:      domain.ProtocolCAS,
 		Name:          "测试应用",
 		Logo:          "https://example.com/logo.png",
 		RedirectURIs:  []string{"https://example.com/callback"},
@@ -73,13 +79,14 @@ func TestHandler_ToVO(t *testing.T) {
 		Utime:         time.Now(),
 	}
 
-	vo := hdl.toVO(client)
-	assert.Equal(t, client.ID, vo.ID)
-	assert.Equal(t, client.TenantID, vo.TenantID)
-	assert.Equal(t, client.ClientID, vo.ClientID)
-	assert.Equal(t, client.ClientSecret, vo.ClientSecret)
-	assert.Equal(t, client.Name, vo.Name)
-	assert.Equal(t, client.RedirectURIs, vo.RedirectURIs)
-	assert.Equal(t, client.Scopes, vo.Scopes)
-	assert.Equal(t, client.IsPublic, vo.IsPublic)
+	vo := hdl.toVO(app)
+	assert.Equal(t, app.ID, vo.ID)
+	assert.Equal(t, app.TenantID, vo.TenantID)
+	assert.Equal(t, string(domain.ProtocolCAS), vo.Protocol)
+	assert.Equal(t, app.ClientID, vo.ClientID)
+	assert.Equal(t, app.ClientSecret, vo.ClientSecret)
+	assert.Equal(t, app.Name, vo.Name)
+	assert.Equal(t, app.RedirectURIs, vo.RedirectURIs)
+	assert.Equal(t, app.Scopes, vo.Scopes)
+	assert.Equal(t, app.IsPublic, vo.IsPublic)
 }

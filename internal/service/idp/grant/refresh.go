@@ -42,14 +42,14 @@ func (h *refreshTokenGrantHandler) GrantType() string {
 	return "refresh_token"
 }
 
-func (h *refreshTokenGrantHandler) Handle(ctx context.Context, req domain.TokenRequest, client domain.OAuthClient, issuerURL string) (*domain.OidcTokenResult, error) {
+func (h *refreshTokenGrantHandler) Handle(ctx context.Context, req domain.TokenRequest, app domain.Application, issuerURL string) (*domain.OidcTokenResult, error) {
 	if req.RefreshToken == "" {
 		return nil, fmt.Errorf("缺少 refresh_token 参数")
 	}
 
 	// 1. 校验客户端凭证
-	if !client.VerifySecret(req.ClientSecret) {
-		return nil, errs.ErrOAuthClientSecretWrong
+	if !app.VerifySecret(req.ClientSecret) {
+		return nil, errs.ErrApplicationSecretWrong
 	}
 
 	// 2. 从缓存读取 RefreshToken 会话
@@ -63,7 +63,7 @@ func (h *refreshTokenGrantHandler) Handle(ctx context.Context, req domain.TokenR
 		return nil, fmt.Errorf("反序列化 refresh_token 会话失败: %w", err)
 	}
 
-	if session.ClientID != client.ClientID {
+	if session.ClientID != app.ClientID {
 		return nil, fmt.Errorf("refresh_token 归属客户端不匹配")
 	}
 
@@ -87,7 +87,7 @@ func (h *refreshTokenGrantHandler) Handle(ctx context.Context, req domain.TokenR
 	// 5. 统一签发新 AccessToken 与 IDToken
 	accessToken, idToken, err := IssueTokenPair(h.signer, TokenPayload{
 		IssuerURL: issuerURL,
-		ClientID:  client.ClientID,
+		ClientID:  app.ClientID,
 		UserID:    session.UserID,
 		Username:  session.Username,
 		TenantID:  session.TenantID,
@@ -104,6 +104,6 @@ func (h *refreshTokenGrantHandler) Handle(ctx context.Context, req domain.TokenR
 		ExpiresIn:    7200,
 		IDToken:      idToken,
 		RefreshToken: newRefreshToken,
-		Scope:        strings.Join(lo.Intersect(session.Scopes, client.Scopes), " "),
+		Scope:        strings.Join(lo.Intersect(session.Scopes, app.Scopes), " "),
 	}, nil
 }

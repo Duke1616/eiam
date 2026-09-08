@@ -27,7 +27,7 @@ type IGrantHandler interface {
 	// GrantType 返回当前策略支持的 grant_type 名称
 	GrantType() string
 	// Handle 执行具体的令牌换发与校验流程
-	Handle(ctx context.Context, req domain.TokenRequest, client domain.OAuthClient, issuerURL string) (*domain.OidcTokenResult, error)
+	Handle(ctx context.Context, req domain.TokenRequest, app domain.Application, issuerURL string) (*domain.OidcTokenResult, error)
 }
 
 // TokenOptions Token 签发配置项（借鉴 ginx Options 模式，让过期时间可配置而非硬编码）

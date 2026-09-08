@@ -20,7 +20,7 @@ type authCodeGrantHandler struct {
 	permSvc  permission.IPermissionService
 	cache    cache.IOidcCache
 	signer   IKeySigner
-	secLogFn func(ctx context.Context, client domain.OAuthClient, action, failReason string)
+	secLogFn func(ctx context.Context, app domain.Application, action, failReason string)
 }
 
 // NewAuthCodeGrantHandler 构造授权码换发 Token 策略实例
@@ -29,7 +29,7 @@ func NewAuthCodeGrantHandler(
 	permSvc permission.IPermissionService,
 	cache cache.IOidcCache,
 	signer IKeySigner,
-	secLogFn func(ctx context.Context, client domain.OAuthClient, action, failReason string),
+	secLogFn func(ctx context.Context, app domain.Application, action, failReason string),
 ) IGrantHandler {
 	return &authCodeGrantHandler{
 		userRepo: userRepo,
@@ -44,7 +44,7 @@ func (h *authCodeGrantHandler) GrantType() string {
 	return "authorization_code"
 }
 
-func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenRequest, client domain.OAuthClient, issuerURL string) (*domain.OidcTokenResult, error) {
+func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenRequest, app domain.Application, issuerURL string) (*domain.OidcTokenResult, error) {
 	if req.Code == "" {
 		return nil, fmt.Errorf("缺少 code 参数")
 	}
@@ -53,7 +53,7 @@ func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenReque
 	data, err := h.cache.GetAndDelAuthCodeContext(ctx, req.Code)
 	if err != nil || len(data) == 0 {
 		if h.secLogFn != nil {
-			h.secLogFn(ctx, client, "replay_attack_detected", fmt.Sprintf("尝试重放已失效授权码: %s", req.Code))
+			h.secLogFn(ctx, app, "replay_attack_detected", fmt.Sprintf("尝试重放已失效授权码: %s", req.Code))
 		}
 		return nil, fmt.Errorf("授权码已失效或已被使用 (防重放拦截)")
 	}
@@ -67,7 +67,7 @@ func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenReque
 		return nil, fmt.Errorf("授权码已超时")
 	}
 
-	if authCode.ClientID != client.ClientID {
+	if authCode.ClientID != app.ClientID {
 		return nil, fmt.Errorf("客户端标识与授权码不匹配")
 	}
 
@@ -78,11 +78,11 @@ func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenReque
 
 	// 3. 校验客户端凭证或 PKCE 挑战码
 	if authCode.CodeChallenge != "" {
-		if !client.VerifyPKCE(req.CodeVerifier, authCode.CodeChallenge, authCode.CodeChallengeMethod) {
+		if !app.VerifyPKCE(req.CodeVerifier, authCode.CodeChallenge, authCode.CodeChallengeMethod) {
 			return nil, fmt.Errorf("PKCE code_verifier 校验失败")
 		}
-	} else if !client.VerifySecret(req.ClientSecret) {
-		return nil, errs.ErrOAuthClientSecretWrong
+	} else if !app.VerifySecret(req.ClientSecret) {
+		return nil, errs.ErrApplicationSecretWrong
 	}
 
 	// 4. 获取授权码绑定租户下的用户角色与名片信息
@@ -91,7 +91,7 @@ func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenReque
 	// 5. 统一签发 AccessToken 与 IDToken
 	accessToken, idToken, err := IssueTokenPair(h.signer, TokenPayload{
 		IssuerURL: issuerURL,
-		ClientID:  client.ClientID,
+		ClientID:  app.ClientID,
 		UserID:    authCode.UserID,
 		Username:  authCode.Username,
 		TenantID:  authCode.TenantID,
@@ -105,12 +105,12 @@ func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenReque
 
 	// 6. 若应用开通 refresh_token 权限，签发 RefreshToken 并记录会话
 	var refreshToken string
-	if client.IsGrantTypeAllowed("refresh_token") {
+	if app.IsGrantTypeAllowed("refresh_token") {
 		refreshToken, err = GenerateRandomString(32)
 		if err == nil {
 			session := domain.RefreshTokenSession{
 				RefreshToken: refreshToken,
-				ClientID:     client.ClientID,
+				ClientID:     app.ClientID,
 				UserID:       authCode.UserID,
 				Username:     authCode.Username,
 				TenantID:     authCode.TenantID,

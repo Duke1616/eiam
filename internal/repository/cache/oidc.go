@@ -53,12 +53,12 @@ type IOidcCache interface {
 	DeleteUserRefreshTokens(ctx context.Context, userID string) error
 	// GetOrSetClusterSigningKey 获取或初始化集群共享的 RSA 签名私钥 PEM
 	GetOrSetClusterSigningKey(ctx context.Context, keyID string, generateFn func() (string, error)) (string, error)
-	// SaveOAuthClient 缓存客户端元数据
-	SaveOAuthClient(ctx context.Context, clientID string, data []byte) error
-	// GetOAuthClient 获取客户端元数据缓存
-	GetOAuthClient(ctx context.Context, clientID string) ([]byte, error)
-	// DeleteOAuthClient 删除客户端元数据缓存
-	DeleteOAuthClient(ctx context.Context, clientID string) error
+	// SaveApplication 缓存应用元数据
+	SaveApplication(ctx context.Context, clientID string, data []byte) error
+	// GetApplication 获取应用元数据缓存
+	GetApplication(ctx context.Context, clientID string) ([]byte, error)
+	// DeleteApplication 删除应用元数据缓存
+	DeleteApplication(ctx context.Context, clientID string) error
 	// Ping 缓存服务连通性检查
 	Ping(ctx context.Context) error
 }
@@ -197,19 +197,19 @@ func (c *oidcCache) GetOrSetClusterSigningKey(ctx context.Context, keyID string,
 	return pemContent, nil
 }
 
-func (c *oidcCache) SaveOAuthClient(ctx context.Context, clientID string, data []byte) error {
+func (c *oidcCache) SaveApplication(ctx context.Context, clientID string, data []byte) error {
 	return c.cmd.Set(ctx, oauthClientPrefix+clientID, data, oauthClientTTL).Err()
 }
 
-func (c *oidcCache) GetOAuthClient(ctx context.Context, clientID string) ([]byte, error) {
+func (c *oidcCache) GetApplication(ctx context.Context, clientID string) ([]byte, error) {
 	bytes, err := c.cmd.Get(ctx, oauthClientPrefix+clientID).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return nil, fmt.Errorf("oauth client cache not found")
+		return nil, fmt.Errorf("application cache not found")
 	}
 	return bytes, err
 }
 
-func (c *oidcCache) DeleteOAuthClient(ctx context.Context, clientID string) error {
+func (c *oidcCache) DeleteApplication(ctx context.Context, clientID string) error {
 	return c.cmd.Del(ctx, oauthClientPrefix+clientID).Err()
 }
 

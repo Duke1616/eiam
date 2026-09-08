@@ -218,7 +218,7 @@ func (r *ResourceRepository) SyncAPIs(ctx context.Context, service, source strin
 		}
 	})
 
-	// NOTE: 不在此处开启新事务，直接复用调用方（engine.Ingest）的外层事务上下文。
+	// 不在此处开启新事务，直接复用调用方（engine.Ingest）的外层事务上下文。
 	// 1. 批量同步元数据 (OnConflict Upsert 并强制设为 Active)
 	if err := r.dao.BatchInsertAPI(ctx, daoApis); err != nil {
 		return err
