@@ -14,6 +14,8 @@ import (
 )
 
 // IService 下游接入应用 (OIDC/CAS/SAML 等统一应用中心) 的生命周期管理接口
+//
+//go:generate mockgen -source=./application.go -package=idpmocks -destination=./mocks/application.mock.go -typed IService
 type IService interface {
 	// Create 创建新的接入应用并生成初次客户端密钥
 	Create(ctx context.Context, app domain.Application) (domain.Application, error)
@@ -75,8 +77,14 @@ func (s *applicationService) Update(ctx context.Context, app domain.Application)
 		return err
 	}
 
-	if _, err := s.repo.FindByID(ctx, app.ID); err != nil {
+	existing, err := s.repo.FindByID(ctx, app.ID)
+	if err != nil {
 		return errs.ErrApplicationNotFound
+	}
+
+	// 保持 ClientID 完整性，确保下游仓储层能够准确定位并精准淘汰 Redis 缓存
+	if app.ClientID == "" {
+		app.ClientID = existing.ClientID
 	}
 
 	return s.repo.Update(ctx, app)
