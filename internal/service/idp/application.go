@@ -13,6 +13,7 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // IApplicationService 下游接入应用 (OIDC/CAS/SAML 等统一应用中心) 的生命周期管理接口
@@ -27,8 +28,8 @@ type IApplicationService interface {
 	GetApplicationByID(ctx context.Context, id int64) (domain.Application, error)
 	// GetApplicationByClientID 根据客户端标识查询应用配置
 	GetApplicationByClientID(ctx context.Context, clientID string) (domain.Application, error)
-	// ListApplications 分页查询指定租户下的接入应用列表
-	ListApplications(ctx context.Context, tenantID int64, offset, limit int) ([]domain.Application, int64, error)
+	// ListApplications 分页查询接入应用列表 (自动应用租户隔离与系统共享边界)
+	ListApplications(ctx context.Context, offset, limit int) ([]domain.Application, int64, error)
 	// DeleteApplication 删除接入应用
 	DeleteApplication(ctx context.Context, id int64) error
 }
@@ -141,8 +142,29 @@ func (s *applicationService) GetApplicationByClientID(ctx context.Context, clien
 	return app, nil
 }
 
-func (s *applicationService) ListApplications(ctx context.Context, tenantID int64, offset, limit int) ([]domain.Application, int64, error) {
-	return s.repo.ListByTenantID(ctx, tenantID, offset, limit)
+func (s *applicationService) ListApplications(ctx context.Context, offset, limit int) ([]domain.Application, int64, error) {
+	var (
+		apps  []domain.Application
+		total int64
+	)
+	eg, gctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		var err error
+		apps, err = s.repo.List(gctx, offset, limit)
+		return err
+	})
+
+	eg.Go(func() error {
+		var err error
+		total, err = s.repo.Count(gctx)
+		return err
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, 0, err
+	}
+
+	return apps, total, nil
 }
 
 func (s *applicationService) DeleteApplication(ctx context.Context, id int64) error {
@@ -166,9 +188,6 @@ func (s *applicationService) generateSecret() (string, error) {
 
 // recordAudit 异步记录审计操作日志
 func (s *applicationService) recordAudit(ctx context.Context, tenantID int64, action, resourceID, resourceName, status, failReason string) {
-	if s.auditProducer == nil {
-		return
-	}
 	go func() {
 		defer func() { _ = recover() }()
 		asyncCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

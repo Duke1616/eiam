@@ -26,8 +26,12 @@ type IApplicationRepository interface {
 	FindByID(ctx context.Context, id int64) (domain.Application, error)
 	// FindByClientID 根据 ClientID 查询应用 (优先走缓存)
 	FindByClientID(ctx context.Context, clientID string) (domain.Application, error)
-	// ListByTenantID 租户级应用分页查询
-	ListByTenantID(ctx context.Context, tenantID int64, offset, limit int) ([]domain.Application, int64, error)
+	// List 应用分页查询（由 gormx 自动根据上下文注入租户与全局共享边界）
+	List(ctx context.Context, offset, limit int) ([]domain.Application, error)
+	// Count 统计当前租户及系统全局共享的应用总数
+	Count(ctx context.Context) (int64, error)
+	// FindAll 查询当前租户及系统全局共享的所有可用应用（用于协议白名单校验，无需分页）
+	FindAll(ctx context.Context) ([]domain.Application, error)
 	// Delete 删除应用
 	Delete(ctx context.Context, id int64) error
 }
@@ -103,14 +107,28 @@ func (r *applicationRepository) FindByClientID(ctx context.Context, clientID str
 	return app, nil
 }
 
-func (r *applicationRepository) ListByTenantID(ctx context.Context, tenantID int64, offset, limit int) ([]domain.Application, int64, error) {
-	entities, total, err := r.dao.ListByTenantID(ctx, tenantID, offset, limit)
+func (r *applicationRepository) List(ctx context.Context, offset, limit int) ([]domain.Application, error) {
+	entities, err := r.dao.List(ctx, offset, limit)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	return lo.Map(entities, func(src dao.Application, _ int) domain.Application {
 		return r.toDomain(src)
-	}), total, nil
+	}), nil
+}
+
+func (r *applicationRepository) Count(ctx context.Context) (int64, error) {
+	return r.dao.Count(ctx)
+}
+
+func (r *applicationRepository) FindAll(ctx context.Context) ([]domain.Application, error) {
+	entities, err := r.dao.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return lo.Map(entities, func(src dao.Application, _ int) domain.Application {
+		return r.toDomain(src)
+	}), nil
 }
 
 func (r *applicationRepository) Delete(ctx context.Context, id int64) error {

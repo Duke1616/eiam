@@ -52,7 +52,7 @@ type casService struct {
 	logger   *elog.Component
 }
 
-// NewCasService 构造 CAS 核心服务实例 (保持轻量，无过度设计)
+// NewCasService 构造 CAS 核心服务实例 (保持轻量，依托底层 gormx 多租户插件实现全局隔离与共享)
 func NewCasService(
 	cache cache.ICasCache,
 	userRepo repository.IUserRepository,
@@ -68,8 +68,12 @@ func NewCasService(
 
 // GenerateTicket 生成标准 Service Ticket (ST-xxxx)
 func (s *casService) GenerateTicket(ctx context.Context, userID, tenantID int64, username, service string) (string, error) {
-	// 1. 安全白名单校验：确保 service 属于当前租户或系统级已注册的应用 (Application)
-	if err := s.validateServiceRegistration(ctx, tenantID, service); err != nil {
+	if tenantID > 0 && ctxutil.GetTenantID(ctx) <= 0 {
+		ctx = ctxutil.WithTenantID(ctx, tenantID)
+	}
+
+	// 1. 安全白名单校验：确保 service 属于当前租户或系统级全局共享的应用 (Application)
+	if err := s.validateServiceRegistration(ctx, service); err != nil {
 		return "", err
 	}
 
@@ -94,40 +98,28 @@ func (s *casService) GenerateTicket(ctx context.Context, userID, tenantID int64,
 	}
 
 	// CAS ST 标准存活时间 5 分钟
-	if err := s.cache.SaveTicket(ctx, ticket, payload, 5*time.Minute); err != nil {
+	if err = s.cache.SaveTicket(ctx, ticket, payload, 5*time.Minute); err != nil {
 		return "", fmt.Errorf("存储 CAS 票据至缓存失败: %w", err)
 	}
 
 	return ticket, nil
 }
 
-// validateServiceRegistration 校验 service 是否命中当前租户或系统级全局注册的应用
-func (s *casService) validateServiceRegistration(ctx context.Context, tenantID int64, service string) error {
-	if s.appRepo == nil {
-		return nil
+// validateServiceRegistration 校验 service 是否命中当前租户或系统级全局共享的应用
+func (s *casService) validateServiceRegistration(ctx context.Context, service string) error {
+	// 依托 Application 实体的 eiam:"shared" 标签与 gormx 插件，
+	// 此处 FindAll 会根据 ctx 自动合并当前租户私有应用与系统根租户(1)全局公共应用，全量获取白名单
+	apps, err := s.appRepo.FindAll(ctx)
+	if err != nil {
+		return fmt.Errorf("查询接入应用白名单失败: %w", err)
 	}
 
-	// 1. 优先检索当前租户下注册的应用
-	if apps, _, err := s.appRepo.ListByTenantID(ctx, tenantID, 0, 100); err == nil && hasMatchingApp(apps, service) {
+	if hasMatchingApp(apps, service) {
 		return nil
-	}
-
-	// 2. 多租户全局应用检索：若当前租户未配置，检索系统根租户(tenant_id=1)及全局(tenant_id=0)的应用
-	if tenantID != 1 {
-		for _, globalTid := range []int64{1, 0} {
-			if globalApps, _, err := s.appRepo.ListByTenantID(ctx, globalTid, 0, 100); err == nil && hasMatchingApp(globalApps, service) {
-				s.logger.Info("命中系统级/全局 CAS 接入应用白名单",
-					elog.Int64("req_tenant_id", tenantID),
-					elog.Int64("matched_tenant_id", globalTid),
-					elog.String("service", service),
-				)
-				return nil
-			}
-		}
 	}
 
 	s.logger.Warn("拒绝未注册或不在白名单的 CAS 登录重定向",
-		elog.Int64("tenant_id", tenantID),
+		elog.Int64("tenant_id", ctxutil.GetTenantID(ctx).Int64()),
 		elog.String("service", service),
 	)
 	return ErrServiceNotRegistered
@@ -135,7 +127,8 @@ func (s *casService) validateServiceRegistration(ctx context.Context, tenantID i
 
 func hasMatchingApp(apps []domain.Application, service string) bool {
 	return slices.ContainsFunc(apps, func(a domain.Application) bool {
-		return a.SupportsProtocol(domain.ProtocolCAS) && a.HasRedirectURI(service)
+		// 协议兼容与安全保障：优先执行 CAS 同源与路径前缀匹配，同时兼顾存量应用放行
+		return a.MatchesCasService(service) || a.HasRedirectURI(service)
 	})
 }
 
@@ -154,7 +147,7 @@ func (s *casService) ValidateTicket(ctx context.Context, ticket, service string)
 	}
 
 	var data domain.CasTicketData
-	if err := json.Unmarshal(raw, &data); err != nil {
+	if err = json.Unmarshal(raw, &data); err != nil {
 		return nil, fmt.Errorf("反序列化 CAS 票据数据失败: %w", err)
 	}
 
@@ -165,12 +158,6 @@ func (s *casService) ValidateTicket(ctx context.Context, ticket, service string)
 			elog.String("req_service", service),
 		)
 		return nil, ErrInvalidService
-	}
-
-	// NOTE: 跨系统机器对机器验证时无登录态，必须将当时存入票据的 TenantID 绑定回上下文
-	// 避免底层 gormx 多租户拦截器阻断 SQL 检索 (Fail-Closed 原则)
-	if data.TenantID > 0 {
-		ctx = ctxutil.WithTenantID(ctx, data.TenantID)
 	}
 
 	// 获取用户当前最新实体与资料

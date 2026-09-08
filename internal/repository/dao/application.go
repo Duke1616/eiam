@@ -45,8 +45,12 @@ type IApplicationDAO interface {
 	FindByID(ctx context.Context, id int64) (Application, error)
 	// FindByClientID 根据 client_id 获取应用 (跨租户全局匹配应用)
 	FindByClientID(ctx context.Context, clientID string) (Application, error)
-	// ListByTenantID 获取指定租户下的所有应用
-	ListByTenantID(ctx context.Context, tenantID int64, offset, limit int) ([]Application, int64, error)
+	// List 分页查询当前租户及系统全局共享的应用列表 (用于后台管理分页展示)
+	List(ctx context.Context, offset, limit int) ([]Application, error)
+	// Count 统计当前租户及系统全局共享的应用总数
+	Count(ctx context.Context) (int64, error)
+	// FindAll 查询当前租户及系统全局共享的所有可用应用 (用于协议白名单全量检索，无需分页)
+	FindAll(ctx context.Context) ([]Application, error)
 	// Delete 删除指定应用
 	Delete(ctx context.Context, id int64) error
 }
@@ -74,6 +78,7 @@ func (dao *applicationDAO) Update(ctx context.Context, app Application) error {
 		Where("id = ?", app.ID).
 		Updates(map[string]any{
 			"name":           app.Name,
+			"protocol":       app.Protocol,
 			"logo":           app.Logo,
 			"redirect_uris":  app.RedirectURIs,
 			"response_types": app.ResponseTypes,
@@ -111,15 +116,23 @@ func (dao *applicationDAO) FindByClientID(ctx context.Context, clientID string) 
 	return app, err
 }
 
-func (dao *applicationDAO) ListByTenantID(ctx context.Context, tenantID int64, offset, limit int) ([]Application, int64, error) {
+func (dao *applicationDAO) List(ctx context.Context, offset, limit int) ([]Application, error) {
 	var apps []Application
+	err := dao.db.WithContext(ctx).Model(&Application{}).
+		Order("id DESC").Offset(offset).Limit(limit).Find(&apps).Error
+	return apps, err
+}
+
+func (dao *applicationDAO) Count(ctx context.Context) (int64, error) {
 	var total int64
-	query := dao.db.WithContext(ctx).Model(&Application{}).Where("tenant_id = ?", tenantID)
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	err := query.Order("id DESC").Offset(offset).Limit(limit).Find(&apps).Error
-	return apps, total, err
+	err := dao.db.WithContext(ctx).Model(&Application{}).Count(&total).Error
+	return total, err
+}
+
+func (dao *applicationDAO) FindAll(ctx context.Context) ([]Application, error) {
+	var apps []Application
+	err := dao.db.WithContext(ctx).Model(&Application{}).Order("id DESC").Find(&apps).Error
+	return apps, err
 }
 
 func (dao *applicationDAO) Delete(ctx context.Context, id int64) error {

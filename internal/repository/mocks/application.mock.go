@@ -41,6 +41,21 @@ func (m *MockIApplicationRepository) EXPECT() *MockIApplicationRepositoryMockRec
 	return m.recorder
 }
 
+// Count mocks base method.
+func (m *MockIApplicationRepository) Count(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Count", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Count indicates an expected call of Count.
+func (mr *MockIApplicationRepositoryMockRecorder) Count(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockIApplicationRepository)(nil).Count), ctx)
+}
+
 // Create mocks base method.
 func (m *MockIApplicationRepository) Create(ctx context.Context, app domain.Application) (int64, error) {
 	m.ctrl.T.Helper()
@@ -68,6 +83,21 @@ func (m *MockIApplicationRepository) Delete(ctx context.Context, id int64) error
 func (mr *MockIApplicationRepositoryMockRecorder) Delete(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockIApplicationRepository)(nil).Delete), ctx, id)
+}
+
+// FindAll mocks base method.
+func (m *MockIApplicationRepository) FindAll(ctx context.Context) ([]domain.Application, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindAll", ctx)
+	ret0, _ := ret[0].([]domain.Application)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindAll indicates an expected call of FindAll.
+func (mr *MockIApplicationRepositoryMockRecorder) FindAll(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindAll", reflect.TypeOf((*MockIApplicationRepository)(nil).FindAll), ctx)
 }
 
 // FindByClientID mocks base method.
@@ -100,20 +130,19 @@ func (mr *MockIApplicationRepositoryMockRecorder) FindByID(ctx, id any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockIApplicationRepository)(nil).FindByID), ctx, id)
 }
 
-// ListByTenantID mocks base method.
-func (m *MockIApplicationRepository) ListByTenantID(ctx context.Context, tenantID int64, offset, limit int) ([]domain.Application, int64, error) {
+// List mocks base method.
+func (m *MockIApplicationRepository) List(ctx context.Context, offset, limit int) ([]domain.Application, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListByTenantID", ctx, tenantID, offset, limit)
+	ret := m.ctrl.Call(m, "List", ctx, offset, limit)
 	ret0, _ := ret[0].([]domain.Application)
-	ret1, _ := ret[1].(int64)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// ListByTenantID indicates an expected call of ListByTenantID.
-func (mr *MockIApplicationRepositoryMockRecorder) ListByTenantID(ctx, tenantID, offset, limit any) *gomock.Call {
+// List indicates an expected call of List.
+func (mr *MockIApplicationRepositoryMockRecorder) List(ctx, offset, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByTenantID", reflect.TypeOf((*MockIApplicationRepository)(nil).ListByTenantID), ctx, tenantID, offset, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockIApplicationRepository)(nil).List), ctx, offset, limit)
 }
 
 // Update mocks base method.

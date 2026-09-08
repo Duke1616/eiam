@@ -403,9 +403,6 @@ func (s *service) generateAndSaveAuthCode(ctx context.Context, req AuthorizeRequ
 }
 
 func (s *service) recordAudit(ctx context.Context, tenantID int64, action, resourceID, resourceName, status, failReason string) {
-	if s.auditProducer == nil {
-		return
-	}
 	go func() {
 		defer func() { _ = recover() }()
 		asyncCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

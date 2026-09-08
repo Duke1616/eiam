@@ -405,18 +405,13 @@ func (h *Handler) ResetApplicationSecret(ctx *ginx.Context) (ginx.Result, error)
 	}, nil
 }
 
-// ListApplications 租户级分页查询应用列表
+// ListApplications 分页查询应用列表 (上下文携带租户，依托 gormx 自动隔离与全局共享)
 func (h *Handler) ListApplications(ctx *ginx.Context, req ListApplicationReq, sess session.Session) (ginx.Result, error) {
-	tid, _ := sess.Get(ctx.Request.Context(), "tenant_id").AsInt64()
-	if tid <= 0 {
-		tid = int64(ctxutil.GetTenantID(ctx.Request.Context()))
-	}
-
 	if req.Limit <= 0 {
 		req.Limit = 10
 	}
 
-	apps, total, err := h.appSvc.ListApplications(ctx.Request.Context(), tid, req.Offset, req.Limit)
+	apps, total, err := h.appSvc.ListApplications(ctx.Request.Context(), req.Offset, req.Limit)
 	if err != nil {
 		return ErrIdpClientListFailed, err
 	}
