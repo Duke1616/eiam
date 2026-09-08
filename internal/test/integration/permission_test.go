@@ -238,6 +238,7 @@ func (s *PermissionSuite) TestIngestPhysicalClearAndReload() {
 	svcDAO := dao.NewServiceDAO(s.db)
 	permCache := cachemocks.NewMockIPermissionCache(s.ctrl)
 	permCache.EXPECT().DeleteCodesByResources(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	permCache.EXPECT().ClearParentCodes(gomock.Any()).Return(nil).AnyTimes()
 	resCache := cachemocks.NewMockIResourceCache(s.ctrl)
 	resCache.EXPECT().InvalidateServiceAPIs(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	engine := ingestion.NewEngine(
@@ -329,6 +330,7 @@ func (s *PermissionSuite) TestIngestMenusAndPhysicalClearProtection() {
 	svcDAO := dao.NewServiceDAO(s.db)
 	permCache := cachemocks.NewMockIPermissionCache(s.ctrl)
 	permCache.EXPECT().DeleteCodesByResources(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	permCache.EXPECT().ClearParentCodes(gomock.Any()).Return(nil).AnyTimes()
 	resCache := cachemocks.NewMockIResourceCache(s.ctrl)
 	resCache.EXPECT().InvalidateServiceAPIs(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	engine := ingestion.NewEngine(

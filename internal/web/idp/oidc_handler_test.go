@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
-	idpmocks "github.com/Duke1616/eiam/internal/service/idp/mocks"
+	oidcsvc "github.com/Duke1616/eiam/internal/service/idp/oidc"
+	oidcmocks "github.com/Duke1616/eiam/internal/service/idp/oidc/mocks"
 	"github.com/ecodeclub/ginx/gctx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -28,13 +28,13 @@ import (
 type OIDCHandlerTestSuite struct {
 	suite.Suite
 	ctrl   *gomock.Controller
-	svc    *idpmocks.MockIService
+	svc    *oidcmocks.MockIOidcService
 	server *gin.Engine
 }
 
 func (s *OIDCHandlerTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.svc = idpmocks.NewMockIService(s.ctrl)
+	s.svc = oidcmocks.NewMockIOidcService(s.ctrl)
 
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -129,7 +129,7 @@ func (s *OIDCHandlerTestSuite) TestAuthorize() {
 			mockSetup: func() {
 				s.svc.EXPECT().
 					Authorize(gomock.Any(), gomock.Any()).
-					Return(&idpsvc.AuthorizeResult{
+					Return(&oidcsvc.AuthorizeResult{
 						RequireConsent: false,
 						RedirectURL:    "https://app.example.com/callback?code=test_code_123&state=xyz-state",
 					}, nil)
@@ -147,7 +147,7 @@ func (s *OIDCHandlerTestSuite) TestAuthorize() {
 			mockSetup: func() {
 				s.svc.EXPECT().
 					Authorize(gomock.Any(), gomock.Any()).
-					Return(&idpsvc.AuthorizeResult{
+					Return(&oidcsvc.AuthorizeResult{
 						RequireConsent: true,
 						ConsentID:      "consent_abc",
 						RedirectURL:    "/oauth/v2/consent?consent_id=consent_abc",
@@ -602,7 +602,7 @@ func (s *OIDCHandlerTestSuite) TestFullOIDCFlow() {
 
 	// Step 1: Authorize
 	s.svc.EXPECT().Authorize(gomock.Any(), gomock.Any()).
-		Return(&idpsvc.AuthorizeResult{
+		Return(&oidcsvc.AuthorizeResult{
 			RedirectURL: "https://app.example.com/callback?code=flow_code_001&state=flow-state",
 		}, nil)
 

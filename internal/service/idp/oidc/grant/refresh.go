@@ -10,31 +10,27 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
-	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
-	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
 	"github.com/samber/lo"
 )
 
 type refreshTokenGrantHandler struct {
-	userRepo repository.IUserRepository
-	permSvc  permission.IPermissionService
-	cache    cache.IOidcCache
-	signer   IKeySigner
+	claimsResolver claims.IClaimsResolver
+	cache          cache.IOidcCache
+	signer         IKeySigner
 }
 
 // NewRefreshTokenGrantHandler 构造 RefreshToken 续期策略实例
 func NewRefreshTokenGrantHandler(
-	userRepo repository.IUserRepository,
-	permSvc permission.IPermissionService,
+	claimsResolver claims.IClaimsResolver,
 	cache cache.IOidcCache,
 	signer IKeySigner,
 ) IGrantHandler {
 	return &refreshTokenGrantHandler{
-		userRepo: userRepo,
-		permSvc:  permSvc,
-		cache:    cache,
-		signer:   signer,
+		claimsResolver: claimsResolver,
+		cache:          cache,
+		signer:         signer,
 	}
 }
 
@@ -81,18 +77,21 @@ func (h *refreshTokenGrantHandler) Handle(ctx context.Context, req domain.TokenR
 	_ = h.cache.SaveRefreshToken(ctx, newRefreshToken, sessBytes)
 	_ = h.cache.TrackUserRefreshToken(ctx, strconv.FormatInt(session.UserID, 10), newRefreshToken)
 
-	// 4. 获取会话绑定租户下的最新用户角色与名片信息
-	roles, profile := FetchUserClaims(ctx, session.TenantID, session.UserID, session.Username, h.permSvc, h.userRepo)
+	// 4. 获取会话绑定租户下的最新标准化用户身份声明
+	userClaims, err := h.claimsResolver.Resolve(ctx, claims.IdentityRef{
+		TenantID: session.TenantID,
+		UserID:   session.UserID,
+		Username: session.Username,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("解析用户身份声明失败: %w", err)
+	}
 
 	// 5. 统一签发新 AccessToken 与 IDToken
 	accessToken, idToken, err := IssueTokenPair(h.signer, TokenPayload{
 		IssuerURL: issuerURL,
 		ClientID:  app.ClientID,
-		UserID:    session.UserID,
-		Username:  session.Username,
-		TenantID:  session.TenantID,
-		Profile:   profile,
-		Roles:     roles,
+		Claims:    userClaims,
 	})
 	if err != nil {
 		return nil, err

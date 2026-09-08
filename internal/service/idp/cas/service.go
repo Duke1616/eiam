@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,6 +13,7 @@ import (
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/gotomicro/ego/core/elog"
 )
@@ -46,23 +46,23 @@ type ICasService interface {
 }
 
 type casService struct {
-	cache    cache.ICasCache
-	userRepo repository.IUserRepository
-	appRepo  repository.IApplicationRepository
-	logger   *elog.Component
+	cache          cache.ICasCache
+	claimsResolver claims.IClaimsResolver
+	appRepo        repository.IApplicationRepository
+	logger         *elog.Component
 }
 
 // NewCasService 构造 CAS 核心服务实例 (保持轻量，依托底层 gormx 多租户插件实现全局隔离与共享)
 func NewCasService(
 	cache cache.ICasCache,
-	userRepo repository.IUserRepository,
+	claimsResolver claims.IClaimsResolver,
 	appRepo repository.IApplicationRepository,
 ) ICasService {
 	return &casService{
-		cache:    cache,
-		userRepo: userRepo,
-		appRepo:  appRepo,
-		logger:   elog.DefaultLogger,
+		cache:          cache,
+		claimsResolver: claimsResolver,
+		appRepo:        appRepo,
+		logger:         elog.DefaultLogger,
 	}
 }
 
@@ -92,13 +92,8 @@ func (s *casService) GenerateTicket(ctx context.Context, userID, tenantID int64,
 		CreatedAt: time.Now(),
 	}
 
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("序列化 CAS 票据元数据失败: %w", err)
-	}
-
-	// CAS ST 标准存活时间 5 分钟
-	if err = s.cache.SaveTicket(ctx, ticket, payload, 5*time.Minute); err != nil {
+	// CAS ST 标准存活时间 5 分钟 (基于 ITicketStore 泛型强类型存储)
+	if err := s.cache.SaveTicket(ctx, ticket, data, 5*time.Minute); err != nil {
 		return "", fmt.Errorf("存储 CAS 票据至缓存失败: %w", err)
 	}
 
@@ -138,17 +133,12 @@ func (s *casService) ValidateTicket(ctx context.Context, ticket, service string)
 		return nil, ErrTicketInvalid
 	}
 
-	raw, err := s.cache.GetAndDelTicket(ctx, ticket)
+	data, err := s.cache.GetAndDelTicket(ctx, ticket)
 	if err != nil {
 		if errors.Is(err, cache.ErrCasTicketNotFound) {
 			return nil, ErrTicketInvalid
 		}
 		return nil, fmt.Errorf("核销 CAS 票据失败: %w", err)
-	}
-
-	var data domain.CasTicketData
-	if err = json.Unmarshal(raw, &data); err != nil {
-		return nil, fmt.Errorf("反序列化 CAS 票据数据失败: %w", err)
 	}
 
 	// 校验目标 service 与签发时的 service 是否匹配 (使用领域模型的 MatchesService 规范化比对)
@@ -160,30 +150,22 @@ func (s *casService) ValidateTicket(ctx context.Context, ticket, service string)
 		return nil, ErrInvalidService
 	}
 
-	// 获取用户当前最新实体与资料
-	user, err := s.userRepo.FindById(ctx, data.UserID)
+	// 委托 claims 统一身份声明模块解析用户属性与当前租户生效角色
+	userClaims, err := s.claimsResolver.Resolve(ctx, claims.IdentityRef{
+		TenantID: data.TenantID,
+		UserID:   data.UserID,
+		Username: data.Username,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("查询 CAS 凭据关联用户失败: %w", err)
+		return nil, fmt.Errorf("解析 CAS 身份声明失败: %w", err)
 	}
-	if user.ID == 0 {
+	if userClaims.UserID == 0 {
 		return nil, ErrUserNotFound
 	}
 
-	// 组装返回给客户端（如 JumpServer）的标准用户属性
-	// NOTE: 严禁在此暴露 "id" 字段！因为下游系统 (如 Django/JumpServer) 用户模型的主键字段名为 id 且为 UUIDField，
-	// 若返回数字 id 会被 django_cas_ng 反射覆盖主键，导致其在保存时抛出 ['“1”不是一个有效的UUID']。
-	attributes := map[string]any{
-		"email":       user.Email,
-		"name":        user.Profile.Nickname,
-		"displayName": user.Profile.Nickname,
-		"phone":       user.Profile.Phone,
-		"title":       user.Profile.JobTitle,
-		"tenant_id":   data.TenantID,
-	}
-
 	return &domain.CasValidationResult{
-		User:       user,
-		Attributes: attributes,
+		User:       userClaims.ToUser(),
+		Attributes: userClaims.ToCasAttributes(),
 	}, nil
 }
 

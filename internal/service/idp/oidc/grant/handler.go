@@ -5,14 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
-	"github.com/Duke1616/eiam/internal/repository"
-	"github.com/Duke1616/eiam/internal/service/permission"
-	"github.com/Duke1616/eiam/pkg/ctxutil"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -67,22 +64,11 @@ func defaultTokenOptions() TokenOptions {
 	}
 }
 
-// UserProfile 用户名片信息（借鉴 ginx 的结构体收拢思路，消除多参数函数签名）
-type UserProfile struct {
-	Nickname string
-	Email    string
-	Phone    string
-}
-
-// TokenPayload IssueTokenPair 的统一入参（替代原来 12 个裸参数）
+// TokenPayload IssueTokenPair 的统一入参
 type TokenPayload struct {
 	IssuerURL string
 	ClientID  string
-	UserID    int64
-	Username  string
-	TenantID  int64
-	Profile   UserProfile
-	Roles     []string
+	Claims    claims.Claims
 	Nonce     string
 }
 
@@ -97,56 +83,41 @@ func IssueTokenPair(signer IKeySigner, payload TokenPayload, opts ...func(*Token
 	trimmedIssuer := strings.TrimRight(payload.IssuerURL, "/")
 	now := o.nowFunc()
 
-	// 1. 签发 ID Token
-	idClaims := domain.IDTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    trimmedIssuer,
-			Subject:   strconv.FormatInt(payload.UserID, 10),
-			Audience:  jwt.ClaimStrings{payload.ClientID},
-			ExpiresAt: jwt.NewNumericDate(now.Add(o.IDTokenTTL)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ID:        uuid.New().String(),
-		},
-		PreferredUsername: payload.Username,
-		Nickname:          payload.Profile.Nickname,
-		Email:             payload.Profile.Email,
-		EmailVerified:     payload.Profile.Email != "",
-		PhoneNumber:       payload.Profile.Phone,
-		TenantID:          payload.TenantID,
-		Roles:             payload.Roles,
-		Nonce:             payload.Nonce,
-	}
-
-	idToken, err = signer.SignJWT(idClaims)
+	// 1. 签发 ID Token（含 Nonce，TTL 较短）
+	idToken, err = signer.SignJWT(buildClaims(payload, trimmedIssuer, now, o.IDTokenTTL, payload.Nonce))
 	if err != nil {
 		return "", "", fmt.Errorf("签发 ID Token 失败: %w", err)
 	}
 
-	// 2. 签发 Access Token
-	accessClaims := domain.IDTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    trimmedIssuer,
-			Subject:   strconv.FormatInt(payload.UserID, 10),
-			Audience:  jwt.ClaimStrings{payload.ClientID},
-			ExpiresAt: jwt.NewNumericDate(now.Add(o.AccessTokenTTL)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ID:        uuid.New().String(),
-		},
-		PreferredUsername: payload.Username,
-		Nickname:          payload.Profile.Nickname,
-		Email:             payload.Profile.Email,
-		EmailVerified:     payload.Profile.Email != "",
-		PhoneNumber:       payload.Profile.Phone,
-		TenantID:          payload.TenantID,
-		Roles:             payload.Roles,
-	}
-
-	accessToken, err = signer.SignJWT(accessClaims)
+	// 2. 签发 Access Token（不含 Nonce，TTL 较长）
+	accessToken, err = signer.SignJWT(buildClaims(payload, trimmedIssuer, now, o.AccessTokenTTL, ""))
 	if err != nil {
 		return "", "", fmt.Errorf("签发 Access Token 失败: %w", err)
 	}
 
 	return accessToken, idToken, nil
+}
+
+// buildClaims 构造标准 OIDC Claims（IDToken 与 AccessToken 共享同一结构，仅 TTL 与 Nonce 有别）
+func buildClaims(payload TokenPayload, issuer string, now time.Time, ttl time.Duration, nonce string) domain.IDTokenClaims {
+	return domain.IDTokenClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   payload.Claims.Subject,
+			Audience:  jwt.ClaimStrings{payload.ClientID},
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        uuid.New().String(),
+		},
+		PreferredUsername: payload.Claims.Username,
+		Nickname:          payload.Claims.Nickname,
+		Email:             payload.Claims.Email,
+		EmailVerified:     payload.Claims.Email != "",
+		PhoneNumber:       payload.Claims.Phone,
+		TenantID:          payload.Claims.TenantID,
+		Roles:             payload.Claims.Roles,
+		Nonce:             nonce,
+	}
 }
 
 // GenerateRandomString 生成指定长度的高强度加密随机字符串 (URL 安全)
@@ -156,32 +127,4 @@ func GenerateRandomString(byteLen int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
-}
-
-// FetchUserClaims 获取指定租户空间下的用户有效角色与名片信息
-// 统一封装租户隔离上下文注入与资料装配，消除各授权模式策略间的重复代码
-func FetchUserClaims(
-	ctx context.Context,
-	tenantID, userID int64,
-	username string,
-	permSvc permission.IPermissionService,
-	userRepo repository.IUserRepository,
-) ([]string, UserProfile) {
-	targetCtx := ctx
-	if tenantID > 0 {
-		targetCtx = ctxutil.WithTenantID(ctx, tenantID)
-	}
-
-	roles, _ := permSvc.GetRolesForUser(targetCtx, username)
-
-	var profile UserProfile
-	if user, err := userRepo.FindById(targetCtx, userID); err == nil {
-		profile = UserProfile{
-			Nickname: user.Profile.Nickname,
-			Email:    user.Email,
-			Phone:    user.Profile.Phone,
-		}
-	}
-
-	return roles, profile
 }

@@ -9,8 +9,8 @@ import (
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 )
 
-// recordAudit 异步记录 IDP 域操作审计日志
-func recordAudit(ctx context.Context, p auditevt.IAuditProducer, tenantID int64, action, resourceID, resourceName, status, failReason string) {
+// RecordAudit 异步记录 IDP 域操作审计日志
+func RecordAudit(ctx context.Context, p auditevt.IAuditProducer, tenantID int64, action, resourceID, resourceName, status, failReason string) {
 	if p == nil {
 		return
 	}
@@ -38,4 +38,8 @@ func recordAudit(ctx context.Context, p auditevt.IAuditProducer, tenantID int64,
 			Ctime:        time.Now().UnixMilli(),
 		})
 	}()
+}
+
+func recordAudit(ctx context.Context, p auditevt.IAuditProducer, tenantID int64, action, resourceID, resourceName, status, failReason string) {
+	RecordAudit(ctx, p, tenantID, action, resourceID, resourceName, status, failReason)
 }

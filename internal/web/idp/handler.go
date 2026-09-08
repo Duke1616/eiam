@@ -11,6 +11,7 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
 	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
+	oidcsvc "github.com/Duke1616/eiam/internal/service/idp/oidc"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sessionx"
 	"github.com/Duke1616/eiam/pkg/web/capability"
@@ -25,14 +26,14 @@ import (
 // Handler 统一身份提供商 Web 接入层 (原生 OIDC & CAS 2.0/3.0 实现)
 type Handler struct {
 	capability.IRegistry
-	appSvc idpsvc.IApplicationService
-	svc    idpsvc.IService
+	appSvc idpsvc.IService
+	svc    oidcsvc.IOidcService
 	casSvc cassvc.ICasService
 	logger *elog.Component
 }
 
 // NewHandler 构造 IdP Web 处理器
-func NewHandler(appSvc idpsvc.IApplicationService, svc idpsvc.IService, casSvc cassvc.ICasService) *Handler {
+func NewHandler(appSvc idpsvc.IService, svc oidcsvc.IOidcService, casSvc cassvc.ICasService) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "idp", "统一身份提供商").DefaultScope(capability.ScopeTenant),
 		appSvc:    appSvc,
@@ -153,7 +154,7 @@ func (h *Handler) Authorize(c *gin.Context) {
 	username, _ := sess.Get(c.Request.Context(), "username").AsString()
 	tid, _ := sess.Get(c.Request.Context(), "tenant_id").AsInt64()
 
-	result, err := h.svc.Authorize(c.Request.Context(), idpsvc.AuthorizeRequest{
+	result, err := h.svc.Authorize(c.Request.Context(), oidcsvc.AuthorizeRequest{
 		ClientID:            clientID,
 		RedirectURI:         redirectURI,
 		ResponseType:        responseType,
@@ -370,7 +371,7 @@ func (h *Handler) CreateApplication(ctx *ginx.Context, req CreateApplicationReq,
 		AutoConsent:   req.AutoConsent,
 	}
 
-	created, err := h.appSvc.CreateApplication(ctx.Request.Context(), app)
+	created, err := h.appSvc.Create(ctx.Request.Context(), app)
 	if err != nil {
 		return ErrIdpClientCreateFailed, err
 	}
@@ -380,7 +381,7 @@ func (h *Handler) CreateApplication(ctx *ginx.Context, req CreateApplicationReq,
 
 // UpdateApplication 更新接入应用
 func (h *Handler) UpdateApplication(ctx *ginx.Context, req UpdateApplicationReq) (ginx.Result, error) {
-	if err := h.appSvc.UpdateApplication(ctx.Request.Context(), req.ToDomain()); err != nil {
+	if err := h.appSvc.Update(ctx.Request.Context(), req.ToDomain()); err != nil {
 		return ErrIdpClientUpdateFailed, err
 	}
 
@@ -394,7 +395,7 @@ func (h *Handler) ResetApplicationSecret(ctx *ginx.Context) (ginx.Result, error)
 		return ErrIdpClientInvalidID, err
 	}
 
-	newSecret, err := h.appSvc.ResetApplicationSecret(ctx.Request.Context(), id)
+	newSecret, err := h.appSvc.ResetSecret(ctx.Request.Context(), id)
 	if err != nil {
 		return ErrIdpClientResetFailed, err
 	}
@@ -411,7 +412,7 @@ func (h *Handler) ListApplications(ctx *ginx.Context, req ListApplicationReq, se
 		req.Limit = 10
 	}
 
-	apps, total, err := h.appSvc.ListApplications(ctx.Request.Context(), req.Offset, req.Limit)
+	apps, total, err := h.appSvc.List(ctx.Request.Context(), req.Offset, req.Limit)
 	if err != nil {
 		return ErrIdpClientListFailed, err
 	}
@@ -436,7 +437,7 @@ func (h *Handler) DeleteApplication(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrIdpClientInvalidID, err
 	}
 
-	if err = h.appSvc.DeleteApplication(ctx.Request.Context(), id); err != nil {
+	if err = h.appSvc.Delete(ctx.Request.Context(), id); err != nil {
 		return ErrIdpClientDeleteFailed, err
 	}
 
@@ -450,7 +451,7 @@ func (h *Handler) GetApplicationDetail(ctx *ginx.Context) (ginx.Result, error) {
 		return ErrIdpClientInvalidID, err
 	}
 
-	app, err := h.appSvc.GetApplicationByID(ctx.Request.Context(), id)
+	app, err := h.appSvc.GetByID(ctx.Request.Context(), id)
 	if err != nil {
 		return ErrIdpClientInvalidID, err
 	}

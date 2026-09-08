@@ -10,6 +10,8 @@ import (
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	repomocks "github.com/Duke1616/eiam/internal/repository/mocks"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
+	claimsmocks "github.com/Duke1616/eiam/internal/service/idp/claims/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -17,22 +19,22 @@ import (
 
 // mockCasCache 简单的内存模拟 Cache
 type mockCasCache struct {
-	store map[string][]byte
+	store map[string]domain.CasTicketData
 }
 
 func newMockCasCache() *mockCasCache {
-	return &mockCasCache{store: make(map[string][]byte)}
+	return &mockCasCache{store: make(map[string]domain.CasTicketData)}
 }
 
-func (m *mockCasCache) SaveTicket(ctx context.Context, ticket string, data []byte, ttl time.Duration) error {
+func (m *mockCasCache) SaveTicket(ctx context.Context, ticket string, data domain.CasTicketData, ttl time.Duration) error {
 	m.store[ticket] = data
 	return nil
 }
 
-func (m *mockCasCache) GetAndDelTicket(ctx context.Context, ticket string) ([]byte, error) {
+func (m *mockCasCache) GetAndDelTicket(ctx context.Context, ticket string) (domain.CasTicketData, error) {
 	val, ok := m.store[ticket]
 	if !ok {
-		return nil, cache.ErrCasTicketNotFound
+		return domain.CasTicketData{}, cache.ErrCasTicketNotFound
 	}
 	delete(m.store, ticket) // 原子核销模拟
 	return val, nil
@@ -42,11 +44,11 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	userRepo := repomocks.NewMockIUserRepository(ctrl)
+	claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)
 	clientRepo := repomocks.NewMockIApplicationRepository(ctrl)
 	c := newMockCasCache()
 
-	svc := NewCasService(c, userRepo, clientRepo)
+	svc := NewCasService(c, claimsResolver, clientRepo)
 
 	ctx := context.Background()
 	serviceURL := "https://example.com/core/auth/cas/login/?next=%2Fui%2F"
@@ -96,14 +98,15 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 	ticket2, err := svc.GenerateTicket(ctx, 1001, 2, "admin", serviceURL)
 	require.NoError(t, err)
 
-	userRepo.EXPECT().FindById(gomock.Any(), int64(1001)).Return(domain.User{
-		ID:       1001,
+	claimsResolver.EXPECT().Resolve(gomock.Any(), claims.IdentityRef{TenantID: 2, UserID: 1001, Username: "admin"}).Return(claims.Claims{
+		Subject:  "1001",
+		UserID:   1001,
 		Username: "admin",
+		Name:     "系统管理员",
+		Nickname: "系统管理员",
 		Email:    "admin@example.com",
-		Profile: domain.UserProfile{
-			Nickname: "系统管理员",
-			Phone:    "13800138000",
-		},
+		Phone:    "13800138000",
+		TenantID: 2,
 	}, nil)
 
 	result, err := svc.ValidateTicket(ctx, ticket2, serviceURL)
@@ -136,8 +139,8 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 	}, nil)
 	ticket3, err := svc.GenerateTicket(ctx, 1001, 1, "admin", serviceURL)
 	require.NoError(t, err)
-	userRepo.EXPECT().FindById(gomock.Any(), int64(1001)).Return(domain.User{
-		ID:       1001,
+	claimsResolver.EXPECT().Resolve(gomock.Any(), claims.IdentityRef{TenantID: 1, UserID: 1001, Username: "admin"}).Return(claims.Claims{
+		UserID:   1001,
 		Username: "admin",
 	}, nil)
 	ok, username := svc.ValidatePlainText(ctx, ticket3, serviceURL)

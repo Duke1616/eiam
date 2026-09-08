@@ -34,6 +34,8 @@ import (
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
 	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
+	claimssvc "github.com/Duke1616/eiam/internal/service/idp/claims"
+	oidcsvc "github.com/Duke1616/eiam/internal/service/idp/oidc"
 	idphdl "github.com/Duke1616/eiam/internal/web/idp"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
@@ -206,7 +208,8 @@ var (
 		dao.NewApplicationDAO,
 		repository.NewApplicationRepository,
 		idpsvc.NewApplicationService,
-		idpsvc.NewService,
+		claimssvc.NewClaimsResolver,
+		oidcsvc.NewService,
 		cassvc.NewCasService,
 		InitKeyManager,
 		idphdl.NewHandler,

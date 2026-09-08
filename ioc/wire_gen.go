@@ -18,6 +18,8 @@ import (
 	"github.com/Duke1616/eiam/internal/service/group"
 	"github.com/Duke1616/eiam/internal/service/idp"
 	"github.com/Duke1616/eiam/internal/service/idp/cas"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
+	"github.com/Duke1616/eiam/internal/service/idp/oidc"
 	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
@@ -132,15 +134,16 @@ func InitApp() (*App, error) {
 	iApplicationDAO := dao.NewApplicationDAO(db)
 	iOidcCache := cache.NewOidcCache(cmdable)
 	iApplicationRepository := repository.NewApplicationRepository(iApplicationDAO, iOidcCache)
-	iApplicationService := idp.NewApplicationService(iApplicationRepository, iAuditProducer)
+	idpIService := idp.NewApplicationService(iApplicationRepository)
+	iClaimsResolver := claims.NewClaimsResolver(iUserRepository, iPermissionService)
 	iKeyManager, err := InitKeyManager(iOidcCache)
 	if err != nil {
 		return nil, err
 	}
-	idpIService := idp.NewService(iApplicationRepository, iUserRepository, iPermissionService, iTenantService, iOidcCache, iKeyManager, iAuditProducer)
+	iOidcService := oidc.NewService(iApplicationRepository, iClaimsResolver, iTenantService, iOidcCache, iKeyManager, iAuditProducer)
 	iCasCache := cache.NewCasCache(cmdable)
-	iCasService := cas.NewCasService(iCasCache, iUserRepository, iApplicationRepository)
-	idpHandler := idp2.NewHandler(iApplicationService, idpIService, iCasService)
+	iCasService := cas.NewCasService(iCasCache, iClaimsResolver, iApplicationRepository)
+	idpHandler := idp2.NewHandler(idpIService, iOidcService, iCasService)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, auditHandler, idpHandler, tenancyBuilder, iPermissionService, iAuditProducer)
 	registry := InitRegistry(clientv3Client)

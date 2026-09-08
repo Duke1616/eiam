@@ -1,7 +1,9 @@
-package idp
+package oidc
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -13,8 +15,9 @@ import (
 	auditevt "github.com/Duke1616/eiam/internal/event/audit"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
-	"github.com/Duke1616/eiam/internal/service/idp/grant"
-	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/idp"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
+	"github.com/Duke1616/eiam/internal/service/idp/oidc/grant"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/go-jose/go-jose/v4"
@@ -43,10 +46,10 @@ type AuthorizeResult struct {
 	RedirectURL    string `json:"redirect_url"`
 }
 
-// IService OpenID Connect / OAuth2.0 身份提供商核心协议服务接口
+// IOidcService OpenID Connect / OAuth2.0 身份提供商核心协议服务接口
 //
-//go:generate mockgen -source=./service.go -package=idpmocks -destination=./mocks/service.mock.go -typed IService
-type IService interface {
+//go:generate mockgen -source=./service.go -package=oidcmocks -destination=./mocks/service.mock.go -typed IOidcService
+type IOidcService interface {
 	// Authorize 校验授权请求，对于第三方应用触发 Consent，对于第一方应用直接签发 Code
 	Authorize(ctx context.Context, req AuthorizeRequest) (*AuthorizeResult, error)
 	// GetConsentInfo 获取待确认的授权信息详情 (用于前端展示授权页面)
@@ -65,35 +68,35 @@ type IService interface {
 	GetJWKS(ctx context.Context) jose.JSONWebKeySet
 }
 
+// IService 兼容别名
+type IService = IOidcService
+
 type service struct {
-	repo          repository.IApplicationRepository
-	userRepo      repository.IUserRepository
-	permSvc       permission.IPermissionService
-	tenantSvc     tenant.ITenantService
-	cache         cache.IOidcCache
-	km            IKeyManager
-	auditProducer auditevt.IAuditProducer
-	grantHandlers map[string]grant.IGrantHandler
+	repo           repository.IApplicationRepository
+	claimsResolver claims.IClaimsResolver
+	tenantSvc      tenant.ITenantService
+	cache          cache.IOidcCache
+	km             IKeyManager
+	auditProducer  auditevt.IAuditProducer
+	grantHandlers  map[string]grant.IGrantHandler
 }
 
 // NewService 构造 IdP 协议服务实例
 func NewService(
 	repo repository.IApplicationRepository,
-	userRepo repository.IUserRepository,
-	permSvc permission.IPermissionService,
+	claimsResolver claims.IClaimsResolver,
 	tenantSvc tenant.ITenantService,
 	cache cache.IOidcCache,
 	km IKeyManager,
 	auditProducer auditevt.IAuditProducer,
-) IService {
+) IOidcService {
 	s := &service{
-		repo:          repo,
-		userRepo:      userRepo,
-		permSvc:       permSvc,
-		tenantSvc:     tenantSvc,
-		cache:         cache,
-		km:            km,
-		auditProducer: auditProducer,
+		repo:           repo,
+		claimsResolver: claimsResolver,
+		tenantSvc:      tenantSvc,
+		cache:          cache,
+		km:             km,
+		auditProducer:  auditProducer,
 	}
 
 	secLogFn := func(ctx context.Context, app domain.Application, action, failReason string) {
@@ -102,8 +105,8 @@ func NewService(
 
 	// 注册授权模式策略 (Strategy Pattern)
 	s.grantHandlers = map[string]grant.IGrantHandler{
-		"authorization_code": grant.NewAuthCodeGrantHandler(userRepo, permSvc, cache, km, secLogFn),
-		"refresh_token":      grant.NewRefreshTokenGrantHandler(userRepo, permSvc, cache, km),
+		"authorization_code": grant.NewAuthCodeGrantHandler(claimsResolver, cache, km, secLogFn),
+		"refresh_token":      grant.NewRefreshTokenGrantHandler(claimsResolver, cache, km),
 	}
 
 	return s
@@ -328,28 +331,25 @@ func (s *service) GetUserInfo(ctx context.Context, tokenString string) (*domain.
 		return nil, fmt.Errorf("token 已被撤销")
 	}
 
-	var claims domain.IDTokenClaims
-	_, err = s.km.VerifyJWT(tokenString, &claims)
+	var tokenClaims domain.IDTokenClaims
+	_, err = s.km.VerifyJWT(tokenString, &tokenClaims)
 	if err != nil {
 		return nil, fmt.Errorf("令牌无效或已过期: %w", err)
 	}
 
-	userID, _ := strconv.ParseInt(claims.Subject, 10, 64)
+	userID, _ := strconv.ParseInt(tokenClaims.Subject, 10, 64)
 
-	// 绑定 Token 所在租户空间，获取该租户下的最新角色与名片信息
-	roles, profile := grant.FetchUserClaims(ctx, claims.TenantID, userID, claims.PreferredUsername, s.permSvc, s.userRepo)
+	// 绑定 Token 所在租户空间，获取该租户下的最新标准化身份声明并输出 UserInfo
+	userClaims, err := s.claimsResolver.Resolve(ctx, claims.IdentityRef{
+		TenantID: tokenClaims.TenantID,
+		UserID:   userID,
+		Username: tokenClaims.PreferredUsername,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("解析用户身份声明失败: %w", err)
+	}
 
-	return &domain.OidcUserInfo{
-		Subject:           strconv.FormatInt(userID, 10),
-		PreferredUsername: claims.PreferredUsername,
-		Name:              profile.Nickname,
-		Nickname:          profile.Nickname,
-		Email:             profile.Email,
-		EmailVerified:     profile.Email != "",
-		PhoneNumber:       profile.Phone,
-		TenantID:          claims.TenantID,
-		Roles:             roles,
-	}, nil
+	return userClaims.ToOidcUserInfo(), nil
 }
 
 // GetDiscoveryConfig 返回标准 OIDC 发现元数据
@@ -403,7 +403,7 @@ func (s *service) generateAndSaveAuthCode(ctx context.Context, req AuthorizeRequ
 }
 
 func (s *service) recordAudit(ctx context.Context, tenantID int64, action, resourceID, resourceName, status, failReason string) {
-	recordAudit(ctx, s.auditProducer, tenantID, action, resourceID, resourceName, status, failReason)
+	idp.RecordAudit(ctx, s.auditProducer, tenantID, action, resourceID, resourceName, status, failReason)
 }
 
 
@@ -417,4 +417,13 @@ func buildErrorRedirectURL(redirectURI, errCode, errDesc, state string) (string,
 		res += "&state=" + state
 	}
 	return res, nil
+}
+
+// generateRandomString 生成指定长度的高强度加密随机字符串 (URL 安全)
+func generateRandomString(byteLen int) (string, error) {
+	b := make([]byte, byteLen)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }

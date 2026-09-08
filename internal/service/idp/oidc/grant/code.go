@@ -10,33 +10,29 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
-	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
-	"github.com/Duke1616/eiam/internal/service/permission"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
 )
 
 type authCodeGrantHandler struct {
-	userRepo repository.IUserRepository
-	permSvc  permission.IPermissionService
-	cache    cache.IOidcCache
-	signer   IKeySigner
-	secLogFn func(ctx context.Context, app domain.Application, action, failReason string)
+	claimsResolver claims.IClaimsResolver
+	cache          cache.IOidcCache
+	signer         IKeySigner
+	secLogFn       func(ctx context.Context, app domain.Application, action, failReason string)
 }
 
 // NewAuthCodeGrantHandler 构造授权码换发 Token 策略实例
 func NewAuthCodeGrantHandler(
-	userRepo repository.IUserRepository,
-	permSvc permission.IPermissionService,
+	claimsResolver claims.IClaimsResolver,
 	cache cache.IOidcCache,
 	signer IKeySigner,
 	secLogFn func(ctx context.Context, app domain.Application, action, failReason string),
 ) IGrantHandler {
 	return &authCodeGrantHandler{
-		userRepo: userRepo,
-		permSvc:  permSvc,
-		cache:    cache,
-		signer:   signer,
-		secLogFn: secLogFn,
+		claimsResolver: claimsResolver,
+		cache:          cache,
+		signer:         signer,
+		secLogFn:       secLogFn,
 	}
 }
 
@@ -85,18 +81,21 @@ func (h *authCodeGrantHandler) Handle(ctx context.Context, req domain.TokenReque
 		return nil, errs.ErrApplicationSecretWrong
 	}
 
-	// 4. 获取授权码绑定租户下的用户角色与名片信息
-	roles, profile := FetchUserClaims(ctx, authCode.TenantID, authCode.UserID, authCode.Username, h.permSvc, h.userRepo)
+	// 4. 获取授权码绑定租户下的标准化用户身份声明
+	userClaims, err := h.claimsResolver.Resolve(ctx, claims.IdentityRef{
+		TenantID: authCode.TenantID,
+		UserID:   authCode.UserID,
+		Username: authCode.Username,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("解析用户身份声明失败: %w", err)
+	}
 
 	// 5. 统一签发 AccessToken 与 IDToken
 	accessToken, idToken, err := IssueTokenPair(h.signer, TokenPayload{
 		IssuerURL: issuerURL,
 		ClientID:  app.ClientID,
-		UserID:    authCode.UserID,
-		Username:  authCode.Username,
-		TenantID:  authCode.TenantID,
-		Profile:   profile,
-		Roles:     roles,
+		Claims:    userClaims,
 		Nonce:     authCode.Nonce,
 	})
 	if err != nil {

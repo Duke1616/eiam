@@ -1,4 +1,4 @@
-package idp
+package oidc
 
 import (
 	"context"
@@ -12,7 +12,8 @@ import (
 	auditmocks "github.com/Duke1616/eiam/internal/event/audit/mocks"
 	cachemocks "github.com/Duke1616/eiam/internal/repository/cache/mocks"
 	repomocks "github.com/Duke1616/eiam/internal/repository/mocks"
-	permmocks "github.com/Duke1616/eiam/internal/service/permission/mocks"
+	"github.com/Duke1616/eiam/internal/service/idp/claims"
+	claimsmocks "github.com/Duke1616/eiam/internal/service/idp/claims/mocks"
 	tenantmocks "github.com/Duke1616/eiam/internal/service/tenant/mocks"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -206,12 +207,11 @@ func TestService_Authorize_AutoConsent(t *testing.T) {
 			defer ctrl.Finish()
 
 			repo, oidcCache, tenantSvc := tc.mock(ctrl)
-			userRepo := repomocks.NewMockIUserRepository(ctrl)
-			permSvc := permmocks.NewMockIPermissionService(ctrl)
+			claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)
 			audit := auditmocks.NewMockIAuditProducer(ctrl)
 			km := newTestKeyManager(t)
 
-			svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
+			svc := NewService(repo, claimsResolver, tenantSvc, oidcCache, km, audit)
 			res, err := svc.Authorize(context.Background(), tc.req)
 			if tc.wantErr != nil {
 				assert.Error(t, err)
@@ -230,8 +230,7 @@ func TestService_ConsentFlow(t *testing.T) {
 	defer ctrl.Finish()
 
 	repo := repomocks.NewMockIApplicationRepository(ctrl)
-	userRepo := repomocks.NewMockIUserRepository(ctrl)
-	permSvc := permmocks.NewMockIPermissionService(ctrl)
+	claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)
 	oidcCache := cachemocks.NewMockIOidcCache(ctrl)
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
 	km := newTestKeyManager(t)
@@ -256,7 +255,7 @@ func TestService_ConsentFlow(t *testing.T) {
 	oidcCache.EXPECT().GetConsentContext(gomock.Any(), "consent_123").Return(data, nil)
 
 	tenantSvc := tenantmocks.NewMockITenantService(ctrl)
-	svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
+	svc := NewService(repo, claimsResolver, tenantSvc, oidcCache, km, audit)
 	info, err := svc.GetConsentInfo(context.Background(), "consent_123")
 	assert.NoError(t, err)
 	assert.Equal(t, "Grafana", info.ClientName)
@@ -281,8 +280,6 @@ func TestService_ExchangeToken_RefreshToken_Rotation(t *testing.T) {
 	defer ctrl.Finish()
 
 	repo := repomocks.NewMockIApplicationRepository(ctrl)
-	userRepo := repomocks.NewMockIUserRepository(ctrl)
-	permSvc := permmocks.NewMockIPermissionService(ctrl)
 	tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 	oidcCache := cachemocks.NewMockIOidcCache(ctrl)
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
@@ -315,15 +312,17 @@ func TestService_ExchangeToken_RefreshToken_Rotation(t *testing.T) {
 	oidcCache.EXPECT().DeleteRefreshToken(gomock.Any(), "old_refresh_token_123").Return(nil)
 	oidcCache.EXPECT().SaveRefreshToken(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	oidcCache.EXPECT().TrackUserRefreshToken(gomock.Any(), "2001", gomock.Any()).Return(nil)
-
-	permSvc.EXPECT().GetRolesForUser(gomock.Any(), "backend_user").Return([]string{"admin"}, nil)
-	userRepo.EXPECT().FindById(gomock.Any(), int64(2001)).Return(domain.User{
-		ID:       2001,
+	claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)
+	claimsResolver.EXPECT().Resolve(gomock.Any(), claims.IdentityRef{TenantID: 1, UserID: 2001, Username: "backend_user"}, gomock.Any()).Return(claims.Claims{
+		Subject:  "2001",
+		UserID:   2001,
 		Username: "backend_user",
 		Email:    "backend@example.com",
+		Roles:    []string{"developer"},
+		TenantID: 1,
 	}, nil)
 
-	svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
+	svc := NewService(repo, claimsResolver, tenantSvc, oidcCache, km, audit)
 
 	res, err := svc.ExchangeToken(context.Background(), domain.TokenRequest{
 		GrantType:    "refresh_token",
@@ -343,8 +342,7 @@ func TestService_RevokeToken(t *testing.T) {
 	defer ctrl.Finish()
 
 	repo := repomocks.NewMockIApplicationRepository(ctrl)
-	userRepo := repomocks.NewMockIUserRepository(ctrl)
-	permSvc := permmocks.NewMockIPermissionService(ctrl)
+	claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)
 	tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 	oidcCache := cachemocks.NewMockIOidcCache(ctrl)
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
@@ -363,14 +361,14 @@ func TestService_RevokeToken(t *testing.T) {
 	oidcCache.EXPECT().DeleteRefreshToken(gomock.Any(), "target_token").Return(nil)
 	oidcCache.EXPECT().RevokeToken(gomock.Any(), "target_token", 24*time.Hour).Return(nil)
 
-	svc := NewService(repo, userRepo, permSvc, tenantSvc, oidcCache, km, audit)
+	svc := NewService(repo, claimsResolver, tenantSvc, oidcCache, km, audit)
 
 	err := svc.RevokeToken(context.Background(), "target_token", "refresh_token", "client_rev", rawSecret)
 	assert.NoError(t, err)
 }
 
 func TestService_GetDiscoveryConfig(t *testing.T) {
-	svc := NewService(nil, nil, nil, nil, nil, nil, nil)
+	svc := NewService(nil, nil, nil, nil, nil, nil)
 
 	t.Run("默认配置下不暴露 end_session 且标准暴露 revocation", func(t *testing.T) {
 		viper.Set("idp.enable_slo", false)
