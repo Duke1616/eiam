@@ -135,9 +135,7 @@ func (s *casService) validateServiceRegistration(ctx context.Context, tenantID i
 
 func hasMatchingApp(apps []domain.Application, service string) bool {
 	return slices.ContainsFunc(apps, func(a domain.Application) bool {
-		// 校验协议类型匹配：优先匹配 CAS 接入应用，同时平滑兼容未配置协议类型的历史应用
-		isProtocolMatch := a.SupportsProtocol(domain.ProtocolCAS) || a.SupportsProtocol(domain.ProtocolOIDC)
-		return isProtocolMatch && a.HasRedirectURI(service)
+		return a.SupportsProtocol(domain.ProtocolCAS) && a.HasRedirectURI(service)
 	})
 }
 

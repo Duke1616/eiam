@@ -140,20 +140,28 @@ func (a *Application) Validate() error {
 	return nil
 }
 
-// HasRedirectURI 遵循 RFC 6749 Section 3.1.2 严格校验回调地址白名单 (防开放重定向)
+// HasRedirectURI 遵循具体协议规范自适应校验回调地址是否合法 (OIDC 精确比对 / CAS 路径前缀与同源比对)
 func (a *Application) HasRedirectURI(rawURI string) bool {
+	if a.Protocol.IsCAS() {
+		return a.matchesCasService(rawURI)
+	}
+	return a.matchesOIDCRedirectURI(rawURI)
+}
+
+// matchesOIDCRedirectURI 遵循 RFC 6749 Section 3.1.2 严格校验 OAuth 2.0 / OIDC 回调地址白名单 (防开放重定向)
+func (a *Application) matchesOIDCRedirectURI(rawURI string) bool {
 	parsed, err := url.Parse(rawURI)
 	if err != nil || !parsed.IsAbs() || parsed.Fragment != "" {
 		// RFC 6749 禁止回调 URL 携带 Fragment (#)
 		return false
 	}
 
-	// 精确匹配
+	// 1. 完全字符串精确匹配
 	if slices.Contains(a.RedirectURIs, rawURI) {
 		return true
 	}
 
-	// 本地开发调试友好性：支持 localhost / 127.0.0.1 动态端口匹配
+	// 2. 本地开发调试友好性：支持 localhost / 127.0.0.1 动态端口匹配
 	if parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" {
 		for _, allowed := range a.RedirectURIs {
 			allowedParsed, err := url.Parse(allowed)
@@ -162,6 +170,48 @@ func (a *Application) HasRedirectURI(rawURI string) bool {
 					return true
 				}
 			}
+		}
+	}
+
+	return false
+}
+
+// matchesCasService 遵循 CAS 协议规范比对目标 Service URL 是否在应用白名单中
+// 支持同源校验、路径前缀匹配，并安全忽略客户端动态 Query 参数 (如 ?next=...)
+func (a *Application) matchesCasService(rawService string) bool {
+	parsedReq, err := url.Parse(rawService)
+	if err != nil || !parsedReq.IsAbs() {
+		return false
+	}
+
+	for _, allowed := range a.RedirectURIs {
+		// 1. 完全精确相等
+		if allowed == rawService {
+			return true
+		}
+
+		allowedParsed, err := url.Parse(allowed)
+		if err != nil || !allowedParsed.IsAbs() {
+			continue
+		}
+
+		// 2. 协议与主机严格一致 (大小写不敏感)
+		if !strings.EqualFold(allowedParsed.Scheme, parsedReq.Scheme) ||
+			!strings.EqualFold(allowedParsed.Host, parsedReq.Host) {
+			continue
+		}
+
+		// 3. 路径匹配：若白名单中路径为空或为根路径 "/"，表示放行该域名下的所有服务
+		allowedPath := strings.TrimRight(allowedParsed.Path, "/")
+		reqPath := strings.TrimRight(parsedReq.Path, "/")
+
+		if allowedPath == "" || allowedPath == "/" {
+			return true
+		}
+
+		// 否则请求路径必须以白名单路径为前缀 (如 /core/auth/cas 匹配 /core/auth/cas/login/)
+		if reqPath == allowedPath || strings.HasPrefix(reqPath, allowedPath+"/") {
+			return true
 		}
 	}
 
