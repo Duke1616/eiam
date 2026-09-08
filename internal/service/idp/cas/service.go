@@ -170,8 +170,9 @@ func (s *casService) ValidateTicket(ctx context.Context, ticket, service string)
 	}
 
 	// 组装返回给客户端（如 JumpServer）的标准用户属性
+	// NOTE: 严禁在此暴露 "id" 字段！因为下游系统 (如 Django/JumpServer) 用户模型的主键字段名为 id 且为 UUIDField，
+	// 若返回数字 id 会被 django_cas_ng 反射覆盖主键，导致其在保存时抛出 ['“1”不是一个有效的UUID']。
 	attributes := map[string]any{
-		"id":          user.ID,
 		"email":       user.Email,
 		"name":        user.Profile.Nickname,
 		"displayName": user.Profile.Nickname,
