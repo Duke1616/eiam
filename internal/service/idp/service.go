@@ -403,26 +403,9 @@ func (s *service) generateAndSaveAuthCode(ctx context.Context, req AuthorizeRequ
 }
 
 func (s *service) recordAudit(ctx context.Context, tenantID int64, action, resourceID, resourceName, status, failReason string) {
-	go func() {
-		defer func() { _ = recover() }()
-		asyncCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		_ = s.auditProducer.RecordOperation(asyncCtx, domain.OperationLog{
-			TenantID:     tenantID,
-			Service:      "iam",
-			Module:       "idp",
-			Action:       action,
-			ResourceID:   resourceID,
-			ResourceName: resourceName,
-			Status:       status,
-			FailReason:   failReason,
-			ClientIP:     ctxutil.GetClientIP(ctx),
-			UserAgent:    ctxutil.GetUserAgent(ctx),
-			Ctime:        time.Now().UnixMilli(),
-		})
-	}()
+	recordAudit(ctx, s.auditProducer, tenantID, action, resourceID, resourceName, status, failReason)
 }
+
 
 func buildErrorRedirectURL(redirectURI, errCode, errDesc, state string) (string, error) {
 	sep := "?"

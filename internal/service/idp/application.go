@@ -5,13 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	auditevt "github.com/Duke1616/eiam/internal/event/audit"
 	"github.com/Duke1616/eiam/internal/repository"
-	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 )
@@ -188,26 +186,9 @@ func (s *applicationService) generateSecret() (string, error) {
 
 // recordAudit 异步记录审计操作日志
 func (s *applicationService) recordAudit(ctx context.Context, tenantID int64, action, resourceID, resourceName, status, failReason string) {
-	go func() {
-		defer func() { _ = recover() }()
-		asyncCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		_ = s.auditProducer.RecordOperation(asyncCtx, domain.OperationLog{
-			TenantID:     tenantID,
-			Service:      "iam",
-			Module:       "idp",
-			Action:       action,
-			ResourceID:   resourceID,
-			ResourceName: resourceName,
-			Status:       status,
-			FailReason:   failReason,
-			ClientIP:     ctxutil.GetClientIP(ctx),
-			UserAgent:    ctxutil.GetUserAgent(ctx),
-			Ctime:        time.Now().UnixMilli(),
-		})
-	}()
+	recordAudit(ctx, s.auditProducer, tenantID, action, resourceID, resourceName, status, failReason)
 }
+
 
 // generateRandomString 生成指定长度的高强度加密随机字符串 (URL 安全)
 func generateRandomString(byteLen int) (string, error) {

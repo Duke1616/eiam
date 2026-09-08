@@ -88,6 +88,7 @@ func (h *Handler) CasServiceValidate(c *gin.Context) {
 		strings.Contains(strings.ToLower(c.GetHeader("Accept")), "application/json")
 
 	if service == "" || ticket == "" {
+		h.logger.Warn("CAS 验票参数缺失", elog.String("service", service), elog.String("ticket", ticket))
 		if isJSON {
 			c.JSON(http.StatusOK, h.casSvc.BuildFailureJSON("INVALID_REQUEST", "缺少 ticket 或 service 参数"))
 			return
@@ -99,6 +100,11 @@ func (h *Handler) CasServiceValidate(c *gin.Context) {
 
 	result, err := h.casSvc.ValidateTicket(c.Request.Context(), ticket, service)
 	if err != nil {
+		h.logger.Warn("CAS 票据核销失败",
+			elog.String("ticket", ticket),
+			elog.String("service", service),
+			elog.FieldErr(err),
+		)
 		if isJSON {
 			c.JSON(http.StatusOK, h.casSvc.BuildFailureJSON("INVALID_TICKET", err.Error()))
 			return
@@ -107,6 +113,13 @@ func (h *Handler) CasServiceValidate(c *gin.Context) {
 		c.String(http.StatusOK, h.casSvc.BuildFailureXML("INVALID_TICKET", err.Error()))
 		return
 	}
+
+	h.logger.Info("CAS 票据核销成功并签发用户信息",
+		elog.String("ticket", ticket),
+		elog.String("service", service),
+		elog.String("username", result.User.Username),
+		elog.Int64("user_id", result.User.ID),
+	)
 
 	if isJSON {
 		c.JSON(http.StatusOK, h.casSvc.BuildSuccessJSON(result))
