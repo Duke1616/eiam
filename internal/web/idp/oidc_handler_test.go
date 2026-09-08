@@ -52,7 +52,7 @@ func (s *OIDCHandlerTestSuite) SetupTest() {
 		c.Next()
 	})
 
-	hdl := NewHandler(nil, s.svc, nil)
+	hdl := NewHandler(nil, s.svc, nil, nil)
 	hdl.PublicRoutes(engine)
 	s.server = engine
 }

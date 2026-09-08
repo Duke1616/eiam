@@ -12,6 +12,7 @@ import (
 	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
 	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
 	oidcsvc "github.com/Duke1616/eiam/internal/service/idp/oidc"
+	samlsvc "github.com/Duke1616/eiam/internal/service/idp/saml"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sessionx"
 	"github.com/Duke1616/eiam/pkg/web/capability"
@@ -23,22 +24,24 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Handler 统一身份提供商 Web 接入层 (原生 OIDC & CAS 2.0/3.0 实现)
+// Handler 统一身份提供商 Web 接入层 (原生 OIDC, CAS 2.0/3.0 与 SAML 2.0 实现)
 type Handler struct {
 	capability.IRegistry
-	appSvc idpsvc.IService
-	svc    oidcsvc.IOidcService
-	casSvc cassvc.ICasService
-	logger *elog.Component
+	appSvc  idpsvc.IService
+	svc     oidcsvc.IOidcService
+	casSvc  cassvc.ICasService
+	samlSvc samlsvc.ISamlService
+	logger  *elog.Component
 }
 
 // NewHandler 构造 IdP Web 处理器
-func NewHandler(appSvc idpsvc.IService, svc oidcsvc.IOidcService, casSvc cassvc.ICasService) *Handler {
+func NewHandler(appSvc idpsvc.IService, svc oidcsvc.IOidcService, casSvc cassvc.ICasService, samlSvc samlsvc.ISamlService) *Handler {
 	return &Handler{
 		IRegistry: capability.NewRegistry("iam", "idp", "统一身份提供商").DefaultScope(capability.ScopeTenant),
 		appSvc:    appSvc,
 		svc:       svc,
 		casSvc:    casSvc,
+		samlSvc:   samlSvc,
 		logger:    elog.DefaultLogger,
 	}
 }
@@ -78,9 +81,16 @@ func (h *Handler) PublicRoutes(server *gin.Engine) {
 	server.GET("/cas/p3/serviceValidate", h.CasServiceValidate) // CAS 3.0 别名
 	server.GET("/cas/validate", h.CasValidate)                  // CAS 1.0 兼容
 	server.GET("/cas/logout", h.CasLogout)
+
+	// 9. 标准 SAML 2.0 单点登录协议端点 (阿里云/GitLab/Grafana/JumpServer 等接入)
+	server.GET("/saml/metadata", h.SamlMetadata)
+	server.GET("/saml/certificate", h.SamlCertificate)
+	server.GET("/saml/sso", h.SamlSSO)
+	server.POST("/saml/sso", h.SamlSSO)
+	server.GET("/saml/login/:id", h.SamlIdPInitiatedLogin)
 }
 
-// PrivateRoutes 注册租户管理员的应用管理接口
+// PrivateRoutes 注册租户管理员的应用管理接口 (需要登录态与鉴权保护)
 func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	g := server.Group("/api/idp/application")
 	g.POST("/create", h.Define("创建接入应用", "create").
@@ -100,6 +110,14 @@ func (h *Handler) PrivateRoutes(server *gin.Engine) {
 	)
 	g.GET("/detail/:id", h.Define("接入应用详情", "detail").
 		Bind(ginx.W(h.GetApplicationDetail)),
+	)
+
+	samlGroup := server.Group("/api/idp/saml")
+	samlGroup.GET("/descriptor", h.Define("获取SAML接入描述符", "saml_descriptor").
+		Bind(ginx.W(h.SamlDescriptor)),
+	)
+	samlGroup.POST("/certificate/rotate", h.Define("轮换SAML证书", "saml_rotate_cert").
+		Bind(ginx.B[RotateCertificateReq](h.SamlRotateCertificate)),
 	)
 }
 
@@ -132,28 +150,13 @@ func (h *Handler) Authorize(c *gin.Context) {
 		return
 	}
 
-	// 1. 检查主站登录态
-	sess, err := session.Get(&ginx.Context{Context: c})
-	claims := session.Claims{}
-	if err == nil && sess != nil {
-		claims = sess.Claims()
-	}
-
-	// 2. 若未登录，重定向到登录页并暂存当前请求完整 URL
-	if claims.Uid <= 0 {
-		loginURL := viper.GetString("idp.login_url")
-		if loginURL == "" {
-			loginURL = "/login"
-		}
-		rawReqURL := c.Request.URL.RequestURI()
-		c.Redirect(http.StatusFound, fmt.Sprintf("%s?redirect=%s", loginURL, url.QueryEscape(rawReqURL)))
+	// 1. 检查主站登录态并拦截未登录重定向
+	userSess, ok := h.requireAuth(c)
+	if !ok {
 		return
 	}
 
-	// 3. 用户已登录，调用 Service 计算授权或 Consent 交互
-	username, _ := sess.Get(c.Request.Context(), "username").AsString()
-	tid, _ := sess.Get(c.Request.Context(), "tenant_id").AsInt64()
-
+	// 2. 用户已登录，调用 Service 计算授权或 Consent 交互
 	result, err := h.svc.Authorize(c.Request.Context(), oidcsvc.AuthorizeRequest{
 		ClientID:            clientID,
 		RedirectURI:         redirectURI,
@@ -163,9 +166,9 @@ func (h *Handler) Authorize(c *gin.Context) {
 		Nonce:               nonce,
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
-		UserID:              claims.Uid,
-		Username:            username,
-		TenantID:            tid,
+		UserID:              userSess.UserID,
+		Username:            userSess.Username,
+		TenantID:            userSess.TenantID,
 	})
 	if err != nil {
 		c.String(http.StatusBadRequest, fmt.Sprintf("授权失败: %v", err))

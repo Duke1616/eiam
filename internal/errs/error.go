@@ -70,4 +70,8 @@ var (
 	ErrCasTicketInvalid        = errors.New("票据无效或已过期")
 	ErrCasUserNotFound         = errors.New("凭据关联用户不存在或状态异常")
 	ErrCasServiceNotRegistered = errors.New("目标服务未在当前租户或系统级接入应用白名单中注册")
+	ErrSamlInvalidRequest       = errors.New("SAML 请求格式非法或无法解析")
+	ErrSamlIssuerNotRegistered  = errors.New("SAML 目标应用未在当前租户或系统级白名单中注册")
+	ErrSamlInvalidACSURL        = errors.New("SAML ACS 回调地址不在应用配置的合法白名单中")
+	ErrSamlSigningFailed        = errors.New("SAML 断言签名生成失败")
 )

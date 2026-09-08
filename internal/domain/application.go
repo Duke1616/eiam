@@ -245,8 +245,8 @@ func (a *Application) InitDefaultConfig() {
 		if len(a.Scopes) == 0 {
 			a.Scopes = []string{"openid", "profile", "email"}
 		}
-	} else if a.Protocol.IsCAS() {
-		// CAS 协议不需要 OIDC 专有的 response_types/grant_types/scopes，清理以保持数据纯粹
+	} else if a.Protocol.IsCAS() || a.Protocol.IsSAML() {
+		// CAS 与 SAML 协议不需要 OIDC 专有的 response_types/grant_types/scopes，清理以保持数据纯粹
 		a.ResponseTypes = nil
 		a.GrantTypes = nil
 		a.Scopes = nil

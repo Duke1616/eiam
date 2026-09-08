@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/crewjam/saml"
 )
 
 // Claims 统一身份声明模型 (规范化收敛 OIDC、CAS、SAML 协议的通用属性定义)
@@ -97,4 +98,45 @@ func (c Claims) ToOidcUserInfo() *domain.OidcUserInfo {
 		TenantID:          c.TenantID,
 		Roles:             c.Roles,
 	}
+}
+
+// ToSAMLAttributes 输出符合 SAML 2.0 规范的标准属性列表 (包含 basic 格式与企业常用属性映射)
+func (c Claims) ToSAMLAttributes() []saml.Attribute {
+	buildAttr := func(name string, values ...string) saml.Attribute {
+		attrVals := make([]saml.AttributeValue, 0, len(values))
+		for _, v := range values {
+			if v != "" {
+				attrVals = append(attrVals, saml.AttributeValue{
+					Type:  "xs:string",
+					Value: v,
+				})
+			}
+		}
+		return saml.Attribute{
+			Name:       name,
+			NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
+			Values:     attrVals,
+		}
+	}
+
+	attrs := []saml.Attribute{
+		buildAttr("uid", strconv.FormatInt(c.UserID, 10)),
+		buildAttr("username", c.Username),
+		buildAttr("name", c.Name),
+		buildAttr("displayName", c.Name),
+		buildAttr("email", c.Email),
+		buildAttr("tenant_id", strconv.FormatInt(c.TenantID, 10)),
+	}
+
+	if c.Phone != "" {
+		attrs = append(attrs, buildAttr("phone", c.Phone))
+	}
+	if c.JobTitle != "" {
+		attrs = append(attrs, buildAttr("title", c.JobTitle))
+	}
+	if len(c.Roles) > 0 {
+		attrs = append(attrs, buildAttr("roles", c.Roles...))
+	}
+
+	return attrs
 }

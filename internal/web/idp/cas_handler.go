@@ -34,34 +34,22 @@ func (h *Handler) CasLogin(c *gin.Context) {
 	renew := c.DefaultQuery("renew", "false") == "true"
 	gateway := c.DefaultQuery("gateway", "false") == "true"
 
-	// 1. 检查当前主站 Session 登录态
-	sess, err := session.Get(&ginx.Context{Context: c})
-	claims := session.Claims{}
-	if err == nil && sess != nil {
-		claims = sess.Claims()
-	}
+	userSess := h.getUserSession(c)
 
 	// 2. 状态判断：未登录 或 renew 强制重新认证
-	if claims.Uid <= 0 || renew {
+	if !userSess.IsAuthenticated() || renew {
 		// CAS gateway 规范：未登录时若指定了 gateway=true，不跳转登录页，直接带空参数回跳目标系统
-		if gateway && claims.Uid <= 0 {
+		if gateway && !userSess.IsAuthenticated() {
 			c.Redirect(http.StatusFound, service)
 			return
 		}
 
-		loginURL := viper.GetString("idp.login_url")
-		if loginURL == "" {
-			loginURL = "/login"
-		}
-		rawReqURL := c.Request.URL.RequestURI()
-		c.Redirect(http.StatusFound, fmt.Sprintf("%s?redirect=%s", loginURL, url.QueryEscape(rawReqURL)))
+		h.redirectToLogin(c)
 		return
 	}
 
 	// 3. 用户已登录，签发 Service Ticket (ST-xxxx)
-	username, _ := sess.Get(c.Request.Context(), "username").AsString()
-	tid, _ := sess.Get(c.Request.Context(), "tenant_id").AsInt64()
-	ticket, err := h.casSvc.GenerateTicket(c.Request.Context(), claims.Uid, tid, username, service)
+	ticket, err := h.casSvc.GenerateTicket(c.Request.Context(), userSess.UserID, userSess.TenantID, userSess.Username, service)
 	if err != nil {
 		if errors.Is(err, errs.ErrCasServiceNotRegistered) {
 			c.String(http.StatusForbidden, "目标服务未在当前租户或系统级接入应用白名单中注册，拒绝跳转")

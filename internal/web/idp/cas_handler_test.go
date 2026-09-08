@@ -47,7 +47,7 @@ func (s *CasHandlerTestSuite) SetupTest() {
 		c.Next()
 	})
 
-	hdl := NewHandler(nil, nil, s.casSvc)
+	hdl := NewHandler(nil, nil, s.casSvc, nil)
 	hdl.PublicRoutes(engine)
 	s.server = engine
 }

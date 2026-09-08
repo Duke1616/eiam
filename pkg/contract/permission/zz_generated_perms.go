@@ -2,6 +2,17 @@
 
 package permission
 
+// Audit 安全审计
+var Audit = struct {
+	Module        string
+	ViewAuth      string // 查看认证审计 [租户级]
+	ViewOperation string // 查看操作审计 [租户级]
+}{
+	Module:        "iam:audit",
+	ViewAuth:      "iam:audit:view_auth",
+	ViewOperation: "iam:audit:view_operation",
+}
+
 // Department 部门管理
 var Department = struct {
 	Module  string
@@ -71,6 +82,29 @@ var IdentitySource = struct {
 	Test:   "iam:identity_source:test",
 	Toggle: "iam:identity_source:toggle",
 	View:   "iam:identity_source:view",
+}
+
+// Idp 统一身份提供商
+var Idp = struct {
+	Module         string
+	Create         string // 创建接入应用 [租户级]
+	Delete         string // 删除接入应用 [租户级]
+	Detail         string // 接入应用详情 [租户级]
+	List           string // 接入应用列表 [租户级]
+	ResetSecret    string // 重置应用密钥 [租户级]
+	SamlDescriptor string // 获取SAML接入描述符 [租户级]
+	SamlRotateCert string // 轮换SAML证书 [租户级]
+	Update         string // 更新接入应用 [租户级]
+}{
+	Module:         "iam:idp",
+	Create:         "iam:idp:create",
+	Delete:         "iam:idp:delete",
+	Detail:         "iam:idp:detail",
+	List:           "iam:idp:list",
+	ResetSecret:    "iam:idp:reset_secret",
+	SamlDescriptor: "iam:idp:saml_descriptor",
+	SamlRotateCert: "iam:idp:saml_rotate_cert",
+	Update:         "iam:idp:update",
 }
 
 // Invitation 成员治理
@@ -219,7 +253,9 @@ var User = struct {
 	LdapRefresh      string // 刷新 LDAP 缓存 [租户级 · 子级]
 	LdapSearch       string // 搜索 LDAP [租户级 · 子级]
 	LdapSync         string // 同步 LDAP [租户级 · 子级]
+	Logout           string // 退出登录 [租户级 · 静默]
 	ManageIdentity   string // 治理外部身份 [租户级]
+	Profile          string // 个人信息 [租户级 · 静默]
 	UnbindIdentity   string // 解绑外部身份 [租户级]
 	View             string // 用户列表 [租户级]
 	ViewUserGroups   string // 查询用户所属分组 [租户级 · 跨域: group]
@@ -236,7 +272,9 @@ var User = struct {
 	LdapRefresh:      "iam:user.ldap:refresh",
 	LdapSearch:       "iam:user.ldap:search",
 	LdapSync:         "iam:user.ldap:sync",
+	Logout:           "iam:user:logout",
 	ManageIdentity:   "iam:user:manage_identity",
+	Profile:          "iam:user:profile",
 	UnbindIdentity:   "iam:user:unbind_identity",
 	View:             "iam:user:view",
 	ViewUserGroups:   "iam:user:view_user_groups",

@@ -13,7 +13,7 @@ func TestHandler_RouteRegistration(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := gin.New()
 
-	hdl := NewHandler(nil, nil, nil)
+	hdl := NewHandler(nil, nil, nil, nil)
 	assert.NotNil(t, hdl)
 
 	// 测试公共路由注册不 panic
@@ -25,7 +25,7 @@ func TestHandler_RouteRegistration(t *testing.T) {
 	routes := server.Routes()
 	assert.NotEmpty(t, routes)
 
-	// 验证私有管理路由挂载与公开 OIDC/CAS 路由
+	// 验证私有管理路由挂载与公开 OIDC/CAS/SAML 路由
 	expectedPaths := []string{
 		"/.well-known/openid-configuration",
 		"/oauth/v2/jwks",
@@ -40,6 +40,12 @@ func TestHandler_RouteRegistration(t *testing.T) {
 		"/cas/p3/serviceValidate",
 		"/cas/validate",
 		"/cas/logout",
+		"/saml/metadata",
+		"/saml/certificate",
+		"/saml/sso",
+		"/saml/login/:id",
+		"/api/idp/saml/descriptor",
+		"/api/idp/saml/certificate/rotate",
 		"/api/idp/application/create",
 		"/api/idp/application/update",
 		"/api/idp/application/reset_secret/:id",

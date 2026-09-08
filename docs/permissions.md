@@ -4,8 +4,21 @@
 >
 > 💡 **联动包含机制**：当为角色分配某项操作权限时，系统将**自动附带拥有**其“联动包含”中的权限，无需管理员手动重复勾选（例如：勾选“修改用户”会自动附带拥有“用户详情”权限）。
 
-- **受控业务模块数**: 9
-- **受控权限点总数**: 90
+- **受控业务模块数**: 11
+- **受控权限点总数**: 102
+
+
+## 模块: 安全审计 (`audit`)
+
+- **所属服务**: `iam`
+- **定义源码**: `internal/web/audit/handler.go`
+
+| 操作名称 | 完整权限码 | 作用域 | 归属类型 | 暴露状态 | 联动包含权限 | 宿主源码位置 |
+|:---|:---|:---|:---|:---|:---|:---|
+| 查看认证审计 | `iam:audit:view_auth` | 租户级 | 本级 | 正常 | - | `internal/web/audit/handler.go` 行 63 |
+| 查看操作审计 | `iam:audit:view_operation` | 租户级 | 本级 | 正常 | - | `internal/web/audit/handler.go` 行 66 |
+
+---
 
 
 ## 模块: 部门管理 (`department`)
@@ -66,6 +79,25 @@
 ---
 
 
+## 模块: 统一身份提供商 (`idp`)
+
+- **所属服务**: `iam`
+- **定义源码**: `internal/web/idp/handler.go`
+
+| 操作名称 | 完整权限码 | 作用域 | 归属类型 | 暴露状态 | 联动包含权限 | 宿主源码位置 |
+|:---|:---|:---|:---|:---|:---|:---|
+| 创建接入应用 | `iam:idp:create` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 96 |
+| 删除接入应用 | `iam:idp:delete` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 108 |
+| 接入应用详情 | `iam:idp:detail` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 111 |
+| 接入应用列表 | `iam:idp:list` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 105 |
+| 重置应用密钥 | `iam:idp:reset_secret` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 102 |
+| 获取SAML接入描述符 | `iam:idp:saml_descriptor` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 116 |
+| 轮换SAML证书 | `iam:idp:saml_rotate_cert` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 119 |
+| 更新接入应用 | `iam:idp:update` | 租户级 | 本级 | 正常 | - | `internal/web/idp/handler.go` 行 99 |
+
+---
+
+
 ## 模块: 成员治理 (`invitation`)
 
 - **所属服务**: `iam`
@@ -90,10 +122,10 @@
 
 | 操作名称 | 完整权限码 | 作用域 | 归属类型 | 暴露状态 | 联动包含权限 | 宿主源码位置 |
 |:---|:---|:---|:---|:---|:---|:---|
-| 权限资产清单 | `iam:permission:manifest` | 租户级 | 本级 | 正常 | 批量根据 URN 查询菜单详情 · `iam:permission:menus_by_urns` | `internal/web/permission/handler.go` 行 52 |
-| 批量根据 URN 查询菜单详情 | `iam:permission:menus_by_urns` | 租户级 | 本级 | 静默 (不暴露) | - | `internal/web/permission/handler.go` 行 68 |
-| 搜索授权主体 | `iam:permission:search_subjects` | 租户级 | 本级 | 正常 | - | `internal/web/permission/handler.go` 行 63 |
-| 授权治理列表 | `iam:permission:view_authorizations` | 租户级 | 本级 | 正常 | - | `internal/web/permission/handler.go` 行 58 |
+| 权限资产清单 | `iam:permission:manifest` | 租户级 | 本级 | 正常 | 批量根据 URN 查询菜单详情 · `iam:permission:menus_by_urns` | `internal/web/permission/handler.go` 行 51 |
+| 批量根据 URN 查询菜单详情 | `iam:permission:menus_by_urns` | 租户级 | 本级 | 静默 (不暴露) | - | `internal/web/permission/handler.go` 行 67 |
+| 搜索授权主体 | `iam:permission:search_subjects` | 租户级 | 本级 | 正常 | - | `internal/web/permission/handler.go` 行 62 |
+| 授权治理列表 | `iam:permission:view_authorizations` | 租户级 | 本级 | 正常 | - | `internal/web/permission/handler.go` 行 57 |
 
 ---
 
@@ -140,7 +172,7 @@
 | 查看个人角色 | `iam:role:view_mine` | 租户级 | 本级 | 正常 | - | `internal/web/role/handler.go` 行 93 |
 | 获取父角色 | `iam:role:view_parents` | 租户级 | 本级 | 正常 | - | `internal/web/role/handler.go` 行 88 |
 | 查询角色关联分组 | `iam:role:view_role_groups` | 租户级 | 跨域 (group) | 正常 | - | `internal/web/group/handler.go` 行 61 |
-| 角色关联用户列表 | `iam:role:view_role_members` | 租户级 | 跨域 (user) | 正常 | - | `internal/web/user/handler.go` 行 138 |
+| 角色关联用户列表 | `iam:role:view_role_members` | 租户级 | 跨域 (user) | 正常 | - | `internal/web/user/handler.go` 行 143 |
 | 查询角色策略 | `iam:role:view_role_policies` | 租户级 | 跨域 (policy) | 正常 | - | `internal/web/policy/handler.go` 行 89 |
 
 ---
@@ -153,19 +185,19 @@
 
 | 操作名称 | 完整权限码 | 作用域 | 归属类型 | 暴露状态 | 联动包含权限 | 宿主源码位置 |
 |:---|:---|:---|:---|:---|:---|:---|
-| 创建租户空间 | `iam:tenant:add` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 63 |
-| 分配租户成员 | `iam:tenant:assign` | 系统级 | 本级 | 正常 | 用户列表 · `iam:user:view` | `internal/web/tenant/handler.go` 行 95 |
-| 批量分配租户成员 | `iam:tenant:batch_assign` | 系统级 | 本级 | 正常 | 用户列表 · `iam:user:view` | `internal/web/tenant/handler.go` 行 102 |
-| 批量删除租户 | `iam:tenant:batch_delete` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 81 |
-| 批量移除租户成员 | `iam:tenant:batch_unassign` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 106 |
-| 删除租户空间 | `iam:tenant:delete` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 78 |
-| 修改租户信息 | `iam:tenant:edit` | 系统级 | 本级 | 正常 | 查看租户详情 · `iam:tenant:get` | `internal/web/tenant/handler.go` 行 74 |
-| 查看租户详情 | `iam:tenant:get` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 84 |
+| 创建租户空间 | `iam:tenant:add` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 64 |
+| 分配租户成员 | `iam:tenant:assign` | 系统级 | 本级 | 正常 | 用户列表 · `iam:user:view` | `internal/web/tenant/handler.go` 行 92 |
+| 批量分配租户成员 | `iam:tenant:batch_assign` | 系统级 | 本级 | 正常 | 用户列表 · `iam:user:view` | `internal/web/tenant/handler.go` 行 99 |
+| 批量删除租户 | `iam:tenant:batch_delete` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 80 |
+| 批量移除租户成员 | `iam:tenant:batch_unassign` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 103 |
+| 删除租户空间 | `iam:tenant:delete` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 77 |
+| 修改租户信息 | `iam:tenant:edit` | 系统级 | 本级 | 正常 | 查看租户详情 · `iam:tenant:get` | `internal/web/tenant/handler.go` 行 73 |
+| 查看租户详情 | `iam:tenant:get` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 83 |
 | 切换租户空间 | `iam:tenant:switch` | 租户级 | 本级 | 静默 (不暴露) | - | `internal/web/tenant/handler.go` 行 53 |
-| 移除租户成员 | `iam:tenant:unassign` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 99 |
-| 全量租户列表 | `iam:tenant:view` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 68 |
-| 批量查询租户 | `iam:tenant:view_by_ids` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 71 |
-| 查看租户成员 | `iam:tenant:view_members` | 租户级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 89 |
+| 移除租户成员 | `iam:tenant:unassign` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 96 |
+| 全量租户列表 | `iam:tenant:view` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 67 |
+| 批量查询租户 | `iam:tenant:view_by_ids` | 系统级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 70 |
+| 查看租户成员 | `iam:tenant:view_members` | 租户级 | 本级 | 正常 | - | `internal/web/tenant/handler.go` 行 88 |
 | 查询我的租户列表 | `iam:tenant:view_mine` | 租户级 | 本级 | 静默 (不暴露) | - | `internal/web/tenant/handler.go` 行 46 |
 
 ---
@@ -178,21 +210,23 @@
 
 | 操作名称 | 完整权限码 | 作用域 | 归属类型 | 暴露状态 | 联动包含权限 | 宿主源码位置 |
 |:---|:---|:---|:---|:---|:---|:---|
-| 创建用户 | `iam:user:add` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 95 |
-| 批量删除用户 | `iam:user:batch_delete` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 105 |
-| 删除用户 | `iam:user:delete` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 102 |
-| 修改用户 | `iam:user:edit` | 租户级 | 本级 | 正常 | 用户详情 · `iam:user:get` | `internal/web/user/handler.go` 行 98 |
-| 用户详情 | `iam:user:get` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 113 |
-| 刷新 LDAP 缓存 | `iam:user.ldap:refresh` | 租户级 | 子级 (ldap) | 正常 | - | `internal/web/user/handler.go` 行 125 |
-| 搜索 LDAP | `iam:user.ldap:search` | 租户级 | 子级 (ldap) | 正常 | - | `internal/web/user/handler.go` 行 119 |
-| 同步 LDAP | `iam:user.ldap:sync` | 租户级 | 子级 (ldap) | 正常 | - | `internal/web/user/handler.go` 行 122 |
-| 治理外部身份 | `iam:user:manage_identity` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 130 |
-| 解绑外部身份 | `iam:user:unbind_identity` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 133 |
-| 用户列表 | `iam:user:view` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 110 |
+| 创建用户 | `iam:user:add` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 100 |
+| 批量删除用户 | `iam:user:batch_delete` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 110 |
+| 删除用户 | `iam:user:delete` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 107 |
+| 修改用户 | `iam:user:edit` | 租户级 | 本级 | 正常 | 用户详情 · `iam:user:get` | `internal/web/user/handler.go` 行 103 |
+| 用户详情 | `iam:user:get` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 118 |
+| 刷新 LDAP 缓存 | `iam:user.ldap:refresh` | 租户级 | 子级 (ldap) | 正常 | - | `internal/web/user/handler.go` 行 130 |
+| 搜索 LDAP | `iam:user.ldap:search` | 租户级 | 子级 (ldap) | 正常 | - | `internal/web/user/handler.go` 行 124 |
+| 同步 LDAP | `iam:user.ldap:sync` | 租户级 | 子级 (ldap) | 正常 | - | `internal/web/user/handler.go` 行 127 |
+| 退出登录 | `iam:user:logout` | 租户级 | 本级 | 静默 (不暴露) | - | `internal/web/user/handler.go` 行 78 |
+| 治理外部身份 | `iam:user:manage_identity` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 135 |
+| 个人信息 | `iam:user:profile` | 租户级 | 本级 | 静默 (不暴露) | - | `internal/web/user/handler.go` 行 74 |
+| 解绑外部身份 | `iam:user:unbind_identity` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 138 |
+| 用户列表 | `iam:user:view` | 租户级 | 本级 | 正常 | - | `internal/web/user/handler.go` 行 115 |
 | 查询用户所属分组 | `iam:user:view_user_groups` | 租户级 | 跨域 (group) | 正常 | - | `internal/web/group/handler.go` 行 58 |
 | 查询用户策略 | `iam:user:view_user_policies` | 租户级 | 跨域 (policy) | 正常 | - | `internal/web/policy/handler.go` 行 84 |
 | 查询用户角色 | `iam:user:view_user_roles` | 租户级 | 跨域 (role) | 正常 | - | `internal/web/role/handler.go` 行 98 |
-| 查询用户所属租户 | `iam:user:view_user_tenants` | 租户级 | 跨域 (tenant) | 正常 | - | `internal/web/tenant/handler.go` 行 111 |
+| 查询用户所属租户 | `iam:user:view_user_tenants` | 租户级 | 跨域 (tenant) | 正常 | - | `internal/web/tenant/handler.go` 行 106 |
 
 ---
 

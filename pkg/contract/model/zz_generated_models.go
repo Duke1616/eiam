@@ -5,6 +5,13 @@ package model
 import "github.com/Duke1616/eiam/pkg/web/capability"
 
 var (
+	// Audit 安全审计 (iam:audit)
+	Audit = capability.Model{
+		Service: "iam",
+		Name:    "audit",
+		Group:   "安全审计",
+		Scope:   capability.ScopeTenant,
+	}
 	// Department 部门管理 (iam:department)
 	Department = capability.Model{
 		Service: "iam",
@@ -25,6 +32,13 @@ var (
 		Name:    "identity_source",
 		Group:   "身份源管理",
 		Scope:   capability.ScopeSystem,
+	}
+	// Idp 统一身份提供商 (iam:idp)
+	Idp = capability.Model{
+		Service: "iam",
+		Name:    "idp",
+		Group:   "统一身份提供商",
+		Scope:   capability.ScopeTenant,
 	}
 	// Invitation 成员治理 (iam:invitation)
 	Invitation = capability.Model{

@@ -36,6 +36,7 @@ import (
 	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
 	claimssvc "github.com/Duke1616/eiam/internal/service/idp/claims"
 	oidcsvc "github.com/Duke1616/eiam/internal/service/idp/oidc"
+	samlsvc "github.com/Duke1616/eiam/internal/service/idp/saml"
 	idphdl "github.com/Duke1616/eiam/internal/web/idp"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
@@ -201,10 +202,11 @@ var (
 		discovery.NewTokenService,
 	)
 
-	// IdpSet 统一身份提供商 (IdP / OIDC & CAS Provider) 模块 Provider 集合
+	// IdpSet 统一身份提供商 (IdP / OIDC & CAS & SAML Provider) 模块 Provider 集合
 	IdpSet = wire.NewSet(
 		cache.NewOidcCache,
 		cache.NewCasCache,
+		cache.NewSamlCache,
 		dao.NewApplicationDAO,
 		repository.NewApplicationRepository,
 		idpsvc.NewApplicationService,
@@ -212,6 +214,8 @@ var (
 		oidcsvc.NewService,
 		cassvc.NewCasService,
 		InitKeyManager,
+		InitSamlCertManager,
+		samlsvc.NewSamlService,
 		idphdl.NewHandler,
 	)
 )

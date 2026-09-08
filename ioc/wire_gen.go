@@ -20,6 +20,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/idp/cas"
 	"github.com/Duke1616/eiam/internal/service/idp/claims"
 	"github.com/Duke1616/eiam/internal/service/idp/oidc"
+	"github.com/Duke1616/eiam/internal/service/idp/saml"
 	"github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
@@ -143,7 +144,13 @@ func InitApp() (*App, error) {
 	iOidcService := oidc.NewService(iApplicationRepository, iClaimsResolver, iTenantService, iOidcCache, iKeyManager, iAuditProducer)
 	iCasCache := cache.NewCasCache(cmdable)
 	iCasService := cas.NewCasService(iCasCache, iClaimsResolver, iApplicationRepository)
-	idpHandler := idp2.NewHandler(idpIService, iOidcService, iCasService)
+	iSamlCache := cache.NewSamlCache(cmdable)
+	iCertificateManager, err := InitSamlCertManager(iSamlCache)
+	if err != nil {
+		return nil, err
+	}
+	iSamlService := saml.NewSamlService(iCertificateManager, iClaimsResolver, iApplicationRepository)
+	idpHandler := idp2.NewHandler(idpIService, iOidcService, iCasService, iSamlService)
 	tenancyBuilder := middleware.NewTenancyBuilder(provider)
 	component := InitGinWebServer(provider, listener, v, handler, policyHandler, tenantHandler, permissionHandler, roleHandler, departmentHandler, groupHandler, identity_sourceHandler, invitationHandler, discoveryHandler, auditHandler, idpHandler, tenancyBuilder, iPermissionService, iAuditProducer)
 	registry := InitRegistry(clientv3Client)
