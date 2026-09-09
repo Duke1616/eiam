@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/service/idp/claims"
@@ -21,6 +22,29 @@ import (
 	"github.com/gotomicro/ego/core/elog"
 	dsig "github.com/russellhaering/goxmldsig"
 )
+
+const (
+	defaultAssertionValidity  = 5 * time.Minute
+	defaultClockSkewTolerance = 1 * time.Minute
+	maxSAMLRequestSize        = 1 << 20 // 1MB 安全读取上限，防御 Deflate 压缩炸弹 DoS
+
+	samlProtocolSAML2       = "urn:oasis:names:tc:SAML:2.0:protocol"
+	samlBearerConfirmation  = "urn:oasis:names:tc:SAML:2.0:cm:bearer"
+	samlAuthnContextPW      = "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
+	nameIDFormatUnspecified = "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+	nameIDFormatEmail       = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+	nameIDFormatPersistent  = "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+)
+
+// buildIdPEntityID 统一构造 IdP 唯一实体标识 (规范固定为 <base_url>/saml/metadata)
+func buildIdPEntityID(issuerURL string) string {
+	return fmt.Sprintf("%s/saml/metadata", strings.TrimRight(issuerURL, "/"))
+}
+
+// buildSSOURL 统一构造 IdP 单点登录接入端点 (规范固定为 <base_url>/saml/sso)
+func buildSSOURL(issuerURL string) string {
+	return fmt.Sprintf("%s/saml/sso", strings.TrimRight(issuerURL, "/"))
+}
 
 // SamlLoginRequest SAML 单点登录请求入参
 type SamlLoginRequest struct {
@@ -96,8 +120,8 @@ func (s *samlService) GetCertificatePEM() string {
 
 // GetMetadataXML 构造标准的 SAML 2.0 IdP 元数据 XML 文档
 func (s *samlService) GetMetadataXML(ctx context.Context, issuerURL string) (string, error) {
-	idpEntityID := fmt.Sprintf("%s/saml/metadata", strings.TrimRight(issuerURL, "/"))
-	ssoURL := fmt.Sprintf("%s/saml/sso", strings.TrimRight(issuerURL, "/"))
+	idpEntityID := buildIdPEntityID(issuerURL)
+	ssoURL := buildSSOURL(issuerURL)
 
 	ed := saml.EntityDescriptor{
 		EntityID: idpEntityID,
@@ -105,7 +129,7 @@ func (s *samlService) GetMetadataXML(ctx context.Context, issuerURL string) (str
 			{
 				SSODescriptor: saml.SSODescriptor{
 					RoleDescriptor: saml.RoleDescriptor{
-						ProtocolSupportEnumeration: "urn:oasis:names:tc:SAML:2.0:protocol",
+						ProtocolSupportEnumeration: samlProtocolSAML2,
 						KeyDescriptors: []saml.KeyDescriptor{
 							{
 								Use: "signing",
@@ -120,9 +144,9 @@ func (s *samlService) GetMetadataXML(ctx context.Context, issuerURL string) (str
 						},
 					},
 					NameIDFormats: []saml.NameIDFormat{
-						"urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
-						"urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
-						"urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
+						nameIDFormatUnspecified,
+						nameIDFormatEmail,
+						nameIDFormatPersistent,
 					},
 				},
 				SingleSignOnServices: []saml.Endpoint{
@@ -164,9 +188,10 @@ func (s *samlService) ParseAuthnRequest(rawReq string, isRedirect bool) (*saml.A
 		// HTTP-Redirect Binding: 必须使用 raw DEFLATE (RFC 1951) 解压缩
 		reader := flate.NewReader(bytes.NewReader(data))
 		defer reader.Close()
-		decompressed, readErr := io.ReadAll(reader)
+		// 防御解压炸弹 (Decompression Bomb / Zip Bomb DoS)，施加安全读取上限
+		decompressed, readErr := io.ReadAll(io.LimitReader(reader, maxSAMLRequestSize))
 		if readErr != nil {
-			// 容错处理：部分非标准 SP 直接传递了未经 Deflate 压缩的 XML
+			// 容错处理：部分非标准 SP 直接传递了未经 Deflate 压缩的原始 XML
 			xmlData = data
 		} else {
 			xmlData = decompressed
@@ -184,41 +209,15 @@ func (s *samlService) ParseAuthnRequest(rawReq string, isRedirect bool) (*saml.A
 	return &authnReq, nil
 }
 
-// BuildLoginResponse 处理认证并签发携带数字签名的 SAMLResponse
+// BuildLoginResponse 核心业务流水线：校验 SP -> 解析 Claims -> 组装断言 -> XML 签名
 func (s *samlService) BuildLoginResponse(ctx context.Context, req SamlLoginRequest) (*SamlLoginResult, error) {
-	// 1. 确定目标 SP 的 EntityID (ClientID)
-	clientID := req.ClientID
-	if clientID == "" && req.AuthnRequest != nil {
-		clientID = req.AuthnRequest.Issuer.Value
-	}
-	if clientID == "" {
-		return nil, fmt.Errorf("%w: 无法识别请求中的 SP EntityID / ClientID", errs.ErrSamlIssuerNotRegistered)
-	}
-
-	// 2. 检索应用接入记录并进行协议与安全校验
-	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	// 1. 确定目标 SP 应用并校验回调 ACS 地址
+	app, acsURL, err := s.resolveAndValidateSP(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", errs.ErrSamlIssuerNotRegistered, clientID)
+		return nil, err
 	}
 
-	// 3. 确定并校验断言消费地址 ACS URL
-	acsURL := req.ACSURL
-	if acsURL == "" && req.AuthnRequest != nil {
-		acsURL = req.AuthnRequest.AssertionConsumerServiceURL
-	}
-	if acsURL == "" {
-		if len(app.RedirectURIs) > 0 {
-			acsURL = app.RedirectURIs[0]
-		} else {
-			return nil, fmt.Errorf("%w: 应用未配置合法 ACS 回调地址白名单", errs.ErrSamlInvalidACSURL)
-		}
-	} else {
-		if !app.HasRedirectURI(acsURL) {
-			return nil, fmt.Errorf("%w: acs_url=%s", errs.ErrSamlInvalidACSURL, acsURL)
-		}
-	}
-
-	// 4. 解析用户完整身份声明与租户生效角色
+	// 2. 解析用户完整身份声明与租户生效角色
 	userClaims, err := s.claimsResolver.Resolve(ctx, claims.IdentityRef{
 		TenantID: req.TenantID,
 		UserID:   req.UserID,
@@ -228,11 +227,72 @@ func (s *samlService) BuildLoginResponse(ctx context.Context, req SamlLoginReque
 		return nil, fmt.Errorf("解析用户 Claims 属性失败: %w", err)
 	}
 
-	// 5. 组装 SAML Response 与 Assertion 领域模型
+	// 3. 组装符合 SAML 2.0 规范的 Response 与 Assertion 实体
+	resp := s.buildSamlResponse(req, app.ClientID, acsURL, userClaims)
+
+	// 4. 执行 XML-DSig 规范化与 RSA-SHA256 签名 (Enveloped Signature)
+	signedXML, err := s.signResponse(&resp)
+	if err != nil {
+		s.logger.Error("SAML 断言签名生成失败", elog.FieldErr(err))
+		return nil, fmt.Errorf("%w: %v", errs.ErrSamlSigningFailed, err)
+	}
+
+	return &SamlLoginResult{
+		ACSURL:       acsURL,
+		SAMLResponse: base64.StdEncoding.EncodeToString(signedXML),
+		RelayState:   req.RelayState,
+	}, nil
+}
+
+// resolveAndValidateSP 提取目标 SP EntityID 并校验应用合法性与 ACS URL 回调白名单
+func (s *samlService) resolveAndValidateSP(ctx context.Context, req SamlLoginRequest) (domain.Application, string, error) {
+	clientID := req.ClientID
+	if clientID == "" && req.AuthnRequest != nil {
+		clientID = req.AuthnRequest.Issuer.Value
+	}
+	if clientID == "" {
+		return domain.Application{}, "", fmt.Errorf("%w: 无法识别请求中的 SP EntityID / ClientID", errs.ErrSamlIssuerNotRegistered)
+	}
+
+	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	if err != nil {
+		return domain.Application{}, "", fmt.Errorf("%w: client_id=%s", errs.ErrSamlIssuerNotRegistered, clientID)
+	}
+
+	if !app.SupportsProtocol(domain.ProtocolSAML) {
+		return domain.Application{}, "", fmt.Errorf("%w: 应用 [%s] 未开启 SAML 2.0 协议支持", errs.ErrUnsupportedProtocol, app.Name)
+	}
+
+	acsURL := req.ACSURL
+	if acsURL == "" && req.AuthnRequest != nil {
+		acsURL = req.AuthnRequest.AssertionConsumerServiceURL
+	}
+	if acsURL == "" {
+		if len(app.RedirectURIs) > 0 {
+			acsURL = app.RedirectURIs[0]
+		} else {
+			return domain.Application{}, "", fmt.Errorf("%w: 应用未配置合法 ACS 回调地址白名单", errs.ErrSamlInvalidACSURL)
+		}
+	} else {
+		if !app.HasRedirectURI(acsURL) {
+			return domain.Application{}, "", fmt.Errorf("%w: acs_url=%s", errs.ErrSamlInvalidACSURL, acsURL)
+		}
+	}
+
+	return app, acsURL, nil
+}
+
+// buildSamlResponse 组装 SAML 2.0 Response 及其内部包含的完整 Assertion 数据结构
+func (s *samlService) buildSamlResponse(
+	req SamlLoginRequest,
+	clientID string,
+	acsURL string,
+	userClaims claims.Claims,
+) saml.Response {
 	now := time.Now().UTC()
 	responseID := fmt.Sprintf("id_%s", uuid.New().String())
 	assertionID := fmt.Sprintf("id_%s", uuid.New().String())
-	idpEntityID := fmt.Sprintf("%s/saml/metadata", strings.TrimRight(req.IssuerURL, "/"))
+	idpEntityID := buildIdPEntityID(req.IssuerURL)
 
 	inResponseTo := ""
 	if req.AuthnRequest != nil {
@@ -248,23 +308,23 @@ func (s *samlService) BuildLoginResponse(ctx context.Context, req SamlLoginReque
 		},
 		Subject: &saml.Subject{
 			NameID: &saml.NameID{
-				Format: "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
+				Format: nameIDFormatUnspecified,
 				Value:  userClaims.Username,
 			},
 			SubjectConfirmations: []saml.SubjectConfirmation{
 				{
-					Method: "urn:oasis:names:tc:SAML:2.0:cm:bearer",
+					Method: samlBearerConfirmation,
 					SubjectConfirmationData: &saml.SubjectConfirmationData{
 						Recipient:    acsURL,
-						NotOnOrAfter: now.Add(5 * time.Minute),
+						NotOnOrAfter: now.Add(defaultAssertionValidity),
 						InResponseTo: inResponseTo,
 					},
 				},
 			},
 		},
 		Conditions: &saml.Conditions{
-			NotBefore:    now.Add(-1 * time.Minute),
-			NotOnOrAfter: now.Add(5 * time.Minute),
+			NotBefore:    now.Add(-defaultClockSkewTolerance),
+			NotOnOrAfter: now.Add(defaultAssertionValidity),
 			AudienceRestrictions: []saml.AudienceRestriction{
 				{
 					Audience: saml.Audience{Value: clientID},
@@ -277,7 +337,7 @@ func (s *samlService) BuildLoginResponse(ctx context.Context, req SamlLoginReque
 				SessionIndex: assertionID,
 				AuthnContext: saml.AuthnContext{
 					AuthnContextClassRef: &saml.AuthnContextClassRef{
-						Value: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport",
+						Value: samlAuthnContextPW,
 					},
 				},
 			},
@@ -289,7 +349,7 @@ func (s *samlService) BuildLoginResponse(ctx context.Context, req SamlLoginReque
 		},
 	}
 
-	resp := saml.Response{
+	return saml.Response{
 		ID:           responseID,
 		InResponseTo: inResponseTo,
 		Version:      "2.0",
@@ -305,19 +365,6 @@ func (s *samlService) BuildLoginResponse(ctx context.Context, req SamlLoginReque
 		},
 		Assertion: &assertion,
 	}
-
-	// 6. 执行 XML-DSig 规范化与 RSA-SHA256 签名 (Enveloped Signature)
-	signedXML, err := s.signResponse(&resp)
-	if err != nil {
-		s.logger.Error("SAML 断言签名生成失败", elog.FieldErr(err))
-		return nil, fmt.Errorf("%w: %v", errs.ErrSamlSigningFailed, err)
-	}
-
-	return &SamlLoginResult{
-		ACSURL:       acsURL,
-		SAMLResponse: base64.StdEncoding.EncodeToString(signedXML),
-		RelayState:   req.RelayState,
-	}, nil
 }
 
 // signResponse 使用标准 W3C XML-DSig 对 Assertion 执行数字签名
@@ -355,14 +402,7 @@ func (s *samlService) signResponse(resp *saml.Response) ([]byte, error) {
 }
 
 func (s *samlService) GetCertificateDetail() CertificateDetail {
-	notBefore, notAfter := s.certMgr.ValidityPeriod()
-	return CertificateDetail{
-		PEM:         s.certMgr.CertificatePEM(),
-		Fingerprint: s.certMgr.FingerprintSHA256(),
-		Subject:     s.certMgr.Subject(),
-		NotBefore:   notBefore.UTC().Format(time.RFC3339),
-		NotAfter:    notAfter.UTC().Format(time.RFC3339),
-	}
+	return s.certMgr.Detail()
 }
 
 func (s *samlService) RotateCertificate(ctx context.Context, validityYears int) (*CertificateDetail, error) {

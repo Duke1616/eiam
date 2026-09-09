@@ -66,19 +66,7 @@ func (h *Handler) SamlDescriptor(ctx *ginx.Context) (ginx.Result, error) {
 	certDetail := h.samlSvc.GetCertificateDetail()
 
 	return ginx.Result{
-		Data: SamlDescriptorVO{
-			EntityID:               fmt.Sprintf("%s/saml/metadata", issuerURL),
-			SSOURL:                 fmt.Sprintf("%s/saml/sso", issuerURL),
-			MetadataURL:            fmt.Sprintf("%s/saml/metadata", issuerURL),
-			CertificateURL:         fmt.Sprintf("%s/saml/certificate", issuerURL),
-			CertificatePEM:         certDetail.PEM,
-			CertificateFingerprint: certDetail.Fingerprint,
-			CertificateSubject:     certDetail.Subject,
-			NotBefore:              certDetail.NotBefore,
-			NotAfter:               certDetail.NotAfter,
-			BindingTypes:           []string{"HTTP-Redirect", "HTTP-POST"},
-			NameIDFormat:           "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
-		},
+		Data: toSamlDescriptorVO(issuerURL, certDetail),
 	}, nil
 }
 
@@ -97,20 +85,24 @@ func (h *Handler) SamlRotateCertificate(ctx *ginx.Context, req RotateCertificate
 
 	issuerURL := strings.TrimRight(h.resolveIssuerURL(ctx.Context), "/")
 	return ginx.Result{
-		Data: SamlDescriptorVO{
-			EntityID:               fmt.Sprintf("%s/saml/metadata", issuerURL),
-			SSOURL:                 fmt.Sprintf("%s/saml/sso", issuerURL),
-			MetadataURL:            fmt.Sprintf("%s/saml/metadata", issuerURL),
-			CertificateURL:         fmt.Sprintf("%s/saml/certificate", issuerURL),
-			CertificatePEM:         detail.PEM,
-			CertificateFingerprint: detail.Fingerprint,
-			CertificateSubject:     detail.Subject,
-			NotBefore:              detail.NotBefore,
-			NotAfter:               detail.NotAfter,
-			BindingTypes:           []string{"HTTP-Redirect", "HTTP-POST"},
-			NameIDFormat:           "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
-		},
+		Data: toSamlDescriptorVO(issuerURL, *detail),
 	}, nil
+}
+
+func toSamlDescriptorVO(issuerURL string, detail samlsvc.CertificateDetail) SamlDescriptorVO {
+	return SamlDescriptorVO{
+		EntityID:               fmt.Sprintf("%s/saml/metadata", issuerURL),
+		SSOURL:                 fmt.Sprintf("%s/saml/sso", issuerURL),
+		MetadataURL:            fmt.Sprintf("%s/saml/metadata", issuerURL),
+		CertificateURL:         fmt.Sprintf("%s/saml/certificate", issuerURL),
+		CertificatePEM:         detail.PEM,
+		CertificateFingerprint: detail.Fingerprint,
+		CertificateSubject:     detail.Subject,
+		NotBefore:              detail.NotBefore,
+		NotAfter:               detail.NotAfter,
+		BindingTypes:           []string{"HTTP-Redirect", "HTTP-POST"},
+		NameIDFormat:           "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
+	}
 }
 
 // SamlSSO 处理 SP-Initiated SSO 认证与断言签发端点 (GET /saml/sso 与 POST /saml/sso)

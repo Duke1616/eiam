@@ -5,6 +5,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/crewjam/saml"
+	"github.com/samber/lo"
 )
 
 // Claims 统一身份声明模型 (规范化收敛 OIDC、CAS、SAML 协议的通用属性定义)
@@ -103,19 +104,18 @@ func (c Claims) ToOidcUserInfo() *domain.OidcUserInfo {
 // ToSAMLAttributes 输出符合 SAML 2.0 规范的标准属性列表 (包含 basic 格式与企业常用属性映射)
 func (c Claims) ToSAMLAttributes() []saml.Attribute {
 	buildAttr := func(name string, values ...string) saml.Attribute {
-		attrVals := make([]saml.AttributeValue, 0, len(values))
-		for _, v := range values {
-			if v != "" {
-				attrVals = append(attrVals, saml.AttributeValue{
-					Type:  "xs:string",
-					Value: v,
-				})
-			}
-		}
 		return saml.Attribute{
 			Name:       name,
 			NameFormat: "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
-			Values:     attrVals,
+			Values: lo.FilterMap(values, func(v string, _ int) (saml.AttributeValue, bool) {
+				if v == "" {
+					return saml.AttributeValue{}, false
+				}
+				return saml.AttributeValue{
+					Type:  "xs:string",
+					Value: v,
+				}, true
+			}),
 		}
 	}
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/Duke1616/eiam/internal/errs"
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	repomocks "github.com/Duke1616/eiam/internal/repository/mocks"
 	"github.com/Duke1616/eiam/internal/service/idp/claims"
 	claimsmocks "github.com/Duke1616/eiam/internal/service/idp/claims/mocks"
@@ -22,8 +23,28 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+type fakeSamlCache struct {
+	cert *cache.SamlClusterCertificate
+}
+
+func (f *fakeSamlCache) GetOrSetClusterCertificate(ctx context.Context, certID string, generateFn func() (*cache.SamlClusterCertificate, error)) (*cache.SamlClusterCertificate, error) {
+	if f.cert != nil {
+		return f.cert, nil
+	}
+	c, err := generateFn()
+	if err == nil {
+		f.cert = c
+	}
+	return c, err
+}
+
+func (f *fakeSamlCache) SetClusterCertificate(ctx context.Context, certID string, cert *cache.SamlClusterCertificate) error {
+	f.cert = cert
+	return nil
+}
+
 func TestSamlService_GetMetadataXML(t *testing.T) {
-	certMgr, err := NewCertificateManager("", "")
+	certMgr, err := NewClusterCertificateManager(context.Background(), "", "", &fakeSamlCache{})
 	require.NoError(t, err)
 
 	svc := NewSamlService(certMgr, nil, nil)
@@ -85,7 +106,7 @@ func TestSamlService_BuildLoginResponse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	certMgr, err := NewCertificateManager("", "")
+	certMgr, err := NewClusterCertificateManager(context.Background(), "", "", &fakeSamlCache{})
 	require.NoError(t, err)
 
 	claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)
@@ -113,6 +134,21 @@ func TestSamlService_BuildLoginResponse(t *testing.T) {
 			wantErr: errs.ErrSamlIssuerNotRegistered,
 		},
 		{
+			name: "应用未开启 SAML 协议支持",
+			req: SamlLoginRequest{
+				ClientID: "oidc-only-app",
+			},
+			mock: func() {
+				appRepo.EXPECT().FindByClientID(gomock.Any(), "oidc-only-app").
+					Return(domain.Application{
+						ClientID: "oidc-only-app",
+						Name:     "纯 OIDC 客户端",
+						Protocol: domain.ProtocolOIDC,
+					}, nil)
+			},
+			wantErr: errs.ErrUnsupportedProtocol,
+		},
+		{
 			name: "请求的回调 ACS 地址不在白名单中",
 			req: SamlLoginRequest{
 				ClientID: "alicloud-ram-sso",
@@ -122,6 +158,7 @@ func TestSamlService_BuildLoginResponse(t *testing.T) {
 				appRepo.EXPECT().FindByClientID(gomock.Any(), "alicloud-ram-sso").
 					Return(domain.Application{
 						ClientID:     "alicloud-ram-sso",
+						Protocol:     domain.ProtocolSAML,
 						RedirectURIs: []string{"https://signin.aliyun.com/saml-role/sso"},
 					}, nil)
 			},
@@ -142,6 +179,7 @@ func TestSamlService_BuildLoginResponse(t *testing.T) {
 				appRepo.EXPECT().FindByClientID(gomock.Any(), "gitlab-enterprise").
 					Return(domain.Application{
 						ClientID:     "gitlab-enterprise",
+						Protocol:     domain.ProtocolSAML,
 						RedirectURIs: []string{"https://gitlab.example.com/users/auth/saml/callback"},
 					}, nil)
 

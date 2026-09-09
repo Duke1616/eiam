@@ -18,8 +18,11 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/repository/cache"
+	"github.com/samber/lo"
 	"github.com/spf13/viper"
 )
+
+const defaultClusterCertKey = "eiam-default-saml-cert"
 
 // ICertificateManager SAML 2.0 X.509 证书与 RSA 签名密钥管理器接口
 type ICertificateManager interface {
@@ -37,13 +40,14 @@ type ICertificateManager interface {
 	Subject() string
 	// ValidityPeriod 导出证书生效与失效时间
 	ValidityPeriod() (notBefore time.Time, notAfter time.Time)
+	// Detail 导出当前生效的 X.509 证书元数据详情快照
+	Detail() CertificateDetail
 	// RotateCertificate 重新生成并轮换 X.509 证书与私钥 (同步覆盖 Redis 集群持久化数据)
 	RotateCertificate(ctx context.Context, validityYears int) (*CertificateDetail, error)
 }
 
-type certificateManager struct {
-	mu          sync.RWMutex
-	cache       cache.ISamlCache
+// certSnapshot 封装原子状态快照，用于线程安全的高并发读取
+type certSnapshot struct {
 	cert        *x509.Certificate
 	privKey     *rsa.PrivateKey
 	certPEM     string
@@ -54,155 +58,183 @@ type certificateManager struct {
 	notAfter    time.Time
 }
 
-// NewCertificateManager 构造本地独立 SAML 证书管理器 (未接入集群缓存时使用)
-func NewCertificateManager(certPEMOrPath, keyPEMOrPath string) (ICertificateManager, error) {
-	return NewClusterCertificateManager(context.Background(), certPEMOrPath, keyPEMOrPath, nil)
+type certificateManager struct {
+	mu    sync.RWMutex
+	cache cache.ISamlCache
+	state certSnapshot
 }
 
 // NewClusterCertificateManager 构造具备分布式集群持久化感知能力的 SAML 证书管理器
-// 1. 若配置中显式指定了证书与私钥 (路径或 PEM)，优先直接加载；
-// 2. 若未配置，且集群缓存可用，原子检查或生成证书并永久保存在 Redis 中，确保多 Pod 实例与发版重启完全一致；
-// 3. 若缓存不可用，降级为本地内存生成自签名证书。
 func NewClusterCertificateManager(ctx context.Context, certPEMOrPath, keyPEMOrPath string, c cache.ISamlCache) (ICertificateManager, error) {
+	cert, key, err := loadOrGenerateCredentials(ctx, certPEMOrPath, keyPEMOrPath, c)
+	if err != nil {
+		return nil, err
+	}
+
+	mgr := &certificateManager{cache: c}
+	mgr.updateState(cert, key)
+	return mgr, nil
+}
+
+// loadOrGenerateCredentials 遵循清晰的凭据加载流程：外部配置优先 > 集群缓存持久化
+func loadOrGenerateCredentials(ctx context.Context, certPEMOrPath, keyPEMOrPath string, c cache.ISamlCache) (*x509.Certificate, *rsa.PrivateKey, error) {
 	certBytes := resolvePEMOrFilePath(certPEMOrPath)
 	keyBytes := resolvePEMOrFilePath(keyPEMOrPath)
 
-	var (
-		cert    *x509.Certificate
-		privKey *rsa.PrivateKey
-		err     error
-	)
-
-	// 1. 若未同时提供证书与私钥，尝试从分布式集群共享持久化缓存中读取或原子生成
-	if (len(certBytes) == 0 || len(keyBytes) == 0) && c != nil {
-		clusterCert, cacheErr := c.GetOrSetClusterCertificate(ctx, "eiam-default-saml-cert", func() (*cache.SamlClusterCertificate, error) {
-			newCert, newKey, genErr := generateSelfSignedCertificate(0)
-			if genErr != nil {
-				return nil, genErr
-			}
-			certPEM := string(pem.EncodeToMemory(&pem.Block{
-				Type:  "CERTIFICATE",
-				Bytes: newCert.Raw,
-			}))
-			keyPEM := string(pem.EncodeToMemory(&pem.Block{
-				Type:  "RSA PRIVATE KEY",
-				Bytes: x509.MarshalPKCS1PrivateKey(newKey),
-			}))
-			return &cache.SamlClusterCertificate{
-				CertPEM: certPEM,
-				KeyPEM:  keyPEM,
-			}, nil
-		})
-		if cacheErr == nil && clusterCert != nil {
-			certBytes = []byte(clusterCert.CertPEM)
-			keyBytes = []byte(clusterCert.KeyPEM)
-		}
+	// 1. 优先使用外部配置好的静态证书与私钥
+	if len(certBytes) > 0 && len(keyBytes) > 0 {
+		return parseCredentials(certBytes, keyBytes)
 	}
 
-	// 2. 若仍未获取到有效凭据，降级本地内存自签生成
-	if len(certBytes) == 0 || len(keyBytes) == 0 {
-		cert, privKey, err = generateSelfSignedCertificate(0)
-		if err != nil {
-			return nil, fmt.Errorf("自动生成自签名 SAML 证书失败: %w", err)
+	// 2. 从分布式集群共享缓存中获取，若首次启动则原子生成并持久化
+	clusterCert, err := c.GetOrSetClusterCertificate(ctx, defaultClusterCertKey, func() (*cache.SamlClusterCertificate, error) {
+		newCert, newKey, genErr := generateSelfSignedCertificate(0)
+		if genErr != nil {
+			return nil, genErr
 		}
-	} else {
-		privKey, err = parsePrivateKey(keyBytes)
-		if err != nil {
-			return nil, fmt.Errorf("解析 SAML 私钥失败: %w", err)
-		}
-
-		cert, err = parseCertificate(certBytes)
-		if err != nil {
-			return nil, fmt.Errorf("解析 SAML X.509 证书失败: %w", err)
-		}
-	}
-
-	pemBlock := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: cert.Raw,
+		return &cache.SamlClusterCertificate{
+			CertPEM: encodeCertPEM(newCert),
+			KeyPEM:  encodeKeyPEM(newKey),
+		}, nil
 	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("初始化集群 SAML 证书失败: %w", err)
+	}
 
+	return parseCredentials([]byte(clusterCert.CertPEM), []byte(clusterCert.KeyPEM))
+}
+
+// updateState 统一更新快照状态，消除构造函数与轮换函数的重复计算
+func (m *certificateManager) updateState(cert *x509.Certificate, key *rsa.PrivateKey) {
 	subject := cert.Subject.CommonName
 	if subject == "" {
 		subject = cert.Subject.String()
 	}
 
-	return &certificateManager{
-		cache:       c,
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state = certSnapshot{
 		cert:        cert,
-		privKey:     privKey,
-		certPEM:     string(pemBlock),
+		privKey:     key,
+		certPEM:     encodeCertPEM(cert),
 		base64DER:   base64.StdEncoding.EncodeToString(cert.Raw),
 		fingerprint: formatFingerprint(cert.Raw),
 		subject:     subject,
 		notBefore:   cert.NotBefore,
 		notAfter:    cert.NotAfter,
-	}, nil
+	}
 }
 
 func (m *certificateManager) Certificate() *x509.Certificate {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.cert
+	return m.state.cert
 }
 
 func (m *certificateManager) PrivateKey() *rsa.PrivateKey {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.privKey
+	return m.state.privKey
 }
 
 func (m *certificateManager) CertificatePEM() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.certPEM
+	return m.state.certPEM
 }
 
 func (m *certificateManager) CertificateBase64DER() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.base64DER
+	return m.state.base64DER
 }
 
 func (m *certificateManager) FingerprintSHA256() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.fingerprint
+	return m.state.fingerprint
 }
 
 func (m *certificateManager) Subject() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.subject
+	return m.state.subject
 }
 
 func (m *certificateManager) ValidityPeriod() (time.Time, time.Time) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.notBefore, m.notAfter
+	return m.state.notBefore, m.state.notAfter
+}
+
+func (m *certificateManager) Detail() CertificateDetail {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return CertificateDetail{
+		PEM:         m.state.certPEM,
+		Fingerprint: m.state.fingerprint,
+		Subject:     m.state.subject,
+		NotBefore:   m.state.notBefore.UTC().Format(time.RFC3339),
+		NotAfter:    m.state.notAfter.UTC().Format(time.RFC3339),
+	}
+}
+
+// RotateCertificate 重新生成并轮换 X.509 证书与私钥 (原子同步更新 Redis 集群持久化数据)
+func (m *certificateManager) RotateCertificate(ctx context.Context, validityYears int) (*CertificateDetail, error) {
+	newCert, newKey, err := generateSelfSignedCertificate(validityYears)
+	if err != nil {
+		return nil, fmt.Errorf("生成新 SAML 证书失败: %w", err)
+	}
+
+	certPEM := encodeCertPEM(newCert)
+	keyPEM := encodeKeyPEM(newKey)
+
+	// 同步持久化覆盖 Redis 集群缓存
+	if err = m.cache.SetClusterCertificate(ctx, defaultClusterCertKey, &cache.SamlClusterCertificate{
+		CertPEM: certPEM,
+		KeyPEM:  keyPEM,
+	}); err != nil {
+		return nil, fmt.Errorf("同步更新集群证书持久化缓存失败: %w", err)
+	}
+
+	m.updateState(newCert, newKey)
+	detail := m.Detail()
+	return &detail, nil
+}
+
+// --- 纯函数与 PEM 编解码助手 ---
+
+func encodeCertPEM(cert *x509.Certificate) string {
+	return string(pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.Raw,
+	}))
+}
+
+func encodeKeyPEM(key *rsa.PrivateKey) string {
+	return string(pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}))
 }
 
 func formatFingerprint(der []byte) string {
 	sum := sha256.Sum256(der)
-	parts := make([]string, len(sum))
-	for i, b := range sum {
-		parts[i] = fmt.Sprintf("%02X", b)
-	}
-	return strings.Join(parts, ":")
+	return strings.Join(lo.Map(sum[:], func(b byte, _ int) string {
+		return fmt.Sprintf("%02X", b)
+	}), ":")
 }
 
-// resolvePEMOrFilePath 辅助函数：如果是本地文件路径则读取文件，否则直接按 PEM 字符串处理
-func resolvePEMOrFilePath(input string) []byte {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return nil
+func parseCredentials(certBytes, keyBytes []byte) (*x509.Certificate, *rsa.PrivateKey, error) {
+	privKey, err := parsePrivateKey(keyBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("解析 SAML 私钥失败: %w", err)
 	}
-	if !strings.Contains(input, "-----BEGIN") {
-		if content, err := os.ReadFile(input); err == nil {
-			return content
-		}
+	cert, err := parseCertificate(certBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("解析 SAML X.509 证书失败: %w", err)
 	}
-	return []byte(input)
+	return cert, privKey, nil
 }
 
 func parsePrivateKey(keyBytes []byte) (*rsa.PrivateKey, error) {
@@ -210,7 +242,6 @@ func parsePrivateKey(keyBytes []byte) (*rsa.PrivateKey, error) {
 	if block == nil {
 		return nil, errors.New("私钥 PEM 解码失败")
 	}
-
 	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return key, nil
 	}
@@ -230,68 +261,25 @@ func parseCertificate(certBytes []byte) (*x509.Certificate, error) {
 	return x509.ParseCertificate(block.Bytes)
 }
 
-// RotateCertificate 重新生成并轮换 X.509 证书与私钥 (原子同步更新 Redis 集群持久化数据)
-func (m *certificateManager) RotateCertificate(ctx context.Context, validityYears int) (*CertificateDetail, error) {
-	newCert, newKey, err := generateSelfSignedCertificate(validityYears)
-	if err != nil {
-		return nil, fmt.Errorf("生成新 SAML 证书失败: %w", err)
+func resolvePEMOrFilePath(input string) []byte {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil
 	}
-
-	pemBlock := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: newCert.Raw,
-	})
-	keyBlock := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(newKey),
-	})
-
-	certPEM := string(pemBlock)
-	keyPEM := string(keyBlock)
-
-	// 若接入了集群缓存，同步持久化覆盖 Redis
-	if m.cache != nil {
-		err = m.cache.SetClusterCertificate(ctx, "eiam-default-saml-cert", &cache.SamlClusterCertificate{
-			CertPEM: certPEM,
-			KeyPEM:  keyPEM,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("同步更新集群证书持久化缓存失败: %w", err)
+	if !strings.Contains(input, "-----BEGIN") {
+		if content, err := os.ReadFile(input); err == nil {
+			return content
 		}
 	}
-
-	subject := newCert.Subject.CommonName
-	if subject == "" {
-		subject = newCert.Subject.String()
-	}
-
-	m.mu.Lock()
-	m.cert = newCert
-	m.privKey = newKey
-	m.certPEM = certPEM
-	m.base64DER = base64.StdEncoding.EncodeToString(newCert.Raw)
-	m.fingerprint = formatFingerprint(newCert.Raw)
-	m.subject = subject
-	m.notBefore = newCert.NotBefore
-	m.notAfter = newCert.NotAfter
-	m.mu.Unlock()
-
-	return &CertificateDetail{
-		PEM:         certPEM,
-		Fingerprint: m.fingerprint,
-		Subject:     subject,
-		NotBefore:   newCert.NotBefore.UTC().Format(time.RFC3339),
-		NotAfter:    newCert.NotAfter.UTC().Format(time.RFC3339),
-	}, nil
+	return []byte(input)
 }
 
-// generateSelfSignedCertificate 自动生成高强度 RSA 2048 位的自签名 X.509 证书
 func generateSelfSignedCertificate(validityYears int) (*x509.Certificate, *rsa.PrivateKey, error) {
 	if validityYears <= 0 {
 		validityYears = viper.GetInt("idp.saml.cert_validity_years")
 	}
 	if validityYears <= 0 {
-		validityYears = 3 // 默认 3 年
+		validityYears = 3
 	}
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -299,19 +287,19 @@ func generateSelfSignedCertificate(validityYears int) (*x509.Certificate, *rsa.P
 		return nil, nil, err
 	}
 
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNum, err := rand.Int(rand.Reader, serialLimit)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	template := x509.Certificate{
-		SerialNumber: serialNumber,
+		SerialNumber: serialNum,
 		Subject: pkix.Name{
 			CommonName:   "EIAM SAML Identity Provider",
 			Organization: []string{"EIAM Enterprise"},
 		},
-		NotBefore:             time.Now().Add(-10 * time.Minute), // 防客户端时钟微小偏差
+		NotBefore:             time.Now().Add(-10 * time.Minute),
 		NotAfter:              time.Now().AddDate(validityYears, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
