@@ -137,7 +137,8 @@ func InitApp() (*App, error) {
 	iApplicationRepository := repository.NewApplicationRepository(iApplicationDAO, iOidcCache)
 	idpIService := idp.NewApplicationService(iApplicationRepository)
 	iClaimsResolver := claims.NewClaimsResolver(iUserRepository, iPermissionService)
-	iKeyManager, err := InitKeyManager(iOidcCache)
+	idPConfig := InitIdPConfig()
+	iKeyManager, err := InitKeyManager(idPConfig, iOidcCache)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +146,7 @@ func InitApp() (*App, error) {
 	iCasCache := cache.NewCasCache(cmdable)
 	iCasService := cas.NewCasService(iCasCache, iClaimsResolver, iApplicationRepository)
 	iSamlCache := cache.NewSamlCache(cmdable)
-	iCertificateManager, err := InitSamlCertManager(iSamlCache)
+	iCertificateManager, err := InitSamlCertManager(idPConfig, iSamlCache)
 	if err != nil {
 		return nil, err
 	}

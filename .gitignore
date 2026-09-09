@@ -1,4 +1,5 @@
-/config/
+/config/*
+!/config/config.example.yaml
 /internal/test/config/
 logs/
 .idea/

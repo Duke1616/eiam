@@ -44,7 +44,7 @@ func (f *fakeSamlCache) SetClusterCertificate(ctx context.Context, certID string
 }
 
 func TestSamlService_GetMetadataXML(t *testing.T) {
-	certMgr, err := NewClusterCertificateManager(context.Background(), "", "", &fakeSamlCache{})
+	certMgr, err := NewClusterCertificateManager(context.Background(), "", "", 1095, &fakeSamlCache{})
 	require.NoError(t, err)
 
 	svc := NewSamlService(certMgr, nil, nil)
@@ -106,7 +106,7 @@ func TestSamlService_BuildLoginResponse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	certMgr, err := NewClusterCertificateManager(context.Background(), "", "", &fakeSamlCache{})
+	certMgr, err := NewClusterCertificateManager(context.Background(), "", "", 1095, &fakeSamlCache{})
 	require.NoError(t, err)
 
 	claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)

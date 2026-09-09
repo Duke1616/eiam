@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/samber/lo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -92,7 +93,7 @@ type Application struct {
 	ClientID         string    `json:"client_id"`          // 应用唯一标识符 / 客户端ID
 	ClientSecret     string    `json:"client_secret"`      // 明文客户端密钥 (仅创建/重置时返回)
 	ClientSecretHash string    `json:"client_secret_hash"` // 密码学哈希 (存储持久化)
-	Name             string    `json:"name"`               // 应用显示名称 (如 "JumpServer堡垒机", "Grafana监控")
+	Name             string    `json:"name"`               // 应用显示名称
 	Logo             string    `json:"logo"`               // 应用图标 URL (应用门户展示)
 	HomepageURL      string    `json:"homepage_url"`       // 应用系统主页 URL (一键直达)
 	RedirectURIs     []string  `json:"redirect_uris"`      // 严格合法的回调地址 / Service 白名单
@@ -183,27 +184,23 @@ func (a *Application) MatchesCasService(rawService string) bool {
 		return false
 	}
 
-	for _, allowed := range a.RedirectURIs {
+	return lo.SomeBy(a.RedirectURIs, func(allowed string) bool {
 		if allowed == rawService {
 			return true
 		}
 		targetURL, err := url.Parse(allowed)
 		if err != nil {
-			continue
+			return false
 		}
 
 		// 1. 同源校验：Scheme 和 Host (含端口) 必须严格一致 (大小写不敏感，防域名伪造)
 		if !strings.EqualFold(targetURL.Scheme, reqURL.Scheme) || !strings.EqualFold(targetURL.Host, reqURL.Host) {
-			continue
+			return false
 		}
 
 		// 2. 路径匹配：白名单为全站根路径，或为请求路径的前缀
-		if targetURL.Path == "" || targetURL.Path == "/" || strings.HasPrefix(reqURL.Path, targetURL.Path) {
-			return true
-		}
-	}
-
-	return false
+		return targetURL.Path == "" || targetURL.Path == "/" || strings.HasPrefix(reqURL.Path, targetURL.Path)
+	})
 }
 
 // HasScope 校验请求的 Scope 是否在允许范围内
@@ -216,17 +213,14 @@ func (a *Application) ValidateRedirectURIs() bool {
 	if len(a.RedirectURIs) == 0 {
 		return false
 	}
-	for _, raw := range a.RedirectURIs {
+	return lo.EveryBy(a.RedirectURIs, func(raw string) bool {
 		parsed, err := url.Parse(raw)
 		if err != nil || !parsed.IsAbs() || parsed.Fragment != "" {
 			return false
 		}
 		scheme := strings.ToLower(parsed.Scheme)
-		if scheme != "http" && scheme != "https" && !strings.Contains(scheme, ".") {
-			return false
-		}
-	}
-	return true
+		return scheme == "http" || scheme == "https" || strings.Contains(scheme, ".")
+	})
 }
 
 // InitDefaultConfig 初始化并补齐应用默认配置参数 (具备协议感知能力)
@@ -299,12 +293,7 @@ func (a *Application) FilterAllowedScopes(reqScopes []string) []string {
 	if len(reqScopes) == 0 {
 		return a.Scopes
 	}
-	res := make([]string, 0, len(reqScopes))
-	for _, s := range reqScopes {
-		if a.HasScope(s) {
-			res = append(res, s)
-		}
-	}
+	res := lo.Intersect(reqScopes, a.Scopes)
 	if len(res) == 0 {
 		return []string{"openid"}
 	}

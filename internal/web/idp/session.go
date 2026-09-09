@@ -8,6 +8,7 @@ import (
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"github.com/spf13/viper"
 )
 
@@ -63,10 +64,7 @@ func (h *Handler) requireAuth(c *gin.Context) (*UserSession, bool) {
 
 // redirectToLogin 统一将未认证客户端重定向至登录页并携带原路径作为回跳参数
 func (h *Handler) redirectToLogin(c *gin.Context) {
-	loginURL := viper.GetString("idp.login_url")
-	if loginURL == "" {
-		loginURL = "/login"
-	}
+	loginURL := lo.CoalesceOrEmpty(viper.GetString("idp.login_url"), "/login")
 	rawReqURL := c.Request.URL.RequestURI()
 	c.Redirect(http.StatusFound, fmt.Sprintf("%s?redirect=%s", loginURL, url.QueryEscape(rawReqURL)))
 }

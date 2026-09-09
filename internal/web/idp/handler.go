@@ -46,48 +46,67 @@ func NewHandler(appSvc idpsvc.IService, svc oidcsvc.IOidcService, casSvc cassvc.
 	}
 }
 
-// PublicRoutes 注册公开的标准 OIDC 与 CAS 协议端点
+// PublicRoutes 注册公开的标准身份协议端点 (OIDC, CAS, SAML 与 Consent 交互)
 func (h *Handler) PublicRoutes(server *gin.Engine) {
-	// 1. 标准 OpenID Connect 自动发现与 JWKS 端点
-	server.GET("/.well-known/openid-configuration", h.Discovery)
-	server.GET("/oauth/v2/jwks", h.JWKS)
+	// 透明兼容微服务网关/前端反向代理（如通过 /api/iam 统一转发并 rewrite 为 /api 的场景）。
+	// 架构权衡：避免在 Gin 中将所有协议路由重复注册两遍（保持 Radix 路由树的单份与纯粹），
+	// 仅在请求命中标准身份协议前缀时内部透明剥离 /api 前缀，直接流转至根路由。
+	server.Use(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if strings.HasPrefix(p, "/api/.well-known") ||
+			strings.HasPrefix(p, "/api/oauth") ||
+			strings.HasPrefix(p, "/api/cas") ||
+			strings.HasPrefix(p, "/api/saml") {
+			c.Request.URL.Path = strings.TrimPrefix(p, "/api")
+		}
+		c.Next()
+	})
 
-	// 2. 授权入口 (支持 GET 浏览器跳转与 POST 表单)
-	server.GET("/oauth/v2/authorize", h.Authorize)
-	server.POST("/oauth/v2/authorize", h.Authorize)
+	// 1. 标准协议端点 (遵循 RFC / 官方协议标准注册在根路径，仅维护单份路由树)
+	h.registerProtocolRoutes(&server.RouterGroup)
 
-	// 3. 用户授权确认交互端点 (Consent Flow，统一供 ecmdb-web 内部调用)
+	// 2. 用户授权确认交互端点 (Consent Flow，供前端应用管理交互调用)
 	server.GET("/api/idp/consent", h.GetConsent)
 	server.POST("/api/idp/consent", h.ConfirmConsent)
+}
 
-	// 4. 授权码换发 Token 端点 (支持 code 与 refresh_token 策略)
-	server.POST("/oauth/v2/token", h.Token)
-	server.POST("/oauth/token", h.Token) // 别名兼容
+func (h *Handler) registerProtocolRoutes(rg *gin.RouterGroup) {
+	// 1. 标准 OpenID Connect 自动发现与 JWKS 端点
+	rg.GET("/.well-known/openid-configuration", h.Discovery)
+	rg.GET("/oauth/v2/jwks", h.JWKS)
 
-	// 5. 令牌撤销端点 (RFC 7009 Token Revocation)
-	server.POST("/oauth/v2/revoke", h.Revoke)
+	// 2. 授权入口 (支持 GET 浏览器跳转与 POST 表单)
+	rg.GET("/oauth/v2/authorize", h.Authorize)
+	rg.POST("/oauth/v2/authorize", h.Authorize)
 
-	// 6. 用户信息查询端点
-	server.GET("/userinfo", h.UserInfo)
-	server.POST("/userinfo", h.UserInfo)
+	// 3. 授权码换发 Token 端点 (支持 code 与 refresh_token 策略)
+	rg.POST("/oauth/v2/token", h.Token)
+	rg.POST("/oauth/token", h.Token) // 别名兼容
 
-	// 7. 单点登出端点 (OIDC RP-Initiated Logout)
-	server.GET("/oauth/v2/logout", h.Logout)
-	server.POST("/oauth/v2/logout", h.Logout)
+	// 4. 令牌撤销端点 (RFC 7009 Token Revocation)
+	rg.POST("/oauth/v2/revoke", h.Revoke)
 
-	// 8. 标准 CAS 2.0 / 3.0 单点登录协议端点 (JumpServer 等系统接入)
-	server.GET("/cas/login", h.CasLogin)
-	server.GET("/cas/serviceValidate", h.CasServiceValidate)
-	server.GET("/cas/p3/serviceValidate", h.CasServiceValidate) // CAS 3.0 别名
-	server.GET("/cas/validate", h.CasValidate)                  // CAS 1.0 兼容
-	server.GET("/cas/logout", h.CasLogout)
+	// 5. 用户信息查询端点
+	rg.GET("/userinfo", h.UserInfo)
+	rg.POST("/userinfo", h.UserInfo)
 
-	// 9. 标准 SAML 2.0 单点登录协议端点 (阿里云/GitLab/Grafana/JumpServer 等接入)
-	server.GET("/saml/metadata", h.SamlMetadata)
-	server.GET("/saml/certificate", h.SamlCertificate)
-	server.GET("/saml/sso", h.SamlSSO)
-	server.POST("/saml/sso", h.SamlSSO)
-	server.GET("/saml/login/:id", h.SamlIdPInitiatedLogin)
+	// 6. 单点登出端点 (OIDC RP-Initiated Logout)
+	rg.GET("/oauth/v2/logout", h.Logout)
+	rg.POST("/oauth/v2/logout", h.Logout)
+
+	// 7. 标准 CAS 2.0 / 3.0 单点登录协议端点
+	rg.GET("/cas/login", h.CasLogin)
+	rg.GET("/cas/serviceValidate", h.CasServiceValidate)
+	rg.GET("/cas/p3/serviceValidate", h.CasServiceValidate) // CAS 3.0 别名
+	rg.GET("/cas/validate", h.CasValidate)                  // CAS 1.0 兼容
+	rg.GET("/cas/logout", h.CasLogout)
+
+	// 8. 标准 SAML 2.0 单点登录协议端点
+	rg.GET("/saml/metadata", h.SamlMetadata)
+	rg.GET("/saml/certificate", h.SamlCertificate)
+	rg.GET("/saml/sso", h.SamlSSO)
+	rg.POST("/saml/sso", h.SamlSSO)
+	rg.GET("/saml/login/:id", h.SamlIdPInitiatedLogin)
 }
 
 // PrivateRoutes 注册租户管理员的应用管理接口 (需要登录态与鉴权保护)
@@ -335,14 +354,14 @@ func appendQueryParam(rawURL, key, val string) string {
 }
 
 func (h *Handler) resolveIssuerURL(c *gin.Context) string {
-	cfgIssuer := viper.GetString("idp.issuer_url")
+	cfgIssuer := viper.GetString("idp.oidc.issuer_url")
+	if cfgIssuer == "" {
+		cfgIssuer = viper.GetString("idp.issuer_url")
+	}
 	if cfgIssuer != "" {
 		return cfgIssuer
 	}
-	scheme := "http"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
+	scheme := lo.Ternary(c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https", "https", "http")
 	return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 }
 
@@ -355,10 +374,7 @@ func (h *Handler) CreateApplication(ctx *ginx.Context, req CreateApplicationReq,
 		tid = int64(ctxutil.GetTenantID(ctx.Request.Context()))
 	}
 
-	protocol := domain.Protocol(req.Protocol)
-	if protocol == "" {
-		protocol = domain.ProtocolOIDC
-	}
+	protocol := domain.Protocol(lo.CoalesceOrEmpty(req.Protocol, string(domain.ProtocolOIDC)))
 
 	app := domain.Application{
 		TenantID:      tid,
@@ -463,14 +479,10 @@ func (h *Handler) GetApplicationDetail(ctx *ginx.Context) (ginx.Result, error) {
 }
 
 func (h *Handler) toVO(app domain.Application) ApplicationVO {
-	protocol := string(app.Protocol)
-	if protocol == "" {
-		protocol = string(domain.ProtocolOIDC)
-	}
 	return ApplicationVO{
 		ID:            app.ID,
 		TenantID:      app.TenantID,
-		Protocol:      protocol,
+		Protocol:      lo.CoalesceOrEmpty(string(app.Protocol), string(domain.ProtocolOIDC)),
 		ClientID:      app.ClientID,
 		ClientSecret:  app.ClientSecret,
 		Name:          app.Name,

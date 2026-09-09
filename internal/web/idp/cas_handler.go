@@ -12,11 +12,12 @@ import (
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/samber/lo"
 	"github.com/spf13/viper"
 )
 
 // CasLogin 处理 CAS 登录与授票端点 (GET /cas/login)
-// 适配 JumpServer 等开源系统的 CAS SSO 登录跳转，全面支持 gateway 与 renew 参数
+// 统一处理 CAS SSO 登录跳转，全面支持 gateway 与 renew 参数
 func (h *Handler) CasLogin(c *gin.Context) {
 	service := c.Query("service")
 	if service == "" {
@@ -158,10 +159,7 @@ func (h *Handler) CasLogout(c *gin.Context) {
 		return
 	}
 
-	loginURL := viper.GetString("idp.login_url")
-	if loginURL == "" {
-		loginURL = "/login"
-	}
+	loginURL := lo.CoalesceOrEmpty(viper.GetString("idp.login_url"), "/login")
 	c.Redirect(http.StatusFound, loginURL)
 }
 
@@ -170,10 +168,7 @@ func (h *Handler) CasLogout(c *gin.Context) {
 func appendTicketToURL(targetURL, ticket string) string {
 	u, err := url.Parse(targetURL)
 	if err != nil {
-		sep := "?"
-		if strings.Contains(targetURL, "?") {
-			sep = "&"
-		}
+		sep := lo.Ternary(strings.Contains(targetURL, "?"), "&", "?")
 		return fmt.Sprintf("%s%sticket=%s", targetURL, sep, url.QueryEscape(ticket))
 	}
 

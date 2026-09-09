@@ -21,6 +21,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/go-jose/go-jose/v4"
+	"github.com/samber/lo"
 	"github.com/spf13/viper"
 )
 
@@ -202,10 +203,11 @@ func (s *service) initiateConsentFlow(
 		return nil, fmt.Errorf("暂存授权上下文失败: %w", err)
 	}
 
-	consentURL := viper.GetString("idp.consent_url")
-	if consentURL == "" {
-		consentURL = "/consent"
-	}
+	consentURL := lo.CoalesceOrEmpty(
+		viper.GetString("idp.oidc.consent_url"),
+		viper.GetString("idp.consent_url"),
+		"/consent",
+	)
 
 	return &AuthorizeResult{
 		RequireConsent: true,
@@ -357,7 +359,8 @@ func (s *service) GetDiscoveryConfig(ctx context.Context, issuerURL string) doma
 	trimmed := strings.TrimRight(issuerURL, "/")
 	var opts []domain.OidcDiscoveryOption
 
-	if viper.GetBool("idp.enable_slo") {
+	enableSLO := viper.GetBool("idp.oidc.enable_slo") || viper.GetBool("idp.enable_slo")
+	if enableSLO {
 		opts = append(opts, domain.WithEndSessionEndpoint(trimmed+"/oauth/v2/logout"))
 	}
 
@@ -405,7 +408,6 @@ func (s *service) generateAndSaveAuthCode(ctx context.Context, req AuthorizeRequ
 func (s *service) recordAudit(ctx context.Context, tenantID int64, action, resourceID, resourceName, status, failReason string) {
 	idp.RecordAudit(ctx, s.auditProducer, tenantID, action, resourceID, resourceName, status, failReason)
 }
-
 
 func buildErrorRedirectURL(redirectURI, errCode, errDesc, state string) (string, error) {
 	sep := "?"

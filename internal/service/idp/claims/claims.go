@@ -24,18 +24,12 @@ type Claims struct {
 
 // FromUser 从基础领域用户实体构造标准化 Claims (纯内存转换，零外部 IO / DB 强耦合)
 func FromUser(user domain.User, tenantID int64, roles []string) Claims {
-	nickname := user.Profile.Nickname
-	name := nickname
-	if name == "" {
-		name = user.Username
-	}
-
 	return Claims{
 		Subject:  strconv.FormatInt(user.ID, 10),
 		UserID:   user.ID,
 		Username: user.Username,
-		Name:     name,
-		Nickname: nickname,
+		Name:     lo.CoalesceOrEmpty(user.Profile.Nickname, user.Username),
+		Nickname: user.Profile.Nickname,
 		Email:    user.Email,
 		Phone:    user.Profile.Phone,
 		JobTitle: user.Profile.JobTitle,
@@ -59,7 +53,7 @@ func (c Claims) ToUser() domain.User {
 }
 
 // ToCasAttributes 输出 CAS 2.0 / 3.0 标准属性字典
-// fix bug: 严禁在此输出名为 "id" 的属性，防止破坏下游系统 (如 Django/JumpServer) 的 UUIDField 主键约束
+// NOTE: 严禁输出名为 "id" 的属性，防止破坏下游系统的主键字段类型约束 (如 UUIDField)
 func (c Claims) ToCasAttributes() map[string]any {
 	attrs := map[string]any{
 		"sub":         c.Subject,
@@ -83,16 +77,11 @@ func (c Claims) ToCasAttributes() map[string]any {
 
 // ToOidcUserInfo 转换为标准 OpenID Connect UserInfo 响应实体
 func (c Claims) ToOidcUserInfo() *domain.OidcUserInfo {
-	nickname := c.Nickname
-	if nickname == "" {
-		nickname = c.Name
-	}
-
 	return &domain.OidcUserInfo{
 		Subject:           c.Subject,
 		PreferredUsername: c.Username,
 		Name:              c.Name,
-		Nickname:          nickname,
+		Nickname:          lo.CoalesceOrEmpty(c.Nickname, c.Name),
 		Email:             c.Email,
 		EmailVerified:     c.Email != "",
 		PhoneNumber:       c.Phone,

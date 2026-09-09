@@ -10,6 +10,11 @@ import (
 	deptsvc "github.com/Duke1616/eiam/internal/service/department"
 	"github.com/Duke1616/eiam/internal/service/discovery"
 	groupsvc "github.com/Duke1616/eiam/internal/service/group"
+	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
+	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
+	claimssvc "github.com/Duke1616/eiam/internal/service/idp/claims"
+	oidcsvc "github.com/Duke1616/eiam/internal/service/idp/oidc"
+	samlsvc "github.com/Duke1616/eiam/internal/service/idp/saml"
 	invitationsvc "github.com/Duke1616/eiam/internal/service/invitation"
 	"github.com/Duke1616/eiam/internal/service/permission"
 	"github.com/Duke1616/eiam/internal/service/permission/checker"
@@ -26,18 +31,13 @@ import (
 	discoveryhdl "github.com/Duke1616/eiam/internal/web/discovery"
 	grouphdl "github.com/Duke1616/eiam/internal/web/group"
 	idhdl "github.com/Duke1616/eiam/internal/web/identity_source"
+	idphdl "github.com/Duke1616/eiam/internal/web/idp"
 	invitationhdl "github.com/Duke1616/eiam/internal/web/invitation"
 	permissionhdl "github.com/Duke1616/eiam/internal/web/permission"
 	"github.com/Duke1616/eiam/internal/web/policy"
 	rolehdl "github.com/Duke1616/eiam/internal/web/role"
 	tenanthdl "github.com/Duke1616/eiam/internal/web/tenant"
 	userhdl "github.com/Duke1616/eiam/internal/web/user"
-	idpsvc "github.com/Duke1616/eiam/internal/service/idp"
-	cassvc "github.com/Duke1616/eiam/internal/service/idp/cas"
-	claimssvc "github.com/Duke1616/eiam/internal/service/idp/claims"
-	oidcsvc "github.com/Duke1616/eiam/internal/service/idp/oidc"
-	samlsvc "github.com/Duke1616/eiam/internal/service/idp/saml"
-	idphdl "github.com/Duke1616/eiam/internal/web/idp"
 	"github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/RediSearch/redisearch-go/v2/redisearch"
 	"github.com/google/wire"
@@ -213,6 +213,7 @@ var (
 		claimssvc.NewClaimsResolver,
 		oidcsvc.NewService,
 		cassvc.NewCasService,
+		InitIdPConfig,
 		InitKeyManager,
 		InitSamlCertManager,
 		samlsvc.NewSamlService,

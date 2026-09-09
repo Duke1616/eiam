@@ -14,6 +14,7 @@ import (
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/samber/lo"
 )
 
 // SamlDescriptorVO SAML 接入端点与证书描述符视图对象
@@ -109,15 +110,8 @@ func toSamlDescriptorVO(issuerURL string, detail samlsvc.CertificateDetail) Saml
 // 支持 HTTP-Redirect (GET) 与 HTTP-POST (POST) 两种 SAML 2.0 绑定协议
 func (h *Handler) SamlSSO(c *gin.Context) {
 	isRedirect := c.Request.Method == http.MethodGet
-
-	var samlRequest, relayState string
-	if isRedirect {
-		samlRequest = c.Query("SAMLRequest")
-		relayState = c.Query("RelayState")
-	} else {
-		samlRequest = c.PostForm("SAMLRequest")
-		relayState = c.PostForm("RelayState")
-	}
+	samlRequest := lo.Ternary(isRedirect, c.Query("SAMLRequest"), c.PostForm("SAMLRequest"))
+	relayState := lo.Ternary(isRedirect, c.Query("RelayState"), c.PostForm("RelayState"))
 
 	if strings.TrimSpace(samlRequest) == "" {
 		c.String(http.StatusBadRequest, "缺少必要参数: SAMLRequest")

@@ -1,6 +1,8 @@
 package idp
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -63,6 +65,59 @@ func TestHandler_RouteRegistration(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "缺少期望的路由路径: %s", expected)
+	}
+}
+
+func TestHandler_RewriteMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	testCases := []struct {
+		name         string
+		incomingPath string
+		expectedPath string
+	}{
+		{
+			name:         "OIDC Discovery 端点透明重写",
+			incomingPath: "/api/.well-known/openid-configuration",
+			expectedPath: "/.well-known/openid-configuration",
+		},
+		{
+			name:         "OAuth2 JWKS 端点透明重写",
+			incomingPath: "/api/oauth/v2/jwks",
+			expectedPath: "/oauth/v2/jwks",
+		},
+		{
+			name:         "CAS Login 端点透明重写",
+			incomingPath: "/api/cas/login",
+			expectedPath: "/cas/login",
+		},
+		{
+			name:         "SAML SSO 端点透明重写",
+			incomingPath: "/api/saml/sso",
+			expectedPath: "/saml/sso",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := gin.New()
+			var recordedPath string
+
+			hdl := NewHandler(nil, nil, nil, nil)
+			hdl.PublicRoutes(server)
+
+			// 挂载后置探针中间件记录重写后的 URL Path
+			server.Use(func(c *gin.Context) {
+				recordedPath = c.Request.URL.Path
+				c.AbortWithStatus(http.StatusOK)
+			})
+
+			req, _ := http.NewRequest(http.MethodGet, tc.incomingPath, nil)
+			w := httptest.NewRecorder()
+			server.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.expectedPath, recordedPath)
+		})
 	}
 }
 

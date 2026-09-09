@@ -1,0 +1,84 @@
+log:
+  debug: false
+
+web:
+  host: "0.0.0.0"
+  port: 9000
+
+grpc:
+  server:
+    eiam:
+      name: "eiam"
+      listen_addr: "0.0.0.0:8077"
+      auth_token: "your-grpc-auth-token"
+
+mysql:
+  dsn: "root:password@tcp(127.0.0.1:3306)/eiam?charset=utf8mb4&collation=utf8mb4_general_ci&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&multiStatements=true&interpolateParams=true"
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+session:
+  session_encrypted_key: "your-session-encrypt-key"
+  cookie:
+    domain: "localhost"
+    name: "eiam-session-token"
+    # 生产环境启用 HTTPS 时应设为 true
+    secure: false
+
+etcd:
+  endpoints:
+    - 127.0.0.1:2379
+
+identity:
+  # 敏感用户数据落库对称加密密钥
+  encryption_key: 1234567890
+
+discovery:
+  # 微服务 API 资产自发现注册端点认证
+  # 密钥通过 `eiam token gen --service <name>` 命令生成
+  auth_enabled: false # 是否强制校验微服务上报 Token
+
+casbin:
+  # Casbin 权限层级图缓存
+  redis:
+    addr: "127.0.0.1:6379"
+    db: 1
+    password: ""
+
+audit:
+  # 操作安全审计中间件
+  enabled: true
+  methods: # 拦截记录写操作日志
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "PATCH"
+
+# 统一身份提供商 (IdP) 配置
+idp:
+  # 统一登录页地址
+  login_url: "http://localhost:3333/login"
+
+  # OIDC 协议配置
+  oidc:
+    issuer_url: "http://localhost:9000"
+    key_id: "eiam-default-key"
+    # 签名私钥：支持文件路径 (如 configs/certs/oidc.key) 或 PEM 文本，为空则自动集群生成
+    private_key: ""
+    consent_url: "" # 授权确认页，为空使用内置页
+    enable_slo: false # 是否开启单点注销广播
+
+  # SAML 2.0 协议配置
+  saml:
+    # X.509 证书：支持文件路径 (如 configs/certs/saml.crt) 或 PEM 文本，为空则自动集群自签
+    certificate: ""
+    # 签名私钥：支持文件路径或 PEM 文本，为空则复用 OIDC 私钥或自动集群生成
+    private_key: ""
+    validity_days: 1095 # 自签证书有效期 (天)，默认 3 年
+
+  # CAS 协议配置
+  cas:
+    ticket_ttl_minutes: 5 # Service Ticket 票据有效时长 (分钟)
