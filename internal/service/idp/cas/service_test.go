@@ -8,10 +8,13 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/errs"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	repomocks "github.com/Duke1616/eiam/internal/repository/mocks"
 	"github.com/Duke1616/eiam/internal/service/idp/claims"
 	claimsmocks "github.com/Duke1616/eiam/internal/service/idp/claims/mocks"
+	tenantmocks "github.com/Duke1616/eiam/internal/service/tenant/mocks"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -46,9 +49,10 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 
 	claimsResolver := claimsmocks.NewMockIClaimsResolver(ctrl)
 	clientRepo := repomocks.NewMockIApplicationRepository(ctrl)
+	tenantSvc := tenantmocks.NewMockITenantService(ctrl)
 	c := newMockCasCache()
 
-	svc := NewCasService(c, claimsResolver, clientRepo)
+	svc := NewCasService(c, claimsResolver, clientRepo, tenantSvc)
 
 	ctx := context.Background()
 	serviceURL := "https://example.com/core/auth/cas/login/?next=%2Fui%2F"
@@ -57,7 +61,7 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 	clientRepo.EXPECT().FindAll(gomock.Any()).Return([]domain.Application{
 		{
 			ID:           1,
-			TenantID:     1,
+			TenantID:     ctxutil.SystemTenantID,
 			Name:         "GitLab",
 			RedirectURIs: []string{"https://gitlab.example.com/callback"},
 		},
@@ -65,11 +69,39 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 	_, err := svc.GenerateTicket(ctx, 1001, 1, "admin", serviceURL)
 	assert.True(t, errors.Is(err, ErrServiceNotRegistered))
 
-	// 2. 测试应用白名单命中 (全局公共应用，自动放行带入用户登录会话租户 2)，成功生成 Ticket
+	// 1.1 测试跨租户越权访问拦截：用户当前处于租户 3，应用归属租户 2，用户无租户 2 访问权限
 	clientRepo.EXPECT().FindAll(gomock.Any()).Return([]domain.Application{
 		{
 			ID:           2,
-			TenantID:     1,
+			TenantID:     2,
+			Name:         "JumpServer堡垒机",
+			RedirectURIs: []string{"https://example.com/core/auth/cas/login/"},
+		},
+	}, nil)
+	tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(1001)).Return(false, nil)
+	_, err = svc.GenerateTicket(ctx, 1001, 3, "admin", serviceURL)
+	assert.True(t, errors.Is(err, errs.ErrTenantAccessDenied))
+
+	// 1.2 测试跨租户合法放行：用户当前处于租户 3，应用归属租户 2，用户拥有租户 2 权限 -> 放行且 Ticket 绑定租户 2
+	clientRepo.EXPECT().FindAll(gomock.Any()).Return([]domain.Application{
+		{
+			ID:           2,
+			TenantID:     2,
+			Name:         "JumpServer堡垒机",
+			RedirectURIs: []string{"https://example.com/core/auth/cas/login/"},
+		},
+	}, nil)
+	tenantSvc.EXPECT().CheckUserTenantAccess(gomock.Any(), int64(1001)).Return(true, nil)
+	crossTicket, err := svc.GenerateTicket(ctx, 1001, 3, "admin", serviceURL)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(crossTicket, "ST-"))
+	assert.Equal(t, int64(2), c.store[crossTicket].TenantID)
+
+	// 2. 测试同租户直接放行 (应用在租户 2，用户当前会话也在租户 2，0 额外开销直接放行)
+	clientRepo.EXPECT().FindAll(gomock.Any()).Return([]domain.Application{
+		{
+			ID:           2,
+			TenantID:     2,
 			Name:         "JumpServer堡垒机",
 			RedirectURIs: []string{"https://example.com/core/auth/cas/login/"},
 		},
@@ -90,7 +122,7 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 	clientRepo.EXPECT().FindAll(gomock.Any()).Return([]domain.Application{
 		{
 			ID:           2,
-			TenantID:     1,
+			TenantID:     ctxutil.SystemTenantID,
 			Name:         "JumpServer堡垒机",
 			RedirectURIs: []string{"https://example.com/core/auth/cas/login/"},
 		},
@@ -132,14 +164,14 @@ func TestCasService_GenerateAndValidateTicket(t *testing.T) {
 	clientRepo.EXPECT().FindAll(gomock.Any()).Return([]domain.Application{
 		{
 			ID:           2,
-			TenantID:     1,
+			TenantID:     ctxutil.SystemTenantID,
 			Name:         "JumpServer堡垒机",
 			RedirectURIs: []string{"https://example.com/core/auth/cas/login/"},
 		},
 	}, nil)
-	ticket3, err := svc.GenerateTicket(ctx, 1001, 1, "admin", serviceURL)
+	ticket3, err := svc.GenerateTicket(ctx, 1001, ctxutil.SystemTenantID, "admin", serviceURL)
 	require.NoError(t, err)
-	claimsResolver.EXPECT().Resolve(gomock.Any(), claims.IdentityRef{TenantID: 1, UserID: 1001, Username: "admin"}).Return(claims.Claims{
+	claimsResolver.EXPECT().Resolve(gomock.Any(), claims.IdentityRef{TenantID: ctxutil.SystemTenantID, UserID: 1001, Username: "admin"}).Return(claims.Claims{
 		UserID:   1001,
 		Username: "admin",
 	}, nil)

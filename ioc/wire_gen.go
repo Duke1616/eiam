@@ -144,7 +144,7 @@ func InitApp() (*App, error) {
 	}
 	iOidcService := oidc.NewService(iApplicationRepository, iClaimsResolver, iTenantService, iOidcCache, iKeyManager, iAuditProducer)
 	iCasCache := cache.NewCasCache(cmdable)
-	iCasService := cas.NewCasService(iCasCache, iClaimsResolver, iApplicationRepository)
+	iCasService := cas.NewCasService(iCasCache, iClaimsResolver, iApplicationRepository, iTenantService)
 	iSamlCache := cache.NewSamlCache(cmdable)
 	iCertificateManager, err := InitSamlCertManager(idPConfig, iSamlCache)
 	if err != nil {

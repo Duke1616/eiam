@@ -118,7 +118,18 @@ func (s *CasHandlerTestSuite) TestCasLogin() {
 					Return("", errs.ErrCasServiceNotRegistered)
 			},
 			wantCode: http.StatusForbidden,
-			wantBody: "目标服务未在当前租户或系统级接入应用白名单中注册，拒绝跳转",
+			wantBody: "目标服务未在接入应用白名单中注册，拒绝跳转",
+		},
+		{
+			name:      "用户无权访问目标租户应用返回 403",
+			targetURL: "/cas/login?service=" + url.QueryEscape("https://other-tenant.example.com/callback"),
+			mockSetup: func() {
+				s.casSvc.EXPECT().
+					GenerateTicket(gomock.Any(), int64(100), int64(1), "alice", "https://other-tenant.example.com/callback").
+					Return("", errs.ErrTenantAccessDenied)
+			},
+			wantCode: http.StatusForbidden,
+			wantBody: "当前用户无权访问目标租户的应用，拒绝跳转",
 		},
 		{
 			name:      "服务内部异常返回 500",

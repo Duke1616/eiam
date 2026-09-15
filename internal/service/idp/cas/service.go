@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
@@ -14,8 +13,10 @@ import (
 	"github.com/Duke1616/eiam/internal/repository"
 	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/service/idp/claims"
+	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/gotomicro/ego/core/elog"
+	"github.com/samber/lo"
 )
 
 var (
@@ -49,34 +50,91 @@ type casService struct {
 	cache          cache.ICasCache
 	claimsResolver claims.IClaimsResolver
 	appRepo        repository.IApplicationRepository
+	tenantSvc      tenant.ITenantService
 	logger         *elog.Component
 }
 
-// NewCasService 构造 CAS 核心服务实例 (保持轻量，依托底层 gormx 多租户插件实现全局隔离与共享)
+// NewCasService 构造 CAS 核心服务实例
 func NewCasService(
 	cache cache.ICasCache,
 	claimsResolver claims.IClaimsResolver,
 	appRepo repository.IApplicationRepository,
+	tenantSvc tenant.ITenantService,
 ) ICasService {
 	return &casService{
 		cache:          cache,
 		claimsResolver: claimsResolver,
 		appRepo:        appRepo,
+		tenantSvc:      tenantSvc,
 		logger:         elog.DefaultLogger,
 	}
 }
 
-// GenerateTicket 生成标准 Service Ticket (ST-xxxx)
+// GenerateTicket 为已登录用户针对指定 service 生成 ST-xxxx 凭据并暂存
 func (s *casService) GenerateTicket(ctx context.Context, userID, tenantID int64, username, service string) (string, error) {
 	if tenantID > 0 && ctxutil.GetTenantID(ctx) <= 0 {
 		ctx = ctxutil.WithTenantID(ctx, tenantID)
 	}
 
-	// 1. 安全白名单校验：确保 service 属于当前租户或系统级全局共享的应用 (Application)
-	if err := s.validateServiceRegistration(ctx, service); err != nil {
+	// 1. 安全白名单匹配与多租户跨租户准入防线校验
+	app, err := s.validateServiceAndTenantAccess(ctx, userID, tenantID, service)
+	if err != nil {
 		return "", err
 	}
 
+	// 2. 动态自适应确定生效租户：
+	// 若应用为独立业务租户应用，强制对齐该应用真实租户，确保验票时解析出目标租户属性；
+	// 若应用为平台公共应用 (SystemTenantID)，优先沿用当前用户登录会话租户
+	effectiveTenantID := app.TenantID
+	if effectiveTenantID == ctxutil.SystemTenantID && tenantID > 0 {
+		effectiveTenantID = tenantID
+	}
+
+	// 3. 签发票据并持久化暂存
+	return s.issueTicket(ctx, userID, effectiveTenantID, username, service)
+}
+
+// validateServiceAndTenantAccess 校验目标服务是否在应用白名单中，并防范跨租户非法越权访问
+func (s *casService) validateServiceAndTenantAccess(ctx context.Context, userID, currentTenantID int64, service string) (*domain.Application, error) {
+	// 依托 DAO 层 Scopes(gormx.IgnoreTenant())，此处 FindAll 具备 IdP 全局白名单视野
+	apps, err := s.appRepo.FindAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("查询接入应用白名单失败: %w", err)
+	}
+
+	// 1. 查找匹配 service 规则的应用
+	app, ok := lo.Find(apps, func(a domain.Application) bool {
+		return a.MatchesCasService(service) || a.HasRedirectURI(service)
+	})
+	if !ok {
+		s.logger.Warn("拒绝未注册或不在白名单的 CAS 登录重定向",
+			elog.Int64("user_id", userID),
+			elog.Int64("current_tenant_id", currentTenantID),
+			elog.String("service", service),
+		)
+		return nil, ErrServiceNotRegistered
+	}
+
+	// 2. 多租户安全准入防线：若应用属于具体业务租户，且用户当前处于其他租户空间，校验用户是否具备目标租户成员身份
+	if app.TenantID != ctxutil.SystemTenantID && app.TenantID != currentTenantID {
+		targetCtx := ctxutil.WithTenantID(ctx, app.TenantID)
+		hasAccess, err := s.tenantSvc.CheckUserTenantAccess(targetCtx, userID)
+		if err != nil || !hasAccess {
+			s.logger.Warn("拦截未授权跨租户 CAS 登录请求",
+				elog.Int64("user_id", userID),
+				elog.Int64("app_tenant_id", app.TenantID),
+				elog.Int64("session_tenant_id", currentTenantID),
+				elog.String("service", service),
+			)
+			return nil, errs.ErrTenantAccessDenied
+		}
+	}
+
+	return &app, nil
+}
+
+// issueTicket 生成密码学安全的随机票据并存入 TicketStore
+func (s *casService) issueTicket(ctx context.Context, userID, tenantID int64, username, service string) (string, error) {
 	randBytes := make([]byte, 24)
 	if _, err := rand.Read(randBytes); err != nil {
 		return "", fmt.Errorf("生成随机票据熵源失败: %w", err)
@@ -98,33 +156,6 @@ func (s *casService) GenerateTicket(ctx context.Context, userID, tenantID int64,
 	}
 
 	return ticket, nil
-}
-
-// validateServiceRegistration 校验 service 是否命中当前租户或系统级全局共享的应用
-func (s *casService) validateServiceRegistration(ctx context.Context, service string) error {
-	// 依托 Application 实体的 eiam:"shared" 标签与 gormx 插件，
-	// 此处 FindAll 会根据 ctx 自动合并当前租户私有应用与系统根租户(1)全局公共应用，全量获取白名单
-	apps, err := s.appRepo.FindAll(ctx)
-	if err != nil {
-		return fmt.Errorf("查询接入应用白名单失败: %w", err)
-	}
-
-	if hasMatchingApp(apps, service) {
-		return nil
-	}
-
-	s.logger.Warn("拒绝未注册或不在白名单的 CAS 登录重定向",
-		elog.Int64("tenant_id", ctxutil.GetTenantID(ctx).Int64()),
-		elog.String("service", service),
-	)
-	return ErrServiceNotRegistered
-}
-
-func hasMatchingApp(apps []domain.Application, service string) bool {
-	return slices.ContainsFunc(apps, func(a domain.Application) bool {
-		// 协议兼容与安全保障：优先执行 CAS 同源与路径前缀匹配，同时兼顾存量应用放行
-		return a.MatchesCasService(service) || a.HasRedirectURI(service)
-	})
 }
 
 // ValidateTicket 校验并一次性核销票据

@@ -131,7 +131,12 @@ func (dao *applicationDAO) Count(ctx context.Context) (int64, error) {
 
 func (dao *applicationDAO) FindAll(ctx context.Context) ([]Application, error) {
 	var apps []Application
-	err := dao.db.WithContext(ctx).Model(&Application{}).Order("id DESC").Find(&apps).Error
+	// 与 FindByClientID 保持一致：IdP SSO 单点登录全量校验接入应用白名单，使用 Scope 局域提权跨租户匹配
+	err := dao.db.WithContext(ctx).
+		Scopes(gormx.IgnoreTenant()).
+		Model(&Application{}).
+		Order("id DESC").
+		Find(&apps).Error
 	return apps, err
 }
 

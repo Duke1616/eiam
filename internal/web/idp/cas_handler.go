@@ -53,7 +53,11 @@ func (h *Handler) CasLogin(c *gin.Context) {
 	ticket, err := h.casSvc.GenerateTicket(c.Request.Context(), userSess.UserID, userSess.TenantID, userSess.Username, service)
 	if err != nil {
 		if errors.Is(err, errs.ErrCasServiceNotRegistered) {
-			c.String(http.StatusForbidden, "目标服务未在当前租户或系统级接入应用白名单中注册，拒绝跳转")
+			c.String(http.StatusForbidden, "目标服务未在接入应用白名单中注册，拒绝跳转")
+			return
+		}
+		if errors.Is(err, errs.ErrTenantAccessDenied) {
+			c.String(http.StatusForbidden, "当前用户无权访问目标租户的应用，拒绝跳转")
 			return
 		}
 		h.logger.Error("生成 CAS Service Ticket 失败", elog.FieldErr(err))
