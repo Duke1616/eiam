@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Duke1616/eiam/internal/domain"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -36,6 +37,20 @@ type IPermissionCache interface {
 	SetParentsByNeeds(ctx context.Context, codes []string, parents []string) error
 	// ClearParentCodes 原子清空所有权限拓扑依赖缓存
 	ClearParentCodes(ctx context.Context) error
+
+	// GetPermissionsByActions 获取 actions 对应的权限元数据列表；未命中返回 ErrCacheNotFound
+	GetPermissionsByActions(ctx context.Context, actions []string) ([]domain.Permission, error)
+	// SetPermissionsByActions 缓存 actions 对应的权限元数据列表
+	SetPermissionsByActions(ctx context.Context, actions []string, perms []domain.Permission) error
+	// ClearActionPermissions 原子清空所有 actions 对应的权限元数据缓存
+	ClearActionPermissions(ctx context.Context) error
+
+	// GetManifest 获取系统级或普通租户级的权限清单缓存；未命中返回 ErrCacheNotFound
+	GetManifest(ctx context.Context, isSystem bool) (domain.PermissionManifest, error)
+	// SetManifest 缓存系统级或普通租户级的权限清单
+	SetManifest(ctx context.Context, isSystem bool, manifest domain.PermissionManifest) error
+	// ClearAllPermissionCaches 管道化原子清空父级拓扑依赖、动作定义以及权限清单等所有权限衍生缓存
+	ClearAllPermissionCaches(ctx context.Context) error
 }
 
 type permissionCache struct {
@@ -147,6 +162,103 @@ func (c *permissionCache) SetParentsByNeeds(ctx context.Context, codes []string,
 func (c *permissionCache) ClearParentCodes(ctx context.Context) error {
 	setKey := c.parentKeysSet()
 	return c.client.Eval(ctx, luaInvalidateParents, []string{setKey}).Err()
+}
+
+func (c *permissionCache) actionsKey(actions []string) string {
+	sorted := slices.Clone(actions)
+	slices.Sort(sorted)
+	return fmt.Sprintf("eiam:perm:actions:%s", strings.Join(sorted, ","))
+}
+
+func (c *permissionCache) actionKeysSet() string {
+	return "eiam:perm:action_keys"
+}
+
+func (c *permissionCache) GetPermissionsByActions(ctx context.Context, actions []string) ([]domain.Permission, error) {
+	key := c.actionsKey(actions)
+	val, err := c.client.Get(ctx, key).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrCacheNotFound
+		}
+		return nil, err
+	}
+
+	var perms []domain.Permission
+	if err = json.Unmarshal(val, &perms); err != nil {
+		return nil, fmt.Errorf("反序列化权限元数据缓存失败: %w", err)
+	}
+
+	return perms, nil
+}
+
+func (c *permissionCache) SetPermissionsByActions(ctx context.Context, actions []string, perms []domain.Permission) error {
+	data, err := json.Marshal(perms)
+	if err != nil {
+		return fmt.Errorf("序列化权限元数据缓存失败: %w", err)
+	}
+
+	key := c.actionsKey(actions)
+	setKey := c.actionKeysSet()
+	ttl := c.jitterTTL(c.ttl)
+
+	pipe := c.client.Pipeline()
+	pipe.Set(ctx, key, data, ttl)
+	pipe.SAdd(ctx, setKey, key)
+	pipe.Expire(ctx, setKey, ttl+time.Hour)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (c *permissionCache) ClearActionPermissions(ctx context.Context) error {
+	setKey := c.actionKeysSet()
+	return c.client.Eval(ctx, luaInvalidateParents, []string{setKey}).Err()
+}
+
+func (c *permissionCache) manifestKey(isSystem bool) string {
+	if isSystem {
+		return "eiam:perm:manifest:sys"
+	}
+	return "eiam:perm:manifest:tenant"
+}
+
+func (c *permissionCache) GetManifest(ctx context.Context, isSystem bool) (domain.PermissionManifest, error) {
+	key := c.manifestKey(isSystem)
+	val, err := c.client.Get(ctx, key).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return domain.PermissionManifest{}, ErrCacheNotFound
+		}
+		return domain.PermissionManifest{}, err
+	}
+
+	var manifest domain.PermissionManifest
+	if err = json.Unmarshal(val, &manifest); err != nil {
+		return domain.PermissionManifest{}, fmt.Errorf("反序列化权限清单缓存失败: %w", err)
+	}
+
+	return manifest, nil
+}
+
+func (c *permissionCache) SetManifest(ctx context.Context, isSystem bool, manifest domain.PermissionManifest) error {
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		return fmt.Errorf("序列化权限清单缓存失败: %w", err)
+	}
+
+	key := c.manifestKey(isSystem)
+	ttl := c.jitterTTL(c.ttl)
+
+	return c.client.Set(ctx, key, data, ttl).Err()
+}
+
+func (c *permissionCache) ClearAllPermissionCaches(ctx context.Context) error {
+	pipe := c.client.Pipeline()
+	pipe.Eval(ctx, luaInvalidateParents, []string{c.parentKeysSet()})
+	pipe.Eval(ctx, luaInvalidateParents, []string{c.actionKeysSet()})
+	pipe.Del(ctx, c.manifestKey(true), c.manifestKey(false))
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 // jitterTTL 为过期时间增加 ±10% 随机抖动，避免缓存雪崩

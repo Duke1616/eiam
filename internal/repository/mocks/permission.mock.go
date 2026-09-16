@@ -84,6 +84,20 @@ func (mr *MockIPermissionRepositoryMockRecorder) BindResources(ctx, permId, perm
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BindResources", reflect.TypeOf((*MockIPermissionRepository)(nil).BindResources), ctx, permId, permCode, resURNs)
 }
 
+// ClearAllPermissionCaches mocks base method.
+func (m *MockIPermissionRepository) ClearAllPermissionCaches(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearAllPermissionCaches", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearAllPermissionCaches indicates an expected call of ClearAllPermissionCaches.
+func (mr *MockIPermissionRepositoryMockRecorder) ClearAllPermissionCaches(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAllPermissionCaches", reflect.TypeOf((*MockIPermissionRepository)(nil).ClearAllPermissionCaches), ctx)
+}
+
 // CountByService mocks base method.
 func (m *MockIPermissionRepository) CountByService(ctx context.Context) (map[string]int64, error) {
 	m.ctrl.T.Helper()
@@ -232,6 +246,21 @@ func (mr *MockIPermissionRepositoryMockRecorder) GetByCode(ctx, code any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByCode", reflect.TypeOf((*MockIPermissionRepository)(nil).GetByCode), ctx, code)
 }
 
+// GetManifest mocks base method.
+func (m *MockIPermissionRepository) GetManifest(ctx context.Context, isSystem bool) (domain.PermissionManifest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetManifest", ctx, isSystem)
+	ret0, _ := ret[0].(domain.PermissionManifest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetManifest indicates an expected call of GetManifest.
+func (mr *MockIPermissionRepositoryMockRecorder) GetManifest(ctx, isSystem any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetManifest", reflect.TypeOf((*MockIPermissionRepository)(nil).GetManifest), ctx, isSystem)
+}
+
 // GetMenuBindings mocks base method.
 func (m *MockIPermissionRepository) GetMenuBindings(ctx context.Context) (map[string][]string, error) {
 	m.ctrl.T.Helper()
@@ -304,6 +333,20 @@ func (m *MockIPermissionRepository) PhysicalClearService(ctx context.Context, se
 func (mr *MockIPermissionRepositoryMockRecorder) PhysicalClearService(ctx, service, source any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PhysicalClearService", reflect.TypeOf((*MockIPermissionRepository)(nil).PhysicalClearService), ctx, service, source)
+}
+
+// SetManifest mocks base method.
+func (m *MockIPermissionRepository) SetManifest(ctx context.Context, isSystem bool, manifest domain.PermissionManifest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetManifest", ctx, isSystem, manifest)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetManifest indicates an expected call of SetManifest.
+func (mr *MockIPermissionRepositoryMockRecorder) SetManifest(ctx, isSystem, manifest any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetManifest", reflect.TypeOf((*MockIPermissionRepository)(nil).SetManifest), ctx, isSystem, manifest)
 }
 
 // SyncPermissions mocks base method.

@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	domain "github.com/Duke1616/eiam/internal/domain"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -38,6 +39,34 @@ func NewMockIPermissionCache(ctrl *gomock.Controller) *MockIPermissionCache {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockIPermissionCache) EXPECT() *MockIPermissionCacheMockRecorder {
 	return m.recorder
+}
+
+// ClearActionPermissions mocks base method.
+func (m *MockIPermissionCache) ClearActionPermissions(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearActionPermissions", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearActionPermissions indicates an expected call of ClearActionPermissions.
+func (mr *MockIPermissionCacheMockRecorder) ClearActionPermissions(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearActionPermissions", reflect.TypeOf((*MockIPermissionCache)(nil).ClearActionPermissions), ctx)
+}
+
+// ClearAllPermissionCaches mocks base method.
+func (m *MockIPermissionCache) ClearAllPermissionCaches(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearAllPermissionCaches", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearAllPermissionCaches indicates an expected call of ClearAllPermissionCaches.
+func (mr *MockIPermissionCacheMockRecorder) ClearAllPermissionCaches(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAllPermissionCaches", reflect.TypeOf((*MockIPermissionCache)(nil).ClearAllPermissionCaches), ctx)
 }
 
 // ClearParentCodes mocks base method.
@@ -83,6 +112,21 @@ func (mr *MockIPermissionCacheMockRecorder) GetCodesByResource(ctx, resURN any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCodesByResource", reflect.TypeOf((*MockIPermissionCache)(nil).GetCodesByResource), ctx, resURN)
 }
 
+// GetManifest mocks base method.
+func (m *MockIPermissionCache) GetManifest(ctx context.Context, isSystem bool) (domain.PermissionManifest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetManifest", ctx, isSystem)
+	ret0, _ := ret[0].(domain.PermissionManifest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetManifest indicates an expected call of GetManifest.
+func (mr *MockIPermissionCacheMockRecorder) GetManifest(ctx, isSystem any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetManifest", reflect.TypeOf((*MockIPermissionCache)(nil).GetManifest), ctx, isSystem)
+}
+
 // GetParentsByNeeds mocks base method.
 func (m *MockIPermissionCache) GetParentsByNeeds(ctx context.Context, codes []string) ([]string, error) {
 	m.ctrl.T.Helper()
@@ -96,6 +140,21 @@ func (m *MockIPermissionCache) GetParentsByNeeds(ctx context.Context, codes []st
 func (mr *MockIPermissionCacheMockRecorder) GetParentsByNeeds(ctx, codes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetParentsByNeeds", reflect.TypeOf((*MockIPermissionCache)(nil).GetParentsByNeeds), ctx, codes)
+}
+
+// GetPermissionsByActions mocks base method.
+func (m *MockIPermissionCache) GetPermissionsByActions(ctx context.Context, actions []string) ([]domain.Permission, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPermissionsByActions", ctx, actions)
+	ret0, _ := ret[0].([]domain.Permission)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPermissionsByActions indicates an expected call of GetPermissionsByActions.
+func (mr *MockIPermissionCacheMockRecorder) GetPermissionsByActions(ctx, actions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPermissionsByActions", reflect.TypeOf((*MockIPermissionCache)(nil).GetPermissionsByActions), ctx, actions)
 }
 
 // SetCodesByResource mocks base method.
@@ -112,6 +171,20 @@ func (mr *MockIPermissionCacheMockRecorder) SetCodesByResource(ctx, resURN, code
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCodesByResource", reflect.TypeOf((*MockIPermissionCache)(nil).SetCodesByResource), ctx, resURN, codes)
 }
 
+// SetManifest mocks base method.
+func (m *MockIPermissionCache) SetManifest(ctx context.Context, isSystem bool, manifest domain.PermissionManifest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetManifest", ctx, isSystem, manifest)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetManifest indicates an expected call of SetManifest.
+func (mr *MockIPermissionCacheMockRecorder) SetManifest(ctx, isSystem, manifest any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetManifest", reflect.TypeOf((*MockIPermissionCache)(nil).SetManifest), ctx, isSystem, manifest)
+}
+
 // SetParentsByNeeds mocks base method.
 func (m *MockIPermissionCache) SetParentsByNeeds(ctx context.Context, codes, parents []string) error {
 	m.ctrl.T.Helper()
@@ -124,4 +197,18 @@ func (m *MockIPermissionCache) SetParentsByNeeds(ctx context.Context, codes, par
 func (mr *MockIPermissionCacheMockRecorder) SetParentsByNeeds(ctx, codes, parents any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetParentsByNeeds", reflect.TypeOf((*MockIPermissionCache)(nil).SetParentsByNeeds), ctx, codes, parents)
+}
+
+// SetPermissionsByActions mocks base method.
+func (m *MockIPermissionCache) SetPermissionsByActions(ctx context.Context, actions []string, perms []domain.Permission) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetPermissionsByActions", ctx, actions, perms)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetPermissionsByActions indicates an expected call of SetPermissionsByActions.
+func (mr *MockIPermissionCacheMockRecorder) SetPermissionsByActions(ctx, actions, perms any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPermissionsByActions", reflect.TypeOf((*MockIPermissionCache)(nil).SetPermissionsByActions), ctx, actions, perms)
 }

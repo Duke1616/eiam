@@ -12,6 +12,8 @@ import (
 
 // IResourceService 物理资源管理服务
 // 负责维护系统中全量物理资产 (API, Menu) 的元数据底数
+//
+//go:generate mockgen -package=resourcemocks -destination=./mocks/resource.mock.go github.com/Duke1616/eiam/internal/service/resource IResourceService
 type IResourceService interface {
 	// --- 1. 资产发现与检索 (Assets Discovery) ---
 

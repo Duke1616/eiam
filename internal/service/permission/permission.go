@@ -157,8 +157,8 @@ func (s *permissionService) CheckAPIDecision(ctx context.Context, username, serv
 	}
 
 	// 5. 权限依赖展开 (核心逻辑：检查父节点)
-	// 从数据库反向查找哪些权限码依赖了当前接口要求的 targetCodes
-	candidateActions, err := s.expandParentActionsFromDB(ctx, targetCodes)
+	// 从仓储层反向查找哪些权限码依赖了当前接口要求的 targetCodes（底层包含 Redis 缓存拦截）
+	candidateActions, err := s.expandParentActions(ctx, targetCodes)
 	if err != nil {
 		return pbac.Decision{}, err
 	}
@@ -183,8 +183,8 @@ func (s *permissionService) CheckAPIDecision(ctx context.Context, username, serv
 	return decision, nil
 }
 
-// expandParentActionsFromDB 通过数据库反向查询，将目标权限码展开为其所有的“上级权限码”
-func (s *permissionService) expandParentActionsFromDB(ctx context.Context, targetCodes []string) ([]string, error) {
+// expandParentActions 通过仓储层反向查询，将目标权限码展开为其所有的“上级权限码”（底层包含 Redis 二级缓存）
+func (s *permissionService) expandParentActions(ctx context.Context, targetCodes []string) ([]string, error) {
 	// 1. 获取依赖于 targetCodes 的父级权限码
 	parents, err := s.permRepo.FindParentsByNeeds(ctx, targetCodes)
 	if err != nil {
@@ -434,6 +434,13 @@ func (s *permissionService) GetByCode(ctx context.Context, code string) (domain.
 }
 
 func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.PermissionManifest, error) {
+	isSystem := ctxutil.GetTenantID(ctx).Int64() == ctxutil.SystemTenantID
+
+	// 1. 优先尝试读取 Redis 集中缓存
+	if cachedManifest, err := s.permRepo.GetManifest(ctx, isSystem); err == nil {
+		return cachedManifest, nil
+	}
+
 	var (
 		perms        []domain.Permission
 		svcMetas     []domain.Service
@@ -441,7 +448,7 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 		eg           errgroup.Group
 	)
 
-	// 1. 并行抓取权限底数与服务元数据
+	// 2. 并行抓取权限底数与服务元数据
 	eg.Go(func() error {
 		var err error
 		perms, err = s.permRepo.ListAllPermissions(ctx)
@@ -462,7 +469,7 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 		return domain.PermissionManifest{}, err
 	}
 
-	// 2. 数据预处理
+	// 3. 数据预处理
 	perms = s.filterByScope(ctx, perms)
 	for i := range perms {
 		if urns, ok := menuBindings[perms[i].Code]; ok && len(urns) > 0 {
@@ -472,13 +479,18 @@ func (s *permissionService) GetPermissionManifest(ctx context.Context) (domain.P
 	}
 	svcMap := slice.ToMap(svcMetas, func(s domain.Service) string { return s.Code })
 
-	// 3. 构建资产树
+	// 4. 构建资产树
 	serviceNodes := s.toServiceNodes(perms, svcMap)
 
-	return domain.PermissionManifest{
+	manifest := domain.PermissionManifest{
 		Permissions: perms,
 		Services:    serviceNodes,
-	}, nil
+	}
+
+	// 5. 异步/同步回写 Redis 缓存
+	_ = s.permRepo.SetManifest(ctx, isSystem, manifest)
+
+	return manifest, nil
 }
 
 // filterByScope 租户隔离过滤

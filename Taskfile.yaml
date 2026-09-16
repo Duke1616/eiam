@@ -30,4 +30,8 @@ tasks:
     desc: 生成 Mock 代码
     cmds:
       - go generate ./...
+  bench:
+    desc: 运行全量基准测试并输出性能与内存分配报表
+    cmds:
+      - go test -run=^$ -bench=. -benchmem ./...
 

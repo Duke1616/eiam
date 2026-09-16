@@ -57,6 +57,12 @@ type IPermissionRepository interface {
 	DeletePermissionsByServiceAndCodes(ctx context.Context, service, source string, codes []string) error
 	// PhysicalClearService 物理清除该服务下的所有权限元数据及资源映射关系 (用于强一致同步)
 	PhysicalClearService(ctx context.Context, service, source string) error
+	// GetManifest 获取系统级或普通租户级的权限清单缓存
+	GetManifest(ctx context.Context, isSystem bool) (domain.PermissionManifest, error)
+	// SetManifest 缓存系统级或普通租户级的权限清单
+	SetManifest(ctx context.Context, isSystem bool, manifest domain.PermissionManifest) error
+	// ClearAllPermissionCaches 管道化原子清空权限拓扑、动作元数据及权限清单缓存
+	ClearAllPermissionCaches(ctx context.Context) error
 	// Transaction 开启事务支持
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
@@ -88,7 +94,7 @@ func (r *PermissionRepository) CreatePermission(ctx context.Context, p domain.Pe
 	if err != nil {
 		return 0, err
 	}
-	_ = r.cache.ClearParentCodes(ctx)
+	_ = r.cache.ClearAllPermissionCaches(ctx)
 	return id, nil
 }
 
@@ -111,7 +117,7 @@ func (r *PermissionRepository) BatchCreatePermission(ctx context.Context, perms 
 	if err := r.dao.BatchInsert(ctx, daoPerms); err != nil {
 		return err
 	}
-	_ = r.cache.ClearParentCodes(ctx)
+	_ = r.cache.ClearAllPermissionCaches(ctx)
 	return nil
 }
 
@@ -119,7 +125,7 @@ func (r *PermissionRepository) DeletePermission(ctx context.Context, id int64) e
 	if err := r.dao.Delete(ctx, id); err != nil {
 		return err
 	}
-	_ = r.cache.ClearParentCodes(ctx)
+	_ = r.cache.ClearAllPermissionCaches(ctx)
 	return nil
 }
 
@@ -170,6 +176,7 @@ func (r *PermissionRepository) BindResources(ctx context.Context, permId int64, 
 		return err
 	}
 	_ = r.cache.DeleteCodesByResources(ctx, resURNs)
+	_ = r.cache.ClearAllPermissionCaches(ctx)
 	return nil
 }
 
@@ -206,6 +213,7 @@ func (r *PermissionRepository) BatchBindResources(ctx context.Context, bindings 
 	}
 	allURNs := lo.Flatten(lo.Values(bindings))
 	_ = r.cache.DeleteCodesByResources(ctx, allURNs)
+	_ = r.cache.ClearAllPermissionCaches(ctx)
 	return nil
 }
 
@@ -295,6 +303,7 @@ func (r *PermissionRepository) SyncResourceBindings(ctx context.Context, allURNs
 		return err
 	}
 	_ = r.cache.DeleteCodesByResources(ctx, allURNs)
+	_ = r.cache.ClearAllPermissionCaches(ctx)
 	return nil
 }
 
@@ -303,14 +312,26 @@ func (r *PermissionRepository) ListCasbinRules(ctx context.Context, tid, offset,
 }
 
 func (r *PermissionRepository) FindByActions(ctx context.Context, actions []string) ([]domain.Permission, error) {
-	perms, err := r.dao.FindByActions(ctx, actions)
+	if len(actions) == 0 {
+		return nil, nil
+	}
+
+	perms, err := r.cache.GetPermissionsByActions(ctx, actions)
+	if err == nil {
+		return perms, nil
+	}
+
+	daoPerms, err := r.dao.FindByActions(ctx, actions)
 	if err != nil {
 		return nil, err
 	}
 
-	return slice.Map(perms, func(i int, src dao.Permission) domain.Permission {
+	res := slice.Map(daoPerms, func(i int, src dao.Permission) domain.Permission {
 		return r.toDomain(src)
-	}), nil
+	})
+
+	_ = r.cache.SetPermissionsByActions(ctx, actions, res)
+	return res, nil
 }
 
 func (r *PermissionRepository) FindParentsByNeeds(ctx context.Context, codes []string) ([]string, error) {
@@ -374,7 +395,7 @@ func (r *PermissionRepository) DeletePermissionsByServiceAndCodes(ctx context.Co
 	if err := r.dao.DeletePermissionsByServiceAndCodes(ctx, service, source, codes); err != nil {
 		return err
 	}
-	_ = r.cache.ClearParentCodes(ctx)
+	_ = r.cache.ClearAllPermissionCaches(ctx)
 	return nil
 }
 
@@ -398,6 +419,18 @@ func (r *PermissionRepository) PhysicalClearService(ctx context.Context, service
 		}
 	}
 	return r.dao.DeletePermissionsByServiceAndCodes(ctx, service, source, nil)
+}
+
+func (r *PermissionRepository) GetManifest(ctx context.Context, isSystem bool) (domain.PermissionManifest, error) {
+	return r.cache.GetManifest(ctx, isSystem)
+}
+
+func (r *PermissionRepository) SetManifest(ctx context.Context, isSystem bool, manifest domain.PermissionManifest) error {
+	return r.cache.SetManifest(ctx, isSystem, manifest)
+}
+
+func (r *PermissionRepository) ClearAllPermissionCaches(ctx context.Context) error {
+	return r.cache.ClearAllPermissionCaches(ctx)
 }
 
 func (r *PermissionRepository) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {

@@ -123,9 +123,9 @@ func InitApp() (*App, error) {
 	iInvitationService := invitation.NewInvitationService(iInvitationRepository, iTenantRepository, iPermissionService, iUserService)
 	invitationHandler := invitation2.NewHandler(iInvitationService, provider)
 	clientv3Client := InitEtcd()
-	reporter := InitCapabilityRegistry(clientv3Client)
+	v3 := InitCapabilityRegistry(clientv3Client)
 	iDiscoveryCache := cache.NewDiscoveryCache(cmdable)
-	iDiscoveryService := discovery.NewDiscoveryService(reporter, iDiscoveryCache)
+	iDiscoveryService := discovery.NewDiscoveryService(v3, iDiscoveryCache)
 	iTokenService := discovery.NewTokenService(iTenantKeyRepository, iServiceRepository)
 	discoveryHandler := discovery2.NewHandler(iDiscoveryService, iTokenService)
 	iAuditDAO := dao.NewAuditDAO(db)
@@ -160,18 +160,18 @@ func InitApp() (*App, error) {
 	departmentServiceServer := grpc.NewDepartmentServer(iDepartmentService)
 	server := InitGrpcServer(registry, userServiceServer, tenantServiceServer, departmentServiceServer)
 	engine := ingestion.NewEngine(iPermissionRepository, iResourceRepository, iServiceRepository)
-	iInitializer := resource.NewResourceInitializer(engine, reporter)
-	v3 := InitProviders()
+	iInitializer := resource.NewResourceInitializer(engine, v3)
+	v4 := InitProviders()
 	dlockClient := InitDLock(cmdable)
 	worker := discovery.NewWorker(clientv3Client, iDiscoveryService, iInitializer, dlockClient)
 	consumer := audit.NewConsumer(cmdable, iAuditRepository)
-	v4 := InitTasks(worker, consumer)
+	v5 := InitTasks(worker, consumer)
 	app := &App{
 		Web:       component,
 		Server:    server,
 		Init:      iInitializer,
-		Providers: v3,
-		Tasks:     v4,
+		Providers: v4,
+		Tasks:     v5,
 	}
 	return app, nil
 }
