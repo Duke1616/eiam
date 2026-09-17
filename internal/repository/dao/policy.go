@@ -226,13 +226,13 @@ func (d *policyDAO) GetAttachedPoliciesWithFilter(ctx context.Context, subType, 
 	)
 
 	// 1. 构造关联子查询：获取主体关联该策略的时间 (ctime)
-	subQueryExpr := d.db.Model(&PolicyAssignment{}).
+	subQueryExpr := d.db.WithContext(ctx).Model(&PolicyAssignment{}).
 		Select("CAST(ctime AS SIGNED)").
 		Where("policy_assignment.policy_code = policy.code").
 		Where("policy_assignment.sub_type = ? AND policy_assignment.sub_code = ?", subType, subCode)
 
 	// 2. 构造过滤子查询：获取该主体关联的所有策略代码
-	filterSubQuery := d.db.Model(&PolicyAssignment{}).
+	filterSubQuery := d.db.WithContext(ctx).Model(&PolicyAssignment{}).
 		Select("policy_code").
 		Where("sub_type = ? AND sub_code = ?", subType, subCode)
 
@@ -299,7 +299,7 @@ func (d *policyDAO) ListAssignments(
 		Model(&PolicyAssignment{})
 
 	if policyType != 0 {
-		policySubQuery := d.db.
+		policySubQuery := d.db.WithContext(ctx).
 			Model(&Policy{}).
 			Select("1").
 			Where("policy.code = policy_assignment.policy_code").
