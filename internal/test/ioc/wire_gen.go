@@ -24,11 +24,11 @@ import (
 
 func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	db := InitDB()
+	cmdable := ioc.InitRedis()
 	syncedEnforcer := ioc.InitCasbin(db)
 	iTenantDAO := dao.NewTenantDAO(db)
 	iTenantRepository := repository.NewTenantRepository(iTenantDAO)
 	iUserDAO := dao.NewUserDAO(db)
-	cmdable := ioc.InitRedis()
 	iUserCache := cache.NewUserCache(cmdable)
 	iUserRepository := repository.NewUserRepository(iUserDAO, iTenantDAO, iUserCache)
 	iRoleDAO := dao.NewRoleDAO(db)
@@ -58,6 +58,7 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	iPermissionService := permission.NewPermissionService(syncedEnforcer, iPolicyService, iRoleService, iSubjectRegistry, iResourceService, iPermissionRepository, iAuthorizer, iBoundaryChecker, iTenantRepository)
 	permissionSuiteDeps := &PermissionSuiteDeps{
 		DB:           db,
+		Redis:        cmdable,
 		Enforcer:     syncedEnforcer,
 		TenantSvc:    iTenantService,
 		TenantKeySvc: iTenantKeyService,

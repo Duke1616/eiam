@@ -7,16 +7,18 @@ import (
 	"github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	"github.com/casbin/casbin/v2"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type PermissionSuiteDeps struct {
-	DB          *gorm.DB
-	Enforcer    *casbin.SyncedEnforcer
-	TenantSvc   tenant.ITenantService
+	DB           *gorm.DB
+	Redis        redis.Cmdable
+	Enforcer     *casbin.SyncedEnforcer
+	TenantSvc    tenant.ITenantService
 	TenantKeySvc tenant.ITenantKeyService
-	RoleSvc     role.IRoleService
-	PolicySvc   policy.IPolicyService
-	ResourceSvc resource.IResourceService
-	PermSvc     permission.IPermissionService
+	RoleSvc      role.IRoleService
+	PolicySvc    policy.IPolicyService
+	ResourceSvc  resource.IResourceService
+	PermSvc      permission.IPermissionService
 }
