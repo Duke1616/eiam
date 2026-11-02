@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/redis/go-redis/v9"
 )
@@ -66,7 +67,7 @@ func NewUserCache(client redis.Cmdable) IUserCache {
 }
 
 func (c *userCache) IncFailedAttempts(ctx context.Context, username string, duration time.Duration) (int64, error) {
-	key := c.failedAttemptsKey(username)
+	key := c.failedAttemptsKey(ctx, username)
 	pipe := c.client.Pipeline()
 	incr := pipe.Incr(ctx, key)
 	pipe.Expire(ctx, key, duration)
@@ -78,15 +79,15 @@ func (c *userCache) IncFailedAttempts(ctx context.Context, username string, dura
 }
 
 func (c *userCache) ClearFailedAttempts(ctx context.Context, username string) error {
-	return c.client.Del(ctx, c.failedAttemptsKey(username)).Err()
+	return c.client.Del(ctx, c.failedAttemptsKey(ctx, username)).Err()
 }
 
 func (c *userCache) SetLockout(ctx context.Context, username string, duration time.Duration) error {
-	return c.client.Set(ctx, c.lockoutKey(username), "1", duration).Err()
+	return c.client.Set(ctx, c.lockoutKey(ctx, username), "1", duration).Err()
 }
 
 func (c *userCache) IsLocked(ctx context.Context, username string) (bool, error) {
-	res, err := c.client.Exists(ctx, c.lockoutKey(username)).Result()
+	res, err := c.client.Exists(ctx, c.lockoutKey(ctx, username)).Result()
 	if err != nil {
 		return false, err
 	}
@@ -109,40 +110,41 @@ func (c *userCache) GetPasskeyState(ctx context.Context, token string) (webauthn
 	return c.passkeyCache.Get(ctx, token)
 }
 
-func (c *userCache) failedAttemptsKey(username string) string {
-	return fmt.Sprintf("eiam:user:failed_attempts:%s", username)
+func (c *userCache) failedAttemptsKey(ctx context.Context, username string) string {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	return fmt.Sprintf("eiam:tenant:%d:user:failed_attempts:%s", tid, username)
 }
 
-func (c *userCache) lockoutKey(username string) string {
-	return fmt.Sprintf("eiam:user:lockout:%s", username)
+func (c *userCache) lockoutKey(ctx context.Context, username string) string {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	return fmt.Sprintf("eiam:tenant:%d:user:lockout:%s", tid, username)
 }
 
 func (c *userCache) SetMfaToken(ctx context.Context, token string, userID int64) error {
-	key := fmt.Sprintf("mfa_token:%s", token)
+	key := fmt.Sprintf("eiam:user:mfa_token:%s", token)
 	return c.client.Set(ctx, key, userID, 5*time.Minute).Err()
 }
 
 func (c *userCache) GetMfaToken(ctx context.Context, token string) (int64, error) {
-	key := fmt.Sprintf("mfa_token:%s", token)
+	key := fmt.Sprintf("eiam:user:mfa_token:%s", token)
 	return c.client.Get(ctx, key).Int64()
 }
 
 func (c *userCache) DeleteMfaToken(ctx context.Context, token string) error {
-	key := fmt.Sprintf("mfa_token:%s", token)
-	attemptKey := fmt.Sprintf("mfa_attempts:%s", token)
+	key := fmt.Sprintf("eiam:user:mfa_token:%s", token)
+	attemptKey := fmt.Sprintf("eiam:user:mfa_attempts:%s", token)
 	_ = c.client.Del(ctx, attemptKey)
 	return c.client.Del(ctx, key).Err()
 }
 
 func (c *userCache) IncMfaAttempts(ctx context.Context, token string) (int, error) {
-	key := fmt.Sprintf("mfa_attempts:%s", token)
-	val, err := c.client.Incr(ctx, key).Result()
+	key := fmt.Sprintf("eiam:user:mfa_attempts:%s", token)
+	pipe := c.client.Pipeline()
+	incr := pipe.Incr(ctx, key)
+	pipe.Expire(ctx, key, 5*time.Minute)
+	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return 0, err
 	}
-	// 设置 5 分钟过期
-	if val == 1 {
-		c.client.Expire(ctx, key, 5*time.Minute)
-	}
-	return int(val), nil
+	return int(incr.Val()), nil
 }

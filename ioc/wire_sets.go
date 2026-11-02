@@ -104,6 +104,7 @@ var (
 
 	// RoleSet 角色治理与继承图谱模块 Provider 集合
 	RoleSet = wire.NewSet(
+		cache.NewRoleCache,
 		dao.NewRoleDAO,
 		repository.NewRoleRepository,
 		role.NewRoleService,
@@ -113,6 +114,7 @@ var (
 	// PermissionSet 权限管理、边界校验与 PBAC 策略模块 Provider 集合
 	PermissionSet = wire.NewSet(
 		cache.NewPermissionCache,
+		cache.NewPolicyCache,
 		dao.NewPermissionDAO,
 		dao.NewPolicyDAO,
 		repository.NewPermissionRepository,

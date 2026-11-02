@@ -168,10 +168,11 @@ func (cache *redisearchLdapUserCache) dropDocument(ctx context.Context, tid int6
 }
 
 func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keywords string,
-	offset, limit int) ([]domain.User, int, error) {
+	offset, limit int) (users []domain.User, total int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			cache.logger.Error("LDAP 搜索发生恐慌恢复", elog.Any("recover", r))
+			err = fmt.Errorf("ldap 搜索发生异常: %v", r)
 		}
 	}()
 
@@ -188,12 +189,13 @@ func (cache *redisearchLdapUserCache) Query(ctx context.Context, tid int64, keyw
 		Limit(offset, limit).
 		SetReturnFields("username", "display_name", "title", "email", "phone", "dn")
 
-	docs, total, err := cache.conn.Search(query)
+	var docs []redisearch.Document
+	docs, total, err = cache.conn.Search(query)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	users := make([]domain.User, 0, len(docs))
+	users = make([]domain.User, 0, len(docs))
 	for _, doc := range docs {
 		u := domain.User{
 			Username: getPropString(doc.Properties, "username"),

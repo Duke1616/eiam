@@ -23,6 +23,8 @@ type Role struct {
 }
 
 // IRoleDAO 角色数据库操作接口
+//
+//go:generate mockgen -package=daomocks -destination=./mocks/role.mock.go github.com/Duke1616/eiam/internal/repository/dao IRoleDAO
 type IRoleDAO interface {
 	// Insert 插入新角色
 	Insert(ctx context.Context, r Role) (int64, error)

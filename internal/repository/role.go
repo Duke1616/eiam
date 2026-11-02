@@ -4,10 +4,11 @@ import (
 	"context"
 
 	"github.com/Duke1616/eiam/internal/domain"
+	"github.com/Duke1616/eiam/internal/repository/cache"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sqlx"
-	"github.com/ecodeclub/ekit/slice"
+	"github.com/samber/lo"
 )
 
 // IRoleRepository 角色仓储接口
@@ -45,11 +46,16 @@ type IRoleRepository interface {
 }
 
 type RoleRepository struct {
-	dao dao.IRoleDAO
+	dao   dao.IRoleDAO
+	cache cache.IRoleCache
 }
 
-func NewRoleRepository(d dao.IRoleDAO) IRoleRepository {
-	return &RoleRepository{dao: d}
+// NewRoleRepository 创建角色仓储实例
+func NewRoleRepository(d dao.IRoleDAO, c cache.IRoleCache) IRoleRepository {
+	return &RoleRepository{
+		dao:   d,
+		cache: c,
+	}
 }
 
 func (r *RoleRepository) Create(ctx context.Context, role domain.Role) (int64, error) {
@@ -57,7 +63,16 @@ func (r *RoleRepository) Create(ctx context.Context, role domain.Role) (int64, e
 }
 
 func (r *RoleRepository) Update(ctx context.Context, role domain.Role) (int64, error) {
-	return r.dao.Update(ctx, r.toEntity(role))
+	rows, err := r.dao.Update(ctx, r.toEntity(role))
+	if err != nil {
+		return 0, err
+	}
+	// 角色元数据或描述变更，精准驱逐当前租户下的角色缓存
+	if r.cache != nil && role.Code != "" {
+		tid := ctxutil.GetTenantID(ctx).Int64()
+		_ = r.cache.DeleteRoleByCode(ctx, tid, role.Code)
+	}
+	return rows, nil
 }
 
 func (r *RoleRepository) List(ctx context.Context, offset, limit int64) ([]domain.Role, error) {
@@ -65,7 +80,7 @@ func (r *RoleRepository) List(ctx context.Context, offset, limit int64) ([]domai
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
+	return lo.Map(roles, func(src dao.Role, _ int) domain.Role {
 		return r.toDomain(src)
 	}), nil
 }
@@ -83,38 +98,93 @@ func (r *RoleRepository) Search(ctx context.Context, keyword string, offset, lim
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
+	return lo.Map(roles, func(src dao.Role, _ int) domain.Role {
 		return r.toDomain(src)
 	}), nil
 }
 
 func (r *RoleRepository) GetByCode(ctx context.Context, code string) (domain.Role, error) {
+	tid := ctxutil.GetTenantID(ctx).Int64()
+	if r.cache != nil {
+		if role, hit, err := r.cache.GetRoleByCode(ctx, tid, code); err == nil && hit {
+			return role, nil
+		}
+	}
+
 	role, err := r.dao.GetByCode(ctx, code)
 	if err != nil {
 		return domain.Role{}, err
 	}
-	return r.toDomain(role), nil
+	domainRole := r.toDomain(role)
+
+	// 回填缓存（静默处理异常，不阻断主读取流程）
+	if r.cache != nil {
+		_ = r.cache.SetRoleByCode(ctx, tid, code, domainRole)
+	}
+
+	return domainRole, nil
 }
 
 func (r *RoleRepository) ListByIncludeCodes(ctx context.Context, codes []string) ([]domain.Role, error) {
-	roles, err := r.dao.ListByIncludeCodes(ctx, codes)
+	// 1. 去重并剔除空字符代码
+	targetCodes := lo.Uniq(lo.Compact(codes))
+	if len(targetCodes) == 0 {
+		return []domain.Role{}, nil
+	}
+
+	tid := ctxutil.GetTenantID(ctx).Int64()
+
+	// 2. 批量查缓存 (若缓存未命中或异常则自动降级为 targetCodes)
+	cachedRoles, missingCodes := r.fetchRolesFromCache(ctx, tid, targetCodes)
+
+	// 3. 增量查库并批量回填缓存
+	if len(missingCodes) > 0 {
+		loadedRoles, err := r.loadAndCacheMissingRoles(ctx, tid, missingCodes)
+		if err != nil {
+			return nil, err
+		}
+		for _, role := range loadedRoles {
+			cachedRoles[role.Code] = role
+		}
+	}
+
+	// 4. 按入参 codes 原序提取有效角色
+	return lo.FilterMap(targetCodes, func(code string, _ int) (domain.Role, bool) {
+		role, ok := cachedRoles[code]
+		return role, ok
+	}), nil
+}
+
+// fetchRolesFromCache 从缓存批量检索角色，遇到异常自动安全降级
+func (r *RoleRepository) fetchRolesFromCache(ctx context.Context, tid int64, codes []string) (map[string]domain.Role, []string) {
+	if r.cache == nil {
+		return make(map[string]domain.Role, len(codes)), codes
+	}
+	hits, misses, err := r.cache.GetRolesByCodes(ctx, tid, codes)
+	if err != nil {
+		return make(map[string]domain.Role, len(codes)), codes
+	}
+	return hits, misses
+}
+
+// loadAndCacheMissingRoles 查库补齐缺失角色，利用 lo.UniqBy 保证多租户优先级并批量回填
+func (r *RoleRepository) loadAndCacheMissingRoles(ctx context.Context, tid int64, codes []string) ([]domain.Role, error) {
+	dbRoles, err := r.dao.ListByIncludeCodes(ctx, codes)
 	if err != nil {
 		return nil, err
 	}
 
-	// 核心去重逻辑：同一个 Code 仅保留优先级最高的角色。
-	// 由于 DAO 已经按 tenant_id DESC 排序，第一个被遇到的即为租户私有角色（若存在）。
-	seen := make(map[string]struct{})
-	res := make([]domain.Role, 0, len(roles))
-	for _, role := range roles {
-		if _, ok := seen[role.Code]; ok {
-			continue
-		}
-		seen[role.Code] = struct{}{}
-		res = append(res, r.toDomain(role))
-	}
+	// DAO 已按 tenant_id DESC 排序，通过 lo.UniqBy 保留每个 Code 优先级最高的一条（私有优先、全局兜底）
+	dedupRoles := lo.UniqBy(dbRoles, func(r dao.Role) string { return r.Code })
+	roles := lo.Map(dedupRoles, func(src dao.Role, _ int) domain.Role {
+		return r.toDomain(src)
+	})
 
-	return res, nil
+	// 将新加载的角色通过 Pipeline 批量写入缓存
+	if r.cache != nil && len(roles) > 0 {
+		_ = r.cache.SetRoles(ctx, tid, roles)
+	}
+	return roles, nil
 }
 
 func (r *RoleRepository) GetAttachedWithPagination(ctx context.Context, username string, offset, limit int64, keyword string) ([]domain.Role, int64, error) {
@@ -126,21 +196,63 @@ func (r *RoleRepository) GetAttachedWithPagination(ctx context.Context, username
 		return nil, 0, err
 	}
 
-	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
+	return lo.Map(roles, func(src dao.Role, _ int) domain.Role {
 		return r.toDomain(src)
 	}), total, nil
 }
 
 func (r *RoleRepository) UpdateInlinePolicies(ctx context.Context, code string, policies []domain.Policy) error {
-	return r.dao.UpdateInlinePolicies(ctx, code, policies)
+	if err := r.dao.UpdateInlinePolicies(ctx, code, policies); err != nil {
+		return err
+	}
+	// 内联权限策略更新是鉴权决策变更的核心，立即驱逐缓存以保证强一致生效
+	if r.cache != nil && code != "" {
+		tid := ctxutil.GetTenantID(ctx).Int64()
+		_ = r.cache.DeleteRoleByCode(ctx, tid, code)
+	}
+	return nil
 }
 
 func (r *RoleRepository) Delete(ctx context.Context, id int64) error {
-	return r.dao.Delete(ctx, id)
+	var roleCode string
+	// 删除前读取 code 用于缓存淘汰
+	if r.cache != nil {
+		if entity, err := r.dao.GetByID(ctx, id); err == nil {
+			roleCode = entity.Code
+		}
+	}
+
+	if err := r.dao.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	if r.cache != nil && roleCode != "" {
+		tid := ctxutil.GetTenantID(ctx).Int64()
+		_ = r.cache.DeleteRoleByCode(ctx, tid, roleCode)
+	}
+	return nil
 }
 
 func (r *RoleRepository) BatchDelete(ctx context.Context, ids []int64) (int64, error) {
-	return r.dao.DeleteByIDs(ctx, ids)
+	var roleCodes []string
+	if r.cache != nil && len(ids) > 0 {
+		if entities, err := r.dao.FindByIDs(ctx, ids); err == nil {
+			roleCodes = lo.Map(entities, func(e dao.Role, _ int) string {
+				return e.Code
+			})
+		}
+	}
+
+	rows, err := r.dao.DeleteByIDs(ctx, ids)
+	if err != nil {
+		return 0, err
+	}
+
+	if r.cache != nil && len(roleCodes) > 0 {
+		tid := ctxutil.GetTenantID(ctx).Int64()
+		_ = r.cache.DeleteRolesByCodes(ctx, tid, roleCodes)
+	}
+	return rows, nil
 }
 
 func (r *RoleRepository) GetByID(ctx context.Context, id int64) (domain.Role, error) {
@@ -156,7 +268,7 @@ func (r *RoleRepository) GetByIDs(ctx context.Context, ids []int64) ([]domain.Ro
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map(roles, func(idx int, src dao.Role) domain.Role {
+	return lo.Map(roles, func(src dao.Role, _ int) domain.Role {
 		return r.toDomain(src)
 	}), nil
 }

@@ -41,6 +41,8 @@ type BatchBindResult struct {
 }
 
 // IPolicyDAO 权限策略数据库操作接口
+//
+//go:generate mockgen -package=daomocks -destination=./mocks/policy.mock.go github.com/Duke1616/eiam/internal/repository/dao IPolicyDAO
 type IPolicyDAO interface {
 	// Insert 插入新的策略文档
 	Insert(ctx context.Context, p Policy) (int64, error)

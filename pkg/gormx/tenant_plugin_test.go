@@ -94,7 +94,9 @@ func runTenantTests(t *testing.T, defaultModels []any, tests []tenantTestCase, d
 			db := setupTestDB(t, models, opts...)
 
 			if tc.before != nil {
-				tc.before(t, db)
+				// before 初始化造数属于全局数据准备，显式声明豁免租户隔离
+				seedCtx := IgnoreTenantContext(context.Background())
+				tc.before(t, db.WithContext(seedCtx))
 			}
 
 			ctx := context.Background()
@@ -166,6 +168,16 @@ func TestTenantPlugin_Create(t *testing.T) {
 				err := db.Create(&user).Error
 				require.NoError(t, err)
 				assert.Equal(t, int64(999), user.TenantID)
+			},
+		},
+		{
+			name:     "无有效租户上下文写入多租户实体时Fail-Closed拦截",
+			tenantID: 0,
+			run: func(t *testing.T, db *gorm.DB) {
+				user := TestUser{Name: "Hacker"}
+				err := db.Create(&user).Error
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "多租户安全拦截")
 			},
 		},
 	}

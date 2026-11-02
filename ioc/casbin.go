@@ -76,7 +76,10 @@ func InitCasbin(casbinDB *gorm.DB) *casbin.SyncedEnforcer {
 	}
 
 	_ = enforcer.SetWatcher(w)
-	_ = w.SetUpdateCallback(updateCallback)
+	_ = w.SetUpdateCallback(func(rev string) {
+		// NOTE: 收到分布式集群其他实例的策略变更通知时，必须重新加载策略以保证多实例一致性
+		_ = enforcer.LoadPolicy()
+	})
 
 	enforcer.EnableLog(false)
 	if err = enforcer.LoadPolicy(); err != nil {
@@ -95,6 +98,4 @@ func InitCasbin(casbinDB *gorm.DB) *casbin.SyncedEnforcer {
 	return enforcer
 }
 
-func updateCallback(rev string) {
-	// 可选打印 rev
-}
+

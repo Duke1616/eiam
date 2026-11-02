@@ -35,6 +35,8 @@ func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 		cache.NewUserCache,
 		cache.NewResourceCache,
 		cache.NewPermissionCache,
+		cache.NewPolicyCache,
+		cache.NewRoleCache,
 
 		// DAOs
 		dao.NewTenantDAO,

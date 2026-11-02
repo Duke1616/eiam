@@ -79,6 +79,11 @@ type Subject struct {
 	Desc string // 描述
 }
 
+// URN 返回主体的标准唯一标识字符串 (如 user:alice 或 role:admin)
+func (s Subject) URN() string {
+	return s.Type + ":" + s.ID
+}
+
 // ParseSubject 统一解析马甲标识
 func ParseSubject(s string) Subject {
 	if strings.HasPrefix(s, PrefixUser) {

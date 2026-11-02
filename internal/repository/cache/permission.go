@@ -35,15 +35,11 @@ type IPermissionCache interface {
 	GetParentsByNeeds(ctx context.Context, codes []string) ([]string, error)
 	// SetParentsByNeeds 缓存满足 needs 依赖的父级权限码列表
 	SetParentsByNeeds(ctx context.Context, codes []string, parents []string) error
-	// ClearParentCodes 原子清空所有权限拓扑依赖缓存
-	ClearParentCodes(ctx context.Context) error
 
 	// GetPermissionsByActions 获取 actions 对应的权限元数据列表；未命中返回 ErrCacheNotFound
 	GetPermissionsByActions(ctx context.Context, actions []string) ([]domain.Permission, error)
 	// SetPermissionsByActions 缓存 actions 对应的权限元数据列表
 	SetPermissionsByActions(ctx context.Context, actions []string, perms []domain.Permission) error
-	// ClearActionPermissions 原子清空所有 actions 对应的权限元数据缓存
-	ClearActionPermissions(ctx context.Context) error
 
 	// GetManifest 获取系统级或普通租户级的权限清单缓存；未命中返回 ErrCacheNotFound
 	GetManifest(ctx context.Context, isSystem bool) (domain.PermissionManifest, error)
@@ -159,11 +155,6 @@ func (c *permissionCache) SetParentsByNeeds(ctx context.Context, codes []string,
 	return err
 }
 
-func (c *permissionCache) ClearParentCodes(ctx context.Context) error {
-	setKey := c.parentKeysSet()
-	return c.client.Eval(ctx, luaInvalidateParents, []string{setKey}).Err()
-}
-
 func (c *permissionCache) actionsKey(actions []string) string {
 	sorted := slices.Clone(actions)
 	slices.Sort(sorted)
@@ -208,11 +199,6 @@ func (c *permissionCache) SetPermissionsByActions(ctx context.Context, actions [
 	pipe.Expire(ctx, setKey, ttl+time.Hour)
 	_, err = pipe.Exec(ctx)
 	return err
-}
-
-func (c *permissionCache) ClearActionPermissions(ctx context.Context) error {
-	setKey := c.actionKeysSet()
-	return c.client.Eval(ctx, luaInvalidateParents, []string{setKey}).Err()
 }
 
 func (c *permissionCache) manifestKey(isSystem bool) string {

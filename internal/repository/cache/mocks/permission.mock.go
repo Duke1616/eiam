@@ -41,20 +41,6 @@ func (m *MockIPermissionCache) EXPECT() *MockIPermissionCacheMockRecorder {
 	return m.recorder
 }
 
-// ClearActionPermissions mocks base method.
-func (m *MockIPermissionCache) ClearActionPermissions(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClearActionPermissions", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ClearActionPermissions indicates an expected call of ClearActionPermissions.
-func (mr *MockIPermissionCacheMockRecorder) ClearActionPermissions(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearActionPermissions", reflect.TypeOf((*MockIPermissionCache)(nil).ClearActionPermissions), ctx)
-}
-
 // ClearAllPermissionCaches mocks base method.
 func (m *MockIPermissionCache) ClearAllPermissionCaches(ctx context.Context) error {
 	m.ctrl.T.Helper()
@@ -67,20 +53,6 @@ func (m *MockIPermissionCache) ClearAllPermissionCaches(ctx context.Context) err
 func (mr *MockIPermissionCacheMockRecorder) ClearAllPermissionCaches(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAllPermissionCaches", reflect.TypeOf((*MockIPermissionCache)(nil).ClearAllPermissionCaches), ctx)
-}
-
-// ClearParentCodes mocks base method.
-func (m *MockIPermissionCache) ClearParentCodes(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClearParentCodes", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ClearParentCodes indicates an expected call of ClearParentCodes.
-func (mr *MockIPermissionCacheMockRecorder) ClearParentCodes(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearParentCodes", reflect.TypeOf((*MockIPermissionCache)(nil).ClearParentCodes), ctx)
 }
 
 // DeleteCodesByResources mocks base method.

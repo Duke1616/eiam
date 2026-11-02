@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	authRequestPrefix       = "eiam:idp:auth_req:"
 	authCodePrefix          = "eiam:idp:code:"
 	consentPrefix           = "eiam:idp:consent:"
 	refreshTokenPrefix      = "eiam:idp:refresh_token:"
@@ -18,7 +17,6 @@ const (
 	revokedTokenPrefix      = "eiam:idp:revoked:"
 	clusterSigningKeyPrefix = "eiam:idp:cluster_signing_key:"
 	oauthClientPrefix       = "eiam:idp:oauth_client:"
-	authReqTTL              = 10 * time.Minute
 	authCodeTTL             = 5 * time.Minute
 	consentTTL              = 10 * time.Minute
 	refreshTokenTTL         = 30 * 24 * time.Hour

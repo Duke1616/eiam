@@ -66,9 +66,11 @@ func InitApp() (*App, error) {
 	iUserRepository := repository.NewUserRepository(iUserDAO, iTenantDAO, iUserCache)
 	iTenantRepository := repository.NewTenantRepository(iTenantDAO)
 	iRoleDAO := dao.NewRoleDAO(db)
-	iRoleRepository := repository.NewRoleRepository(iRoleDAO)
+	iRoleCache := cache.NewRoleCache(cmdable)
+	iRoleRepository := repository.NewRoleRepository(iRoleDAO, iRoleCache)
 	iPolicyDAO := dao.NewPolicyDAO(db)
-	iPolicyRepository := repository.NewPolicyRepository(iPolicyDAO)
+	iPolicyCache := cache.NewPolicyCache(cmdable)
+	iPolicyRepository := repository.NewPolicyRepository(iPolicyDAO, iPolicyCache)
 	iPermissionDAO := dao.NewPermissionDAO(db)
 	iPermissionCache := cache.NewPermissionCache(cmdable)
 	iPermissionRepository := repository.NewPermissionRepository(iPermissionDAO, iPermissionCache)
@@ -123,9 +125,9 @@ func InitApp() (*App, error) {
 	iInvitationService := invitation.NewInvitationService(iInvitationRepository, iTenantRepository, iPermissionService, iUserService)
 	invitationHandler := invitation2.NewHandler(iInvitationService, provider)
 	clientv3Client := InitEtcd()
-	v3 := InitCapabilityRegistry(clientv3Client)
+	reporter := InitCapabilityRegistry(clientv3Client)
 	iDiscoveryCache := cache.NewDiscoveryCache(cmdable)
-	iDiscoveryService := discovery.NewDiscoveryService(v3, iDiscoveryCache)
+	iDiscoveryService := discovery.NewDiscoveryService(reporter, iDiscoveryCache)
 	iTokenService := discovery.NewTokenService(iTenantKeyRepository, iServiceRepository)
 	discoveryHandler := discovery2.NewHandler(iDiscoveryService, iTokenService)
 	iAuditDAO := dao.NewAuditDAO(db)
@@ -160,18 +162,18 @@ func InitApp() (*App, error) {
 	departmentServiceServer := grpc.NewDepartmentServer(iDepartmentService)
 	server := InitGrpcServer(registry, userServiceServer, tenantServiceServer, departmentServiceServer)
 	engine := ingestion.NewEngine(iPermissionRepository, iResourceRepository, iServiceRepository)
-	iInitializer := resource.NewResourceInitializer(engine, v3)
-	v4 := InitProviders()
+	iInitializer := resource.NewResourceInitializer(engine, reporter)
+	v3 := InitProviders()
 	dlockClient := InitDLock(cmdable)
 	worker := discovery.NewWorker(clientv3Client, iDiscoveryService, iInitializer, dlockClient)
 	consumer := audit.NewConsumer(cmdable, iAuditRepository)
-	v5 := InitTasks(worker, consumer)
+	v4 := InitTasks(worker, consumer)
 	app := &App{
 		Web:       component,
 		Server:    server,
 		Init:      iInitializer,
-		Providers: v4,
-		Tasks:     v5,
+		Providers: v3,
+		Tasks:     v4,
 	}
 	return app, nil
 }

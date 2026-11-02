@@ -88,13 +88,15 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 		return
 	}
 
-	tid := ctxutil.GetTenantID(db.Statement.Context)
-	if tid == 0 {
+	field, ok := db.Statement.Schema.FieldsByDBName[p.tenantColumn]
+	if !ok {
 		return
 	}
 
-	field, ok := db.Statement.Schema.FieldsByDBName[p.tenantColumn]
-	if !ok {
+	tid := ctxutil.GetTenantID(db.Statement.Context)
+	// Fail-Closed 零信任写屏障：对包含租户列的多租户表，若未显式提权且缺少有效租户上下文，强制阻断写入
+	if tid <= 0 {
+		_ = db.AddError(errors.New("多租户安全拦截：未显式声明 IgnoreTenant 且缺失有效租户上下文，请使用 gormx.IgnoreTenantContext(ctx) 显式提权"))
 		return
 	}
 
@@ -290,6 +292,10 @@ func (p *TenantPlugin) shouldSkip(db *gorm.DB) bool {
 		if val, ok := db.Statement.Context.Value(IGNORE_TENANT_KEY).(bool); ok && val {
 			return true
 		}
+	}
+
+	if db.Statement.Schema == nil && db.Statement.Model != nil {
+		_ = db.Statement.Parse(db.Statement.Model)
 	}
 
 	if db.Statement.Schema == nil {
