@@ -24,9 +24,9 @@ func ProvideTestSubjectRegistry() searcher.ISubjectRegistry {
 
 func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	wire.Build(
-		// 基础组件：使用 testioc 本地定义的 InitDB (跳过 goose 迁移)
+		// 基础组件：使用 testioc 本地定义的 InitDB 和 InitRedis (与生产隔离)
 		InitDB,
-		mainioc.InitRedis,
+		InitRedis,
 		mainioc.InitCasbin,
 		mainioc.InitOPA,
 		ProvideTestSubjectRegistry,

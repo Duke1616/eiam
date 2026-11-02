@@ -24,7 +24,7 @@ import (
 
 func InitPermissionSuiteDeps() (*PermissionSuiteDeps, error) {
 	db := InitDB()
-	cmdable := ioc.InitRedis()
+	cmdable := InitRedis()
 	syncedEnforcer := ioc.InitCasbin(db)
 	iTenantDAO := dao.NewTenantDAO(db)
 	iTenantRepository := repository.NewTenantRepository(iTenantDAO)
