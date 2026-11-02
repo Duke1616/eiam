@@ -61,6 +61,8 @@ type IOidcService interface {
 	ExchangeToken(ctx context.Context, req domain.TokenRequest, issuerURL string) (*domain.OidcTokenResult, error)
 	// RevokeToken 吊销指定的 AccessToken 或 RefreshToken (RFC 7009)
 	RevokeToken(ctx context.Context, token, tokenTypeHint, clientID, clientSecret string) error
+	// IntrospectToken 令牌自省端点 (RFC 7662)
+	IntrospectToken(ctx context.Context, req domain.TokenIntrospectRequest) (*domain.TokenIntrospectResult, error)
 	// GetUserInfo 根据 Access Token 解析并返回对应的用户信息
 	GetUserInfo(ctx context.Context, tokenString string) (*domain.OidcUserInfo, error)
 	// GetDiscoveryConfig 获取 OpenID Connect 自动发现元数据
@@ -108,6 +110,7 @@ func NewService(
 	s.grantHandlers = map[string]grant.IGrantHandler{
 		"authorization_code": grant.NewAuthCodeGrantHandler(claimsResolver, cache, km, secLogFn),
 		"refresh_token":      grant.NewRefreshTokenGrantHandler(claimsResolver, cache, km),
+		"client_credentials": grant.NewClientCredentialsGrantHandler(km, secLogFn),
 	}
 
 	return s
@@ -323,6 +326,75 @@ func (s *service) RevokeToken(ctx context.Context, token, tokenTypeHint, clientI
 
 	s.recordAudit(ctx, client.TenantID, "revoke_token", client.ClientID, client.Name, domain.OpStatusSuccess, "")
 	return nil
+}
+
+// IntrospectToken 令牌自省查询 (RFC 7662)
+func (s *service) IntrospectToken(ctx context.Context, req domain.TokenIntrospectRequest) (*domain.TokenIntrospectResult, error) {
+	// 1. 客户端身份凭据校验 (RFC 7662 Section 2.1)
+	client, err := s.repo.FindByClientID(ctx, req.ClientID)
+	if err != nil {
+		return nil, errs.ErrApplicationNotFound
+	}
+	if !client.VerifySecret(req.ClientSecret) {
+		return nil, errs.ErrApplicationSecretWrong
+	}
+
+	// 2. 待自省令牌为空判定
+	if req.Token == "" {
+		return &domain.TokenIntrospectResult{Active: false}, nil
+	}
+
+	// 3. 检查令牌是否已被主动吊销 (RFC 7009)
+	revoked, err := s.cache.IsTokenRevoked(ctx, req.Token)
+	if err == nil && revoked {
+		return &domain.TokenIntrospectResult{Active: false}, nil
+	}
+
+	// 4. 使用公钥验签与过期校验
+	var tokenClaims domain.IDTokenClaims
+	_, err = s.km.VerifyJWT(req.Token, &tokenClaims)
+	if err != nil {
+		// RFC 7662 规定：令牌签名失效或已超时时，以 HTTP 200 返回 active: false
+		return &domain.TokenIntrospectResult{Active: false}, nil
+	}
+
+	// 5. 校验通过，提取标准 Claims 构建活跃自省结果 (RFC 7662 Section 2.2)
+	exp := int64(0)
+	if tokenClaims.ExpiresAt != nil {
+		exp = tokenClaims.ExpiresAt.Unix()
+	}
+	iat := int64(0)
+	if tokenClaims.IssuedAt != nil {
+		iat = tokenClaims.IssuedAt.Unix()
+	}
+	nbf := int64(0)
+	if tokenClaims.NotBefore != nil {
+		nbf = tokenClaims.NotBefore.Unix()
+	}
+
+	aud := make([]string, len(tokenClaims.Audience))
+	copy(aud, tokenClaims.Audience)
+
+	username := tokenClaims.PreferredUsername
+	if username == "" {
+		username = tokenClaims.Nickname
+	}
+
+	return &domain.TokenIntrospectResult{
+		Active:    true,
+		ClientID:  client.ClientID,
+		Username:  username,
+		TokenType: "Bearer",
+		Exp:       exp,
+		Iat:       iat,
+		Nbf:       nbf,
+		Sub:       tokenClaims.Subject,
+		Aud:       aud,
+		Iss:       tokenClaims.Issuer,
+		Jti:       tokenClaims.ID,
+		TenantID:  tokenClaims.TenantID,
+		Roles:     tokenClaims.Roles,
+	}, nil
 }
 
 // GetUserInfo 解析令牌并返回标准用户信息

@@ -4,6 +4,11 @@ log:
 web:
   host: "0.0.0.0"
   port: 9000
+  # 接口访问频控与防爆破限流 (基于 Redis 滑动窗口)
+  ratelimit:
+    enabled: true
+    # 默认限流基准阈值 (单 IP 每分钟允许请求数，Handler 未显式覆盖时生效，默认 10)
+    default_rate: 10
 
 grpc:
   server:
@@ -82,3 +87,6 @@ idp:
   # CAS 协议配置
   cas:
     ticket_ttl_minutes: 5 # Service Ticket 票据有效时长 (分钟)
+
+
+

@@ -593,6 +593,117 @@ func (s *OIDCHandlerTestSuite) TestConsent() {
 	})
 }
 
+// --- 9.1 Client Credentials 模式 ---
+
+func (s *OIDCHandlerTestSuite) TestToken_ClientCredentials() {
+	s.svc.EXPECT().
+		ExchangeToken(gomock.Any(), domain.TokenRequest{
+			GrantType:    "client_credentials",
+			ClientID:     "m2m_client",
+			ClientSecret: "m2m_secret",
+			Scope:        "system:read",
+		}, gomock.Any()).
+		Return(&domain.OidcTokenResult{
+			AccessToken: "m2m_token_999",
+			TokenType:   "Bearer",
+			ExpiresIn:   7200,
+			Scope:       "system:read",
+		}, nil)
+
+	form := url.Values{
+		"grant_type":    {"client_credentials"},
+		"client_id":     {"m2m_client"},
+		"client_secret": {"m2m_secret"},
+		"scope":         {"system:read"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/v2/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.server.ServeHTTP(w, req)
+
+	assert.Equal(s.T(), http.StatusOK, w.Code)
+	var res domain.OidcTokenResult
+	require.NoError(s.T(), json.NewDecoder(w.Body).Decode(&res))
+	assert.Equal(s.T(), "m2m_token_999", res.AccessToken)
+	assert.Equal(s.T(), "Bearer", res.TokenType)
+	assert.Equal(s.T(), "system:read", res.Scope)
+	assert.Empty(s.T(), res.RefreshToken)
+	assert.Empty(s.T(), res.IDToken)
+}
+
+// --- 9.2 Token Introspection 端点 (RFC 7662) ---
+
+func (s *OIDCHandlerTestSuite) TestIntrospect() {
+	t := s.T()
+
+	t.Run("有效令牌返回 active: true", func(t *testing.T) {
+		s.svc.EXPECT().
+			IntrospectToken(gomock.Any(), domain.TokenIntrospectRequest{
+				Token:         "valid_token_xyz",
+				TokenTypeHint: "access_token",
+				ClientID:      "gateway_client",
+				ClientSecret:  "gw_secret",
+			}).
+			Return(&domain.TokenIntrospectResult{
+				Active:    true,
+				ClientID:  "gateway_client",
+				Username:  "bob",
+				Sub:       "1002",
+				TokenType: "Bearer",
+				TenantID:  1,
+				Scope:     "openid",
+			}, nil)
+
+		form := url.Values{
+			"token":           {"valid_token_xyz"},
+			"token_type_hint": {"access_token"},
+			"client_id":       {"gateway_client"},
+			"client_secret":   {"gw_secret"},
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/oauth/v2/introspect", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		s.server.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var res domain.TokenIntrospectResult
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&res))
+		assert.True(t, res.Active)
+		assert.Equal(t, "bob", res.Username)
+		assert.Equal(t, "1002", res.Sub)
+	})
+
+	t.Run("无效令牌仍返回 HTTP 200 与 active: false", func(t *testing.T) {
+		s.svc.EXPECT().
+			IntrospectToken(gomock.Any(), domain.TokenIntrospectRequest{
+				Token:        "expired_or_revoked_token",
+				ClientID:     "gateway_client",
+				ClientSecret: "gw_secret",
+			}).
+			Return(&domain.TokenIntrospectResult{
+				Active: false,
+			}, nil)
+
+		form := url.Values{
+			"token":         {"expired_or_revoked_token"},
+			"client_id":     {"gateway_client"},
+			"client_secret": {"gw_secret"},
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/oauth/v2/introspect", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		s.server.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var res domain.TokenIntrospectResult
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&res))
+		assert.False(t, res.Active)
+	})
+}
+
 // --- 10. 完整 OIDC 流程端到端 ---
 
 // TestFullOIDCFlow 模拟完整授权码流程：

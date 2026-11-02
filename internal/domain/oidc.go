@@ -65,6 +65,33 @@ type TokenRequest struct {
 	CodeVerifier string `json:"code_verifier"`
 	RedirectURI  string `json:"redirect_uri"`
 	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope,omitempty"`
+}
+
+// TokenIntrospectRequest 令牌自省请求参数 (RFC 7662)
+type TokenIntrospectRequest struct {
+	Token         string `json:"token"`
+	TokenTypeHint string `json:"token_type_hint,omitempty"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+}
+
+// TokenIntrospectResult 令牌自省标准响应实体 (RFC 7662 Section 2.2)
+type TokenIntrospectResult struct {
+	Active    bool     `json:"active"`
+	Scope     string   `json:"scope,omitempty"`
+	ClientID  string   `json:"client_id,omitempty"`
+	Username  string   `json:"username,omitempty"`
+	TokenType string   `json:"token_type,omitempty"`
+	Exp       int64    `json:"exp,omitempty"`
+	Iat       int64    `json:"iat,omitempty"`
+	Nbf       int64    `json:"nbf,omitempty"`
+	Sub       string   `json:"sub,omitempty"`
+	Aud       []string `json:"aud,omitempty"`
+	Iss       string   `json:"iss,omitempty"`
+	Jti       string   `json:"jti,omitempty"`
+	TenantID  int64    `json:"tenant_id,omitempty"`
+	Roles     []string `json:"roles,omitempty"`
 }
 
 // OidcTokenResult 换发令牌结果领域对象
@@ -128,6 +155,7 @@ type OidcDiscovery struct {
 	UserinfoEndpoint                  string   `json:"userinfo_endpoint"`
 	JwksURI                           string   `json:"jwks_uri"`
 	RevocationEndpoint                string   `json:"revocation_endpoint,omitempty"`
+	IntrospectionEndpoint             string   `json:"introspection_endpoint,omitempty"`
 	EndSessionEndpoint                string   `json:"end_session_endpoint,omitempty"`
 	ResponseTypesSupported            []string `json:"response_types_supported"`
 	SubjectTypesSupported             []string `json:"subject_types_supported"`
@@ -166,6 +194,7 @@ func NewOidcDiscovery(issuerURL string, opts ...OidcDiscoveryOption) OidcDiscove
 		UserinfoEndpoint:                  trimmed + "/userinfo",
 		JwksURI:                           trimmed + "/oauth/v2/jwks",
 		RevocationEndpoint:                trimmed + "/oauth/v2/revoke",
+		IntrospectionEndpoint:             trimmed + "/oauth/v2/introspect",
 		ResponseTypesSupported:            []string{"code"},
 		SubjectTypesSupported:             []string{"public"},
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
@@ -175,7 +204,7 @@ func NewOidcDiscovery(issuerURL string, opts ...OidcDiscoveryOption) OidcDiscove
 			"sub", "iss", "aud", "exp", "iat", "preferred_username", "nickname", "email", "roles", "tenant_id",
 		},
 		CodeChallengeMethodsSupported: []string{"S256", "plain"},
-		GrantTypesSupported:           []string{"authorization_code", "refresh_token"},
+		GrantTypesSupported:           []string{"authorization_code", "refresh_token", "client_credentials"},
 	}
 
 	for _, opt := range opts {

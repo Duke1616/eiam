@@ -58,7 +58,7 @@ func InitApp() (*App, error) {
 	cmdable := InitRedis()
 	provider := InitSession(cmdable)
 	listener := InitListener()
-	v := InitGinMiddlewares()
+	v := InitGinMiddlewares(cmdable)
 	db := InitDB()
 	iUserDAO := dao.NewUserDAO(db)
 	iTenantDAO := dao.NewTenantDAO(db)

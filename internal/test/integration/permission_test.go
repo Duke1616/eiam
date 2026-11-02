@@ -13,10 +13,10 @@ import (
 	cachemocks "github.com/Duke1616/eiam/internal/repository/cache/mocks"
 	"github.com/Duke1616/eiam/internal/repository/dao"
 	"github.com/Duke1616/eiam/internal/service/permission"
-	"github.com/Duke1616/eiam/internal/service/policy"
+	policysvc "github.com/Duke1616/eiam/internal/service/policy"
 	"github.com/Duke1616/eiam/internal/service/resource"
 	"github.com/Duke1616/eiam/internal/service/resource/ingestion"
-	"github.com/Duke1616/eiam/internal/service/role"
+	rolesvc "github.com/Duke1616/eiam/internal/service/role"
 	"github.com/Duke1616/eiam/internal/service/tenant"
 	testioc "github.com/Duke1616/eiam/internal/test/ioc"
 	"github.com/Duke1616/eiam/pkg/ctxutil"
@@ -41,8 +41,8 @@ type PermissionSuite struct {
 
 	permSvc     permission.IPermissionService
 	tenantSvc   tenant.ITenantService
-	roleSvc     role.IRoleService
-	policySvc   policy.IPolicyService
+	roleSvc     rolesvc.IRoleService
+	policySvc   policysvc.IPolicyService
 	resourceSvc resource.IResourceService
 
 	testUid int64
@@ -412,221 +412,198 @@ func (s *PermissionSuite) TestIngestMenusAndPhysicalClearProtection() {
 	assert.Equal(s.T(), "test:perm:p1", pbReload.PermCode)
 }
 
+// setupAPIWithPermission 快速创建测试 API 与关联的权限点
+func (s *PermissionSuite) setupAPIWithPermission(ctx context.Context, service, method, path, permCode string) {
+	api := domain.API{Service: service, Method: method, Path: path}
+	_, err := s.resourceSvc.CreateAPI(ctx, api)
+	s.Require().NoError(err)
+
+	pid, err := s.permSvc.CreatePermission(ctx, domain.Permission{Code: permCode})
+	s.Require().NoError(err)
+
+	err = s.permSvc.BindResourcesToPermission(ctx, pid, permCode, []string{api.URN()})
+	s.Require().NoError(err)
+}
+
+// setupRoleWithInlineAction 快速创建带有指定 Action 允许权限的角色并返回角色 ID
+func (s *PermissionSuite) setupRoleWithInlineAction(ctx context.Context, roleCode, roleName, action string) int64 {
+	id, err := s.roleSvc.Create(ctx, domain.Role{
+		Code: roleCode,
+		Name: roleName,
+		InlinePolicies: []domain.Policy{
+			{
+				Statement: []domain.Statement{
+					{Effect: domain.Allow, Action: []string{action}, Resource: []string{"*"}},
+				},
+			},
+		},
+	})
+	s.Require().NoError(err)
+	return id
+}
+
 func (s *PermissionSuite) TestCheckAPI_CacheLifecycle() {
 	serviceName := "order-service"
 
-	s.Run("角色内联策略缓存命中与更新即时淘汰", func() {
-		defer s.clearAll()
-		s.ensureAdminRole(context.Background())
+	testCases := []struct {
+		name   string
+		before func(ctx context.Context, tid int64) (cacheKey, username, method, path string)
+		run    func(ctx context.Context, tid int64)
+		after  func(ctx context.Context, tid int64, cacheKey, username, method, path string)
+	}{
+		{
+			name: "类型1-角色内联策略更新即时淘汰",
+			before: func(ctx context.Context, tid int64) (string, string, string, string) {
+				s.setupAPIWithPermission(ctx, serviceName, "GET", "/api/v1/orders", "order:view")
+				s.setupRoleWithInlineAction(ctx, "ORDER_OPERATOR", "订单操作员", "order:view")
+				_, err := s.permSvc.AssignRoleToUser(ctx, "alice", "ORDER_OPERATOR")
+				s.Require().NoError(err)
 
-		tid, err := s.tenantSvc.CreateTenant(context.Background(), "订单测试租户", "order_corp", "super_user", 7777)
-		s.Require().NoError(err)
-		ctx := ctxutil.WithTenantID(context.Background(), tid)
-
-		// 1. 注册 API 与权限
-		api := domain.API{Service: serviceName, Method: "GET", Path: "/api/v1/orders"}
-		_, err = s.resourceSvc.CreateAPI(ctx, api)
-		s.Require().NoError(err)
-
-		pid, err := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "order:view"})
-		s.Require().NoError(err)
-		err = s.permSvc.BindResourcesToPermission(ctx, pid, "order:view", []string{api.URN()})
-		s.Require().NoError(err)
-
-		// 2. 创建带有内联策略的角色并分配给普通用户
-		roleCode := "ORDER_OPERATOR"
-		_, err = s.roleSvc.Create(ctx, domain.Role{
-			Code: roleCode,
-			Name: "订单操作员",
-			InlinePolicies: []domain.Policy{
-				{
-					Statement: []domain.Statement{
-						{Effect: domain.Allow, Action: []string{"order:view"}, Resource: []string{"*"}},
-					},
-				},
+				cacheKey := fmt.Sprintf("eiam:role:detail:%d:ORDER_OPERATOR", tid)
+				// AssignRole 阶段系统已预热缓存，显式 Del 确保严格验证 CheckAPI 触发的冷启动与回填
+				_ = s.redis.Del(ctx, cacheKey).Err()
+				return cacheKey, "alice", "GET", "/api/v1/orders"
 			},
-		})
-		s.Require().NoError(err)
+			run: func(ctx context.Context, tid int64) {
+				// 变更动作：收回内联权限，修改为 Deny All
+				err := s.roleSvc.UpdateInlinePolicies(ctx, "ORDER_OPERATOR", []domain.Policy{
+					{
+						Statement: []domain.Statement{
+							{Effect: domain.Deny, Action: []string{"*"}, Resource: []string{"*"}},
+						},
+					},
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			name: "类型2-主体托管策略解绑即时淘汰",
+			before: func(ctx context.Context, tid int64) (string, string, string, string) {
+				s.setupAPIWithPermission(ctx, serviceName, "POST", "/api/v1/orders", "order:create")
+				_, err := s.policySvc.CreatePolicy(ctx, domain.Policy{
+					Code: "ORDER_CREATOR_POLICY",
+					Name: "订单创建权限",
+					Statement: []domain.Statement{
+						{Effect: domain.Allow, Action: []string{"order:create"}, Resource: []string{"*"}},
+					},
+				})
+				s.Require().NoError(err)
 
-		username := "alice"
-		_, err = s.permSvc.AssignRoleToUser(ctx, username, roleCode)
-		s.Require().NoError(err)
+				err = s.policySvc.AttachPolicyToUser(ctx, "bob", "ORDER_CREATOR_POLICY")
+				s.Require().NoError(err)
 
-		// 缓存 Key
-		roleKey := fmt.Sprintf("eiam:role:detail:%d:%s", tid, roleCode)
+				cacheKey := fmt.Sprintf("eiam:policy:attached_codes:%d:%s:bob", tid, domain.SubjectTypeUser)
+				_ = s.redis.Del(ctx, cacheKey).Err()
+				return cacheKey, "bob", "POST", "/api/v1/orders"
+			},
+			run: func(ctx context.Context, tid int64) {
+				// 变更动作：解绑托管策略
+				err := s.policySvc.DetachFromUser(ctx, "bob", "ORDER_CREATOR_POLICY")
+				s.Require().NoError(err)
+			},
+		},
+		{
+			name: "类型3-托管策略规则定义修改即时淘汰详情缓存",
+			before: func(ctx context.Context, tid int64) (string, string, string, string) {
+				s.setupAPIWithPermission(ctx, serviceName, "PUT", "/api/v1/orders", "order:update")
+				_, err := s.policySvc.CreatePolicy(ctx, domain.Policy{
+					Code: "ORDER_EDITOR_POLICY",
+					Name: "订单修改权限",
+					Statement: []domain.Statement{
+						{Effect: domain.Allow, Action: []string{"order:update"}, Resource: []string{"*"}},
+					},
+				})
+				s.Require().NoError(err)
 
-		// AssignRoleToUser 会在分配时做角色存在性校验从而预热缓存。此处显式清除，以严格验证后续 CheckAPI 触发的冷启动查库与自动回填
-		_ = s.redis.Del(ctx, roleKey).Err()
-		exists, _ := s.redis.Exists(ctx, roleKey).Result()
-		assert.Equal(s.T(), int64(0), exists, "清除后鉴权前缓存应当不存在")
+				err = s.policySvc.AttachPolicyToUser(ctx, "carol", "ORDER_EDITOR_POLICY")
+				s.Require().NoError(err)
 
-		// 3. 首次鉴权请求 (冷启动：查库并回填 Redis 缓存)
-		ok, err := s.permSvc.CheckAPI(ctx, username, serviceName, "GET", "/api/v1/orders")
-		s.Require().NoError(err)
-		assert.True(s.T(), ok, "首次鉴权应该通过")
-
-		// 验证 Redis 中角色缓存已经成功生成
-		exists, err = s.redis.Exists(ctx, roleKey).Result()
-		s.Require().NoError(err)
-		assert.Equal(s.T(), int64(1), exists, "首次鉴权后 Redis 角色内联策略缓存必须存在")
-
-		// 4. 第二次鉴权请求 (热路径：完全命中 Redis 缓存直出)
-		ok, err = s.permSvc.CheckAPI(ctx, username, serviceName, "GET", "/api/v1/orders")
-		s.Require().NoError(err)
-		assert.True(s.T(), ok, "命中缓存后的鉴权依然应通过")
-
-		// 5. 管理员收回权限：更新角色的内联策略为无权限策略
-		err = s.roleSvc.UpdateInlinePolicies(ctx, roleCode, []domain.Policy{
-			{
-				Statement: []domain.Statement{
+				// 针对策略详情缓存的淘汰验证
+				cacheKey := fmt.Sprintf("eiam:policy:detail:%d:ORDER_EDITOR_POLICY", tid)
+				return cacheKey, "carol", "PUT", "/api/v1/orders"
+			},
+			run: func(ctx context.Context, tid int64) {
+				// 变更动作：更新策略本身的内容为 Deny
+				targetPolicy, err := s.policySvc.GetPolicy(ctx, "ORDER_EDITOR_POLICY")
+				s.Require().NoError(err)
+				targetPolicy.Statement = []domain.Statement{
 					{Effect: domain.Deny, Action: []string{"*"}, Resource: []string{"*"}},
-				},
+				}
+				err = s.policySvc.UpdatePolicy(ctx, targetPolicy)
+				s.Require().NoError(err)
 			},
-		})
-		s.Require().NoError(err)
+		},
+		{
+			name: "类型4-角色解绑与删除即时驱逐缓存",
+			before: func(ctx context.Context, tid int64) (string, string, string, string) {
+				s.setupAPIWithPermission(ctx, serviceName, "DELETE", "/api/v1/orders", "order:delete")
+				roleID := s.setupRoleWithInlineAction(ctx, "TEMP_ADMIN", "临时管理员", "order:delete")
+				_, err := s.permSvc.AssignRoleToUser(ctx, "dave", "TEMP_ADMIN")
+				s.Require().NoError(err)
 
-		// 验证 Redis 缓存已被精准淘汰
-		exists, err = s.redis.Exists(ctx, roleKey).Result()
-		s.Require().NoError(err)
-		assert.Equal(s.T(), int64(0), exists, "更新内联策略后 Redis 缓存必须被立即淘汰")
-
-		// 6. 再次发起鉴权：必须立刻被拦截 (验证无幽灵旧权限)
-		ok, err = s.permSvc.CheckAPI(ctx, username, serviceName, "GET", "/api/v1/orders")
-		s.Require().NoError(err)
-		assert.False(s.T(), ok, "权限收回后必须立即被拦截，绝无旧权限残留")
-	})
-
-	s.Run("托管策略绑定与解绑缓存即时淘汰", func() {
-		defer s.clearAll()
-		s.ensureAdminRole(context.Background())
-
-		tid, err := s.tenantSvc.CreateTenant(context.Background(), "策略测试租户", "policy_corp", "super_user", 6666)
-		s.Require().NoError(err)
-		ctx := ctxutil.WithTenantID(context.Background(), tid)
-
-		// 1. 注册 API 与权限
-		api := domain.API{Service: serviceName, Method: "POST", Path: "/api/v1/orders"}
-		_, err = s.resourceSvc.CreateAPI(ctx, api)
-		s.Require().NoError(err)
-
-		pid, err := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "order:create"})
-		s.Require().NoError(err)
-		err = s.permSvc.BindResourcesToPermission(ctx, pid, "order:create", []string{api.URN()})
-		s.Require().NoError(err)
-
-		// 2. 创建托管策略
-		policyCode := "ORDER_CREATOR_POLICY"
-		_, err = s.policySvc.CreatePolicy(ctx, domain.Policy{
-			Code: policyCode,
-			Name: "订单创建权限",
-			Statement: []domain.Statement{
-				{Effect: domain.Allow, Action: []string{"order:create"}, Resource: []string{"*"}},
+				_ = roleID
+				cacheKey := fmt.Sprintf("eiam:role:detail:%d:TEMP_ADMIN", tid)
+				return cacheKey, "dave", "DELETE", "/api/v1/orders"
 			},
-		})
-		s.Require().NoError(err)
+			run: func(ctx context.Context, tid int64) {
+				// 变更动作：先解除用户关联，再物理删除该角色
+				_, err := s.permSvc.RemoveRoleFromUser(ctx, "dave", "TEMP_ADMIN")
+				s.Require().NoError(err)
 
-		username := "bob"
+				targetRole, err := s.roleSvc.GetByCode(ctx, "TEMP_ADMIN")
+				s.Require().NoError(err)
 
-		// 3. 绑定托管策略到用户
-		err = s.policySvc.AttachPolicyToUser(ctx, username, policyCode)
-		s.Require().NoError(err)
-
-		attachedKey := fmt.Sprintf("eiam:policy:attached_codes:%d:%s:%s", tid, domain.SubjectTypeUser, username)
-
-		// 显式清除确保冷启动
-		_ = s.redis.Del(ctx, attachedKey).Err()
-		exists, _ := s.redis.Exists(ctx, attachedKey).Result()
-		assert.Equal(s.T(), int64(0), exists, "鉴权前主体策略挂载缓存应当为空")
-
-		// 首次调用，鉴权通过并写入主体挂载缓存
-		ok, err := s.permSvc.CheckAPI(ctx, username, serviceName, "POST", "/api/v1/orders")
-		s.Require().NoError(err)
-		assert.True(s.T(), ok, "绑定托管策略后鉴权应通过")
-
-		exists, err = s.redis.Exists(ctx, attachedKey).Result()
-		s.Require().NoError(err)
-		assert.Equal(s.T(), int64(1), exists, "首次鉴权后主体策略挂载缓存必须存在")
-
-		// 4. 解绑策略
-		err = s.policySvc.DetachFromUser(ctx, username, policyCode)
-		s.Require().NoError(err)
-
-		// 验证主体关联缓存已被精准淘汰
-		exists, err = s.redis.Exists(ctx, attachedKey).Result()
-		s.Require().NoError(err)
-		assert.Equal(s.T(), int64(0), exists, "解绑策略后主体挂载缓存必须被立即淘汰")
-
-		// 5. 再次鉴权：立即被拦截
-		ok, err = s.permSvc.CheckAPI(ctx, username, serviceName, "POST", "/api/v1/orders")
-		s.Require().NoError(err)
-		assert.False(s.T(), ok, "解绑策略后必须立刻阻断访问")
-	})
-
-	s.Run("角色删除缓存即时淘汰与鉴权阻断", func() {
-		defer s.clearAll()
-		s.ensureAdminRole(context.Background())
-
-		tid, err := s.tenantSvc.CreateTenant(context.Background(), "角色删除测试租户", "role_del_corp", "super_user", 5555)
-		s.Require().NoError(err)
-		ctx := ctxutil.WithTenantID(context.Background(), tid)
-
-		// 1. 注册 API 与权限
-		api := domain.API{Service: serviceName, Method: "DELETE", Path: "/api/v1/orders"}
-		_, err = s.resourceSvc.CreateAPI(ctx, api)
-		s.Require().NoError(err)
-
-		pid, err := s.permSvc.CreatePermission(ctx, domain.Permission{Code: "order:delete"})
-		s.Require().NoError(err)
-		err = s.permSvc.BindResourcesToPermission(ctx, pid, "order:delete", []string{api.URN()})
-		s.Require().NoError(err)
-
-		// 2. 创建临时角色
-		roleCode := "TEMP_ADMIN"
-		roleID, err := s.roleSvc.Create(ctx, domain.Role{
-			Code: roleCode,
-			Name: "临时管理员",
-			InlinePolicies: []domain.Policy{
-				{
-					Statement: []domain.Statement{
-						{Effect: domain.Allow, Action: []string{"order:delete"}, Resource: []string{"*"}},
-					},
-				},
+				err = s.roleSvc.Delete(ctx, targetRole.ID)
+				s.Require().NoError(err)
 			},
+		},
+	}
+
+	for i, tc := range testCases {
+		s.Run(tc.name, func() {
+			defer s.clearAll()
+			s.ensureAdminRole(context.Background())
+
+			tid, err := s.tenantSvc.CreateTenant(context.Background(), tc.name, fmt.Sprintf("corp_%d", i), "super_user", int64(8000+i))
+			s.Require().NoError(err)
+			ctx := ctxutil.WithTenantID(context.Background(), tid)
+
+			// 1. Before: 初始化环境、资产与主体授权
+			cacheKey, username, method, path := tc.before(ctx, tid)
+
+			// 2. 首次鉴权请求 (冷启动)，验证鉴权通过并自动回填 Redis
+			ok, err := s.permSvc.CheckAPI(ctx, username, serviceName, method, path)
+			s.Require().NoError(err)
+			assert.True(s.T(), ok, "初始授权鉴权应当通过")
+
+			// 验证 Redis 中对应缓存成功建立
+			exists, err := s.redis.Exists(ctx, cacheKey).Result()
+			s.Require().NoError(err)
+			assert.Equal(s.T(), int64(1), exists, "首次鉴权后 Redis 缓存必须被成功写入")
+
+			// 验证二次鉴权直接走缓存放行
+			ok, err = s.permSvc.CheckAPI(ctx, username, serviceName, method, path)
+			s.Require().NoError(err)
+			assert.True(s.T(), ok, "命中缓存后的鉴权依然应通过")
+
+			// 3. Run: 触发权限收回或实体变更
+			tc.run(ctx, tid)
+
+			// 4. After: 验证缓存强一致淘汰与鉴权即时生效
+			if tc.after != nil {
+				tc.after(ctx, tid, cacheKey, username, method, path)
+			} else {
+				// 统一标准断言：Redis 缓存必须已被物理驱逐，再次鉴权必须立刻被阻断 (无幽灵权限)
+				exists, err = s.redis.Exists(ctx, cacheKey).Result()
+				s.Require().NoError(err)
+				assert.Equal(s.T(), int64(0), exists, "权限变更后 Redis 缓存必须被精准淘汰")
+
+				ok, err = s.permSvc.CheckAPI(ctx, username, serviceName, method, path)
+				s.Require().NoError(err)
+				assert.False(s.T(), ok, "权限收回后再次鉴权必须立刻被拦截，绝无旧权限残留")
+			}
 		})
-		s.Require().NoError(err)
-
-		username := "charlie"
-		_, err = s.permSvc.AssignRoleToUser(ctx, username, roleCode)
-		s.Require().NoError(err)
-
-		roleKey := fmt.Sprintf("eiam:role:detail:%d:%s", tid, roleCode)
-
-		// 首次调用鉴权通过
-		ok, err := s.permSvc.CheckAPI(ctx, username, serviceName, "DELETE", "/api/v1/orders")
-		s.Require().NoError(err)
-		assert.True(s.T(), ok, "绑定临时角色后鉴权应通过")
-
-		exists, err := s.redis.Exists(ctx, roleKey).Result()
-		s.Require().NoError(err)
-		assert.Equal(s.T(), int64(1), exists, "鉴权后角色缓存必须存在")
-
-		// 3. 解除用户关联后删除该角色
-		_, err = s.permSvc.RemoveRoleFromUser(ctx, username, roleCode)
-		s.Require().NoError(err)
-
-		err = s.roleSvc.Delete(ctx, roleID)
-		s.Require().NoError(err)
-
-		// 验证 Redis 中角色缓存已被精准驱逐
-		exists, err = s.redis.Exists(ctx, roleKey).Result()
-		s.Require().NoError(err)
-		assert.Equal(s.T(), int64(0), exists, "删除角色后缓存必须被立即驱逐")
-
-		// 4. 再次发起鉴权：立即被阻断
-		ok, err = s.permSvc.CheckAPI(ctx, username, serviceName, "DELETE", "/api/v1/orders")
-		s.Require().NoError(err)
-		assert.False(s.T(), ok, "角色删除后必须立刻阻断鉴权")
-	})
+	}
 }
 
 func TestPermissionSuite(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"github.com/Duke1616/eiam/internal/service/idp/claims"
 	claimsmocks "github.com/Duke1616/eiam/internal/service/idp/claims/mocks"
 	tenantmocks "github.com/Duke1616/eiam/internal/service/tenant/mocks"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -235,7 +236,7 @@ func TestService_ConsentFlow(t *testing.T) {
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
 	km := newTestKeyManager(t)
 
-	audit.EXPECT().RecordOperation(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	audit.EXPECT().RecordOperation(gomock.Any(), gomock.Any()).Return(nil).AnyTimes().AnyTimes()
 
 	consentInfo := domain.ConsentInfo{
 		ConsentID:   "consent_123",
@@ -285,7 +286,7 @@ func TestService_ExchangeToken_RefreshToken_Rotation(t *testing.T) {
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
 	km := newTestKeyManager(t)
 
-	audit.EXPECT().RecordOperation(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	audit.EXPECT().RecordOperation(gomock.Any(), gomock.Any()).Return(nil).AnyTimes().AnyTimes()
 
 	rawSecret := "secret_rot"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(rawSecret), bcrypt.DefaultCost)
@@ -348,7 +349,7 @@ func TestService_RevokeToken(t *testing.T) {
 	audit := auditmocks.NewMockIAuditProducer(ctrl)
 	km := newTestKeyManager(t)
 
-	audit.EXPECT().RecordOperation(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	audit.EXPECT().RecordOperation(gomock.Any(), gomock.Any()).Return(nil).AnyTimes().AnyTimes()
 
 	rawSecret := "secret_rev"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(rawSecret), bcrypt.DefaultCost)
@@ -393,4 +394,172 @@ func TestService_GetDiscoveryConfig(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Contains(t, string(raw), "end_session_endpoint")
 	})
+
+	t.Run("自省端点与客户端凭据模式包含在元数据中", func(t *testing.T) {
+		disc := svc.GetDiscoveryConfig(context.Background(), "https://eiam.example.com")
+		assert.Equal(t, "https://eiam.example.com/oauth/v2/introspect", disc.IntrospectionEndpoint)
+		assert.Contains(t, disc.GrantTypesSupported, "client_credentials")
+	})
+}
+
+func TestService_ExchangeToken_ClientCredentials(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repomocks.NewMockIApplicationRepository(ctrl)
+	km := newTestKeyManager(t)
+	audit := auditmocks.NewMockIAuditProducer(ctrl)
+
+	rawSecret := "client-secret-123"
+	hash, _ := bcrypt.GenerateFromPassword([]byte(rawSecret), bcrypt.DefaultCost)
+
+	repo.EXPECT().FindByClientID(gomock.Any(), "m2m-app").Return(domain.Application{
+		TenantID:         200,
+		ClientID:         "m2m-app",
+		ClientSecretHash: string(hash),
+		Protocol:         domain.ProtocolOIDC,
+		GrantTypes:       []string{"client_credentials"},
+		Scopes:           []string{"m2m:read"},
+	}, nil)
+
+	audit.EXPECT().RecordOperation(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	svc := NewService(repo, nil, nil, nil, km, audit)
+
+	res, err := svc.ExchangeToken(context.Background(), domain.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     "m2m-app",
+		ClientSecret: rawSecret,
+		Scope:        "m2m:read",
+	}, "https://eiam.example.com")
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.AccessToken)
+	assert.Equal(t, "Bearer", res.TokenType)
+	assert.Equal(t, "m2m:read", res.Scope)
+	assert.Empty(t, res.RefreshToken)
+	assert.Empty(t, res.IDToken)
+}
+
+func TestService_IntrospectToken_TableDriven(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	km := newTestKeyManager(t)
+	rawSecret := "secret-introspect"
+	hash, _ := bcrypt.GenerateFromPassword([]byte(rawSecret), bcrypt.DefaultCost)
+
+	baseApp := domain.Application{
+		TenantID:         1,
+		ClientID:         "introspect-client",
+		ClientSecretHash: string(hash),
+	}
+
+	// 提前使用合法密钥签发一个 Access Token
+	now := time.Now()
+	validToken, err := km.SignJWT(domain.IDTokenClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "https://eiam.example.com",
+			Subject:   "user-999",
+			Audience:  jwt.ClaimStrings{"introspect-client"},
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        "jti-12345",
+		},
+		PreferredUsername: "alice",
+		TenantID:          1,
+	})
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name         string
+		req          domain.TokenIntrospectRequest
+		setupMock    func(repo *repomocks.MockIApplicationRepository, cache *cachemocks.MockIOidcCache)
+		expectedErr  error
+		expectActive bool
+		verifyResult func(t *testing.T, res *domain.TokenIntrospectResult)
+	}{
+		{
+			name: "有效令牌自省返回 active: true 与 Claims",
+			req: domain.TokenIntrospectRequest{
+				Token:        validToken,
+				ClientID:     "introspect-client",
+				ClientSecret: rawSecret,
+			},
+			setupMock: func(repo *repomocks.MockIApplicationRepository, cache *cachemocks.MockIOidcCache) {
+				repo.EXPECT().FindByClientID(gomock.Any(), "introspect-client").Return(baseApp, nil)
+				cache.EXPECT().IsTokenRevoked(gomock.Any(), validToken).Return(false, nil)
+			},
+			expectActive: true,
+			verifyResult: func(t *testing.T, res *domain.TokenIntrospectResult) {
+				assert.True(t, res.Active)
+				assert.Equal(t, "user-999", res.Sub)
+				assert.Equal(t, "alice", res.Username)
+				assert.Equal(t, "introspect-client", res.ClientID)
+				assert.Equal(t, int64(1), res.TenantID)
+			},
+		},
+		{
+			name: "已被撤销(Revoked)的令牌自省返回 active: false",
+			req: domain.TokenIntrospectRequest{
+				Token:        validToken,
+				ClientID:     "introspect-client",
+				ClientSecret: rawSecret,
+			},
+			setupMock: func(repo *repomocks.MockIApplicationRepository, cache *cachemocks.MockIOidcCache) {
+				repo.EXPECT().FindByClientID(gomock.Any(), "introspect-client").Return(baseApp, nil)
+				cache.EXPECT().IsTokenRevoked(gomock.Any(), validToken).Return(true, nil)
+			},
+			expectActive: false,
+		},
+		{
+			name: "篡改伪造的令牌自省返回 active: false",
+			req: domain.TokenIntrospectRequest{
+				Token:        "invalid.forged.jwt.token",
+				ClientID:     "introspect-client",
+				ClientSecret: rawSecret,
+			},
+			setupMock: func(repo *repomocks.MockIApplicationRepository, cache *cachemocks.MockIOidcCache) {
+				repo.EXPECT().FindByClientID(gomock.Any(), "introspect-client").Return(baseApp, nil)
+				cache.EXPECT().IsTokenRevoked(gomock.Any(), "invalid.forged.jwt.token").Return(false, nil)
+			},
+			expectActive: false,
+		},
+		{
+			name: "客户端凭证错误抛出未经授权错误",
+			req: domain.TokenIntrospectRequest{
+				Token:        validToken,
+				ClientID:     "introspect-client",
+				ClientSecret: "wrong-secret",
+			},
+			setupMock: func(repo *repomocks.MockIApplicationRepository, cache *cachemocks.MockIOidcCache) {
+				repo.EXPECT().FindByClientID(gomock.Any(), "introspect-client").Return(baseApp, nil)
+			},
+			expectedErr: errs.ErrApplicationSecretWrong,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := repomocks.NewMockIApplicationRepository(ctrl)
+			cache := cachemocks.NewMockIOidcCache(ctrl)
+
+			tc.setupMock(repo, cache)
+
+			svc := NewService(repo, nil, nil, cache, km, nil)
+			res, err := svc.IntrospectToken(context.Background(), tc.req)
+
+			if tc.expectedErr != nil {
+				assert.ErrorIs(t, err, tc.expectedErr)
+				assert.Nil(t, res)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, res)
+				assert.Equal(t, tc.expectActive, res.Active)
+				if tc.verifyResult != nil {
+					tc.verifyResult(t, res)
+				}
+			}
+		})
+	}
 }

@@ -23,6 +23,8 @@ import (
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/server/egin"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
 )
 
 func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.HandlerFunc,
@@ -93,7 +95,14 @@ func InitGinWebServer(sp session.Provider, listener net.Listener, mdls []gin.Han
 	return server
 }
 
-func InitGinMiddlewares() []gin.HandlerFunc {
+func InitGinMiddlewares(cmd redis.Cmdable) []gin.HandlerFunc {
+	// 初始化全局默认限流器基础设施，供各 Handler 显式声明按需使用
+	if cmd != nil {
+		var cfg pkgmiddleware.Config
+		_ = viper.UnmarshalKey("web.ratelimit", &cfg)
+		pkgmiddleware.InitDefaultRateLimiter(cmd, cfg)
+	}
+
 	return []gin.HandlerFunc{
 		pkgmiddleware.NewCorsBuilder().Build(),
 		pkgmiddleware.AccessLogger(),

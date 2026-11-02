@@ -10,6 +10,7 @@ import (
 	"github.com/Duke1616/eiam/pkg/contract/model"
 	"github.com/Duke1616/eiam/pkg/contract/permission"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx"
 	"github.com/gin-gonic/gin"
 	"github.com/gotomicro/ego/core/elog"
@@ -51,21 +52,22 @@ func NewUserHandler(
 
 func (h *Handler) PublicRoutes(server *gin.Engine) {
 	g := server.Group("/api/user")
-	g.POST("/signup", ginx.B[SignupRequest](h.Signup))
-	g.POST("/ldap/login", ginx.B[LoginRequest](h.LoginLdap))
-	g.POST("/system/login", ginx.B[LoginRequest](h.LoginSystem))
-	g.POST("/bind/confirm", ginx.B[BindConfirmRequest](h.BindConfirm))
 
-	// OIDC 授权跳转与公开回调
+	// 1. 常规公开路由 (免限流或低频跳转)
 	g.GET("/oidc/render", ginx.W(h.OIDCAuthURL))
 	g.GET("/oidc/callback", ginx.W(h.OIDCCallback))
 
-	// Passkey 登录流程
-	g.POST("/passkey/login/start", ginx.W(h.PasskeyLoginStart))
-	g.POST("/passkey/login/finish", ginx.W(h.PasskeyLoginFinish))
-
-	// 登录阶段 MFA 验证
-	g.POST("/login/mfa/verify", ginx.B[MfaLoginVerifyRequest](h.LoginMFAVerify))
+	// 2. 敏感认证子路由组 (显式声明防撞库与爆破保护，默认每分钟限制最大登录尝试频次)
+	auth := g.Group("", pkgmiddleware.LimitAuth())
+	{
+		auth.POST("/signup", ginx.B[SignupRequest](h.Signup))
+		auth.POST("/ldap/login", ginx.B[LoginRequest](h.LoginLdap))
+		auth.POST("/system/login", ginx.B[LoginRequest](h.LoginSystem))
+		auth.POST("/bind/confirm", ginx.B[BindConfirmRequest](h.BindConfirm))
+		auth.POST("/passkey/login/start", ginx.W(h.PasskeyLoginStart))
+		auth.POST("/passkey/login/finish", ginx.W(h.PasskeyLoginFinish))
+		auth.POST("/login/mfa/verify", ginx.B[MfaLoginVerifyRequest](h.LoginMFAVerify))
+	}
 }
 
 func (h *Handler) IdentityRoutes(server *gin.Engine) {

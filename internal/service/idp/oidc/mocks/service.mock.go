@@ -314,6 +314,45 @@ func (c *MockIOidcServiceGetUserInfoCall) DoAndReturn(f func(context.Context, st
 	return c
 }
 
+// IntrospectToken mocks base method.
+func (m *MockIOidcService) IntrospectToken(ctx context.Context, req domain.TokenIntrospectRequest) (*domain.TokenIntrospectResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IntrospectToken", ctx, req)
+	ret0, _ := ret[0].(*domain.TokenIntrospectResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IntrospectToken indicates an expected call of IntrospectToken.
+func (mr *MockIOidcServiceMockRecorder) IntrospectToken(ctx, req any) *MockIOidcServiceIntrospectTokenCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IntrospectToken", reflect.TypeOf((*MockIOidcService)(nil).IntrospectToken), ctx, req)
+	return &MockIOidcServiceIntrospectTokenCall{Call: call}
+}
+
+// MockIOidcServiceIntrospectTokenCall wrap *gomock.Call
+type MockIOidcServiceIntrospectTokenCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockIOidcServiceIntrospectTokenCall) Return(arg0 *domain.TokenIntrospectResult, arg1 error) *MockIOidcServiceIntrospectTokenCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockIOidcServiceIntrospectTokenCall) Do(f func(context.Context, domain.TokenIntrospectRequest) (*domain.TokenIntrospectResult, error)) *MockIOidcServiceIntrospectTokenCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockIOidcServiceIntrospectTokenCall) DoAndReturn(f func(context.Context, domain.TokenIntrospectRequest) (*domain.TokenIntrospectResult, error)) *MockIOidcServiceIntrospectTokenCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // RevokeToken mocks base method.
 func (m *MockIOidcService) RevokeToken(ctx context.Context, token, tokenTypeHint, clientID, clientSecret string) error {
 	m.ctrl.T.Helper()

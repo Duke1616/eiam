@@ -16,6 +16,7 @@ import (
 	"github.com/Duke1616/eiam/pkg/ctxutil"
 	"github.com/Duke1616/eiam/pkg/sessionx"
 	"github.com/Duke1616/eiam/pkg/web/capability"
+	pkgmiddleware "github.com/Duke1616/eiam/pkg/web/middleware"
 	"github.com/ecodeclub/ginx"
 	"github.com/ecodeclub/ginx/session"
 	"github.com/gin-gonic/gin"
@@ -79,29 +80,36 @@ func (h *Handler) registerProtocolRoutes(rg *gin.RouterGroup) {
 	rg.GET("/oauth/v2/authorize", h.Authorize)
 	rg.POST("/oauth/v2/authorize", h.Authorize)
 
-	// 3. 授权码换发 Token 端点 (支持 code 与 refresh_token 策略)
-	rg.POST("/oauth/v2/token", h.Token)
-	rg.POST("/oauth/token", h.Token) // 别名兼容
+	// 3. 授权码换发 Token 端点 (支持 code 与 refresh_token 策略，挂载敏感认证防爆破限流)
+	tokenGroup := rg.Group("", pkgmiddleware.LimitAuth())
+	{
+		tokenGroup.POST("/oauth/v2/token", h.Token)
+		tokenGroup.POST("/oauth/token", h.Token) // 别名兼容
+	}
 
 	// 4. 令牌撤销端点 (RFC 7009 Token Revocation)
 	rg.POST("/oauth/v2/revoke", h.Revoke)
 
-	// 5. 用户信息查询端点
+	// 5. 令牌自省端点 (RFC 7662 Token Introspection)
+	rg.POST("/oauth/v2/introspect", h.Introspect)
+	rg.POST("/oauth/introspect", h.Introspect) // 别名兼容
+
+	// 6. 用户信息查询端点
 	rg.GET("/userinfo", h.UserInfo)
 	rg.POST("/userinfo", h.UserInfo)
 
-	// 6. 单点登出端点 (OIDC RP-Initiated Logout)
+	// 7. 单点登出端点 (OIDC RP-Initiated Logout)
 	rg.GET("/oauth/v2/logout", h.Logout)
 	rg.POST("/oauth/v2/logout", h.Logout)
 
-	// 7. 标准 CAS 2.0 / 3.0 单点登录协议端点
+	// 8. 标准 CAS 2.0 / 3.0 单点登录协议端点
 	rg.GET("/cas/login", h.CasLogin)
 	rg.GET("/cas/serviceValidate", h.CasServiceValidate)
 	rg.GET("/cas/p3/serviceValidate", h.CasServiceValidate) // CAS 3.0 别名
 	rg.GET("/cas/validate", h.CasValidate)                  // CAS 1.0 兼容
 	rg.GET("/cas/logout", h.CasLogout)
 
-	// 8. 标准 SAML 2.0 单点登录协议端点
+	// 9. 标准 SAML 2.0 单点登录协议端点
 	rg.GET("/saml/metadata", h.SamlMetadata)
 	rg.GET("/saml/certificate", h.SamlCertificate)
 	rg.GET("/saml/sso", h.SamlSSO)
@@ -245,6 +253,7 @@ func (h *Handler) Token(c *gin.Context) {
 	redirectURI := c.PostForm("redirect_uri")
 	codeVerifier := c.PostForm("code_verifier")
 	refreshToken := c.PostForm("refresh_token")
+	scope := c.PostForm("scope")
 	clientID, clientSecret := h.extractClientCredentials(c)
 
 	issuerURL := h.resolveIssuerURL(c)
@@ -256,6 +265,7 @@ func (h *Handler) Token(c *gin.Context) {
 		CodeVerifier: codeVerifier,
 		RedirectURI:  redirectURI,
 		RefreshToken: refreshToken,
+		Scope:        scope,
 	}, issuerURL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -282,6 +292,31 @@ func (h *Handler) Revoke(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// Introspect 令牌自省端点 (RFC 7662 OAuth 2.0 Token Introspection)
+func (h *Handler) Introspect(c *gin.Context) {
+	token := c.PostForm("token")
+	tokenTypeHint := c.PostForm("token_type_hint")
+	clientID, clientSecret := h.extractClientCredentials(c)
+
+	result, err := h.svc.IntrospectToken(c.Request.Context(), domain.TokenIntrospectRequest{
+		Token:         token,
+		TokenTypeHint: tokenTypeHint,
+		ClientID:      clientID,
+		ClientSecret:  clientSecret,
+	})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":             "invalid_client",
+			"error_description": err.Error(),
+		})
+		return
+	}
+
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	c.JSON(http.StatusOK, result)
 }
 
 // extractClientCredentials 统一从 POST 表单或 HTTP Basic Auth 头部中提取客户端凭证
