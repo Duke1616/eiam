@@ -82,7 +82,9 @@ func (p *TenantPlugin) Initialize(db *gorm.DB) error {
 	return nil
 }
 
-// handleCreate 自动填充实体或切片实体的租户 ID 字段，实现写屏障
+// handleCreate 自动填充实体或切片实体的租户 ID 字段
+// 解释为什么这样设计：HandleCreate 负责将有效租户上下文自动注入新建实体，
+// 若无租户上下文（如后台调度器、MQ 消费或数据同步任务）则放行实体自身的显式赋值，避免过度拦截破坏合法异步业务
 func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 	if p.shouldSkip(db) {
 		return
@@ -94,9 +96,8 @@ func (p *TenantPlugin) handleCreate(db *gorm.DB) {
 	}
 
 	tid := ctxutil.GetTenantID(db.Statement.Context)
-	// Fail-Closed 零信任写屏障：对包含租户列的多租户表，若未显式提权且缺少有效租户上下文，强制阻断写入
+	// 无有效租户上下文时跳过自动注入，放行实体自身赋值落库
 	if tid <= 0 {
-		_ = db.AddError(errors.New("多租户安全拦截：未显式声明 IgnoreTenant 且缺失有效租户上下文，请使用 gormx.IgnoreTenantContext(ctx) 显式提权"))
 		return
 	}
 

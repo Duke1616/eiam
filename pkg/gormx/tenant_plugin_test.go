@@ -171,13 +171,19 @@ func TestTenantPlugin_Create(t *testing.T) {
 			},
 		},
 		{
-			name:     "无有效租户上下文写入多租户实体时Fail-Closed拦截",
+			name:     "无有效租户上下文时放行实体自身的显式租户ID",
 			tenantID: 0,
 			run: func(t *testing.T, db *gorm.DB) {
-				user := TestUser{Name: "Hacker"}
+				user := TestUser{Name: "WorkerTask", TenantID: 555}
 				err := db.Create(&user).Error
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "多租户安全拦截")
+				require.NoError(t, err)
+				assert.Equal(t, int64(555), user.TenantID)
+			},
+			after: func(t *testing.T, db *gorm.DB) {
+				var dbUser TestUser
+				err := db.Session(&gorm.Session{}).First(&dbUser).Error
+				require.NoError(t, err)
+				assert.Equal(t, int64(555), dbUser.TenantID)
 			},
 		},
 	}
